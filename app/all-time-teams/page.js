@@ -10,8 +10,10 @@ const supabase = createClient(
 export default function AllTimeTeamsPage() {
   const [theme, setTheme] = useState('dark')
   const [teams, setTeams] = useState([])
+  const [matchups, setMatchups] = useState([])
   const [sortKey, setSortKey] = useState('diff')
   const [sortDir, setSortDir] = useState('desc')
+  const [includePlayoffs, setIncludePlayoffs] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('fc-theme') || 'dark'
@@ -22,6 +24,12 @@ export default function AllTimeTeamsPage() {
       .from('teams')
       .select('*, season:season_id(year), manager:manager_id(name, slug)')
       .then(({ data }) => setTeams(data || []))
+
+    supabase
+      .from('matchups')
+      .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id)')
+      .eq('is_playoff', true)
+      .then(({ data }) => setMatchups(data || []))
   }, [])
 
   const toggleTheme = () => {
@@ -54,20 +62,51 @@ export default function AllTimeTeamsPage() {
     return muted
   }
 
+  const getPlayoffStats = (teamId) => {
+    const games = matchups.filter(m =>
+      m.home_team?.id === teamId || m.away_team?.id === teamId
+    )
+    if (games.length === 0) return { pf: 0, pa: 0, games: 0, diff: 0, ppg_diff: 0 }
+    let pf = 0, pa = 0
+    games.forEach(m => {
+      if (m.home_team?.id === teamId) { pf += m.home_score; pa += m.away_score }
+      else { pf += m.away_score; pa += m.home_score }
+    })
+    const diff = parseFloat((pf - pa).toFixed(2))
+    const ppg_diff = parseFloat(((pf - pa) / games.length).toFixed(2))
+    return { pf: parseFloat(pf.toFixed(2)), pa: parseFloat(pa.toFixed(2)), games: games.length, diff, ppg_diff }
+  }
+
   const rankedTeams = [...teams]
-    .map(t => ({
-      ...t,
-      diff: parseFloat((t.points_for - t.points_against).toFixed(2)),
-      games: t.wins + t.losses,
-      ppg_diff: t.ppg_diff || parseFloat(((t.points_for - t.points_against) / (t.wins + t.losses || 1)).toFixed(2)),
-    }))
+    .map(t => {
+      const regDiff = parseFloat((t.points_for - t.points_against).toFixed(2))
+      const regPpgDiff = t.ppg_diff || parseFloat(((t.points_for - t.points_against) / (t.wins + t.losses || 1)).toFixed(2))
+      const playoff = getPlayoffStats(t.id)
+
+      const totalPf = includePlayoffs ? parseFloat((t.points_for + playoff.pf).toFixed(2)) : t.points_for
+      const totalPa = includePlayoffs ? parseFloat((t.points_against + playoff.pa).toFixed(2)) : t.points_against
+      const totalGames = includePlayoffs ? (t.wins + t.losses + playoff.games) : (t.wins + t.losses)
+      const totalDiff = parseFloat((totalPf - totalPa).toFixed(2))
+      const totalPpgDiff = totalGames > 0 ? parseFloat(((totalPf - totalPa) / totalGames).toFixed(2)) : 0
+
+      return {
+        ...t,
+        displayPf: totalPf,
+        displayPa: totalPa,
+        displayDiff: totalDiff,
+        displayPpgDiff: totalPpgDiff,
+        playoffGames: playoff.games,
+        playoffPf: playoff.pf,
+        playoffPa: playoff.pa,
+      }
+    })
     .sort((a, b) => {
       const mult = sortDir === 'desc' ? -1 : 1
       const val = (x) => {
-        if (sortKey === 'diff') return x.diff
-        if (sortKey === 'ppg_diff') return x.ppg_diff
-        if (sortKey === 'points_for') return x.points_for
-        if (sortKey === 'points_against') return x.points_against
+        if (sortKey === 'diff') return x.displayDiff
+        if (sortKey === 'ppg_diff') return x.displayPpgDiff
+        if (sortKey === 'points_for') return x.displayPf
+        if (sortKey === 'points_against') return x.displayPa
         if (sortKey === 'wins') return x.wins
         if (sortKey === 'losses') return x.losses
         if (sortKey === 'year') return x.season?.year || 0
@@ -98,6 +137,17 @@ export default function AllTimeTeamsPage() {
     borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap',
   })
 
+  const toggleBtn = (active, label, onClick) => (
+    <button onClick={onClick} style={{
+      background: active ? text : 'none',
+      border: `1px solid ${border}`,
+      color: active ? bg : muted,
+      padding: '7px 18px', cursor: 'pointer',
+      fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase',
+      fontFamily: "'Inter', sans-serif", fontWeight: '500', transition: 'all 0.15s',
+    }}>{label}</button>
+  )
+
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif", transition: 'background 0.2s, color 0.2s' }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500&display=swap'); * { box-sizing: border-box; margin: 0; padding: 0; }`}</style>
@@ -118,15 +168,20 @@ export default function AllTimeTeamsPage() {
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(40px, 6vw, 72px)', fontWeight: '400', marginBottom: '8px', letterSpacing: '-0.02em' }}>
           All-Time Teams
         </h1>
-        <p style={{ color: muted, fontSize: '13px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '64px' }}>
+        <p style={{ color: muted, fontSize: '13px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '40px' }}>
           {teams.length} team seasons &nbsp;&middot;&nbsp; Click a column to sort
         </p>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '40px', flexWrap: 'wrap' }}>
+          {toggleBtn(!includePlayoffs, 'Regular Season Only', () => setIncludePlayoffs(false))}
+          {toggleBtn(includePlayoffs, 'Include Playoffs', () => setIncludePlayoffs(true))}
+        </div>
 
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
             <thead>
               <tr style={{ background: cardBg }}>
-                <th style={hStyle('center')} onClick={() => handleSort('rank')}>Rk</th>
+                <th style={hStyle('center')}>Rk</th>
                 <th style={hStyle('left')} onClick={() => handleSort('manager')}>Manager <SortIcon col="manager" /></th>
                 <th style={hStyle('left')} onClick={() => handleSort('team_name')}>Team Name <SortIcon col="team_name" /></th>
                 <th style={hStyle('center')} onClick={() => handleSort('year')}>Year <SortIcon col="year" /></th>
@@ -148,21 +203,21 @@ export default function AllTimeTeamsPage() {
                   <td style={{ ...cStyle('center'), color: muted }}>{t.season?.year}</td>
                   <td style={cStyle()}>{t.wins}</td>
                   <td style={cStyle()}>{t.losses}</td>
-                  <td style={cStyle()}>{t.points_for.toFixed(2)}</td>
-                  <td style={cStyle()}>{t.points_against.toFixed(2)}</td>
+                  <td style={cStyle()}>{t.displayPf.toFixed(2)}</td>
+                  <td style={cStyle()}>{t.displayPa.toFixed(2)}</td>
                   <td style={{
                     ...cStyle(),
-                    color: t.diff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'),
+                    color: t.displayDiff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'),
                     fontWeight: '500'
                   }}>
-                    {t.diff >= 0 ? '+' : ''}{t.diff}
+                    {t.displayDiff >= 0 ? '+' : ''}{t.displayDiff}
                   </td>
                   <td style={{
                     ...cStyle(),
-                    color: t.ppg_diff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'),
+                    color: t.displayPpgDiff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'),
                     fontWeight: '500'
                   }}>
-                    {t.ppg_diff >= 0 ? '+' : ''}{t.ppg_diff}
+                    {t.displayPpgDiff >= 0 ? '+' : ''}{t.displayPpgDiff}
                   </td>
                   <td style={{ ...cStyle('left'), color: resultColor(t.playoff_result), fontWeight: t.playoff_result === 'Champion' ? '600' : '400', fontSize: '12px' }}>
                     {t.playoff_result || '—'}
