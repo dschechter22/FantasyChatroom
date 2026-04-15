@@ -10,7 +10,13 @@ export async function GET(request) {
 
   const res = await fetch(url, {
     headers: {
-      Cookie: `espn_s2=${ESPN_S2}; SWID=${ESPN_SWID}`,
+      'Cookie': `espn_s2=${ESPN_S2}; SWID=${ESPN_SWID}`,
+      'Accept': 'application/json',
+      'Referer': 'https://fantasy.espn.com/',
+      'Origin': 'https://fantasy.espn.com',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'X-Fantasy-Source': 'kona',
+      'X-Fantasy-Filter': '{}',
     },
   })
 
@@ -18,8 +24,6 @@ export async function GET(request) {
 
   return Response.json({
     status: res.status,
-    s2_length: ESPN_S2?.length || 0,
-    swid_present: !!ESPN_SWID,
     raw_preview: raw.slice(0, 500),
   })
 }
