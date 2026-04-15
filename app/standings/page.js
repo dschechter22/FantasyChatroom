@@ -81,6 +81,7 @@ export default function StandingsPage() {
       const molBowlLosses = filteredSeasons.filter(s => s.mol_bowl_loser?.id === m.id).length
       const winPct = wins + losses > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0'
       const diff = parseFloat((pf - pa).toFixed(2))
+      const ppgDiff = mTeams.length > 0 ? parseFloat((mTeams.reduce((s, t) => s + (t.ppg_diff || 0), 0) / mTeams.length).toFixed(2)) : 0
 
       const seasonBreakdown = mTeams
         .sort((a, b) => b.season.year - a.season.year)
@@ -92,12 +93,13 @@ export default function StandingsPage() {
           pf: t.points_for,
           pa: t.points_against,
           diff: parseFloat((t.points_for - t.points_against).toFixed(2)),
+          ppg_diff: t.ppg_diff || 0,
           made_playoffs: t.made_playoffs,
           champion: filteredSeasons.find(s => s.year === t.season.year)?.champion?.id === m.id,
           mol_bowl_loss: filteredSeasons.find(s => s.year === t.season.year)?.mol_bowl_loser?.id === m.id,
         }))
 
-      return { ...m, wins, losses, pf, pa, diff, championships, playoffAppearances, molBowlLosses, winPct, seasonBreakdown, games: wins + losses }
+      return { ...m, wins, losses, pf, pa, diff, ppgDiff, championships, playoffAppearances, molBowlLosses, winPct, seasonBreakdown, games: wins + losses }
     })
     .filter(Boolean)
     .sort((a, b) => {
@@ -105,6 +107,7 @@ export default function StandingsPage() {
       const val = (x) => {
         if (sortKey === 'winPct') return parseFloat(x.winPct)
         if (sortKey === 'diff') return x.diff
+        if (sortKey === 'ppgDiff') return x.ppgDiff
         if (sortKey === 'pf') return x.pf
         if (sortKey === 'pa') return x.pa
         return x[sortKey]
@@ -182,7 +185,7 @@ export default function StandingsPage() {
         <div style={{ display: 'flex', gap: '8px', marginBottom: '40px', flexWrap: 'wrap' }}>
           {filterBtn('all', 'All Years')}
           {filterBtn('pre', 'Pre-Danflation (2017-2023)')}
-          {filterBtn('post', 'Post-Danflation (2024-2025)')}
+          {filterBtn('post', 'Danflation Era (2024-2025)')}
         </div>
 
         <div style={{ overflowX: 'auto' }}>
@@ -196,6 +199,7 @@ export default function StandingsPage() {
                 <th style={hStyle()} onClick={() => handleSort('pf')}>PF <SortIcon col="pf" /></th>
                 <th style={hStyle()} onClick={() => handleSort('pa')}>PA <SortIcon col="pa" /></th>
                 <th style={hStyle()} onClick={() => handleSort('diff')}>Diff <SortIcon col="diff" /></th>
+                <th style={hStyle()} onClick={() => handleSort('ppgDiff')}>PPG Diff <SortIcon col="ppgDiff" /></th>
                 <th style={hStyle()} onClick={() => handleSort('championships')}>Titles <SortIcon col="championships" /></th>
                 <th style={hStyle()} onClick={() => handleSort('playoffAppearances')}>Playoffs <SortIcon col="playoffAppearances" /></th>
                 <th style={hStyle()} onClick={() => handleSort('molBowlLosses')}>Mol Bowls <SortIcon col="molBowlLosses" /></th>
@@ -222,6 +226,9 @@ export default function StandingsPage() {
                     <td style={{ ...cStyle(), color: m.diff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'), fontWeight: '500' }}>
                       {m.diff >= 0 ? '+' : ''}{m.diff.toFixed(0)}
                     </td>
+                    <td style={{ ...cStyle(), color: m.ppgDiff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'), fontWeight: '500' }}>
+                      {m.ppgDiff >= 0 ? '+' : ''}{m.ppgDiff}
+                    </td>
                     <td style={{ ...cStyle(), color: m.championships > 0 ? (d ? '#fcd34d' : '#92400e') : text }}>
                       {m.championships > 0 ? m.championships : '—'}
                     </td>
@@ -236,7 +243,7 @@ export default function StandingsPage() {
 
                   {expanded[m.slug] && (
                     <tr key={`${m.slug}-expanded`}>
-                      <td colSpan={11} style={{ padding: '0', borderBottom: `1px solid ${border}` }}>
+                      <td colSpan={12} style={{ padding: '0', borderBottom: `1px solid ${border}` }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', background: d ? '#050505' : '#e4e0d8' }}>
                           <thead>
                             <tr>
@@ -247,6 +254,7 @@ export default function StandingsPage() {
                               <th style={hStyle()}>PF</th>
                               <th style={hStyle()}>PA</th>
                               <th style={hStyle()}>Diff</th>
+                              <th style={hStyle()}>PPG Diff</th>
                               <th style={hStyle()}>Playoffs</th>
                               <th style={hStyle()}>Title</th>
                               <th style={hStyle()}>Mol Bowl</th>
@@ -264,6 +272,9 @@ export default function StandingsPage() {
                                 <td style={scStyle()}>{s.pa.toFixed(2)}</td>
                                 <td style={{ ...scStyle(), color: s.diff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c') }}>
                                   {s.diff >= 0 ? '+' : ''}{s.diff}
+                                </td>
+                                <td style={{ ...scStyle(), color: s.ppg_diff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c') }}>
+                                  {s.ppg_diff >= 0 ? '+' : ''}{s.ppg_diff}
                                 </td>
                                 <td style={{ ...scStyle(), color: s.made_playoffs ? (d ? '#6ee7b7' : '#0d6e3f') : muted }}>
                                   {s.made_playoffs ? 'Yes' : 'No'}
