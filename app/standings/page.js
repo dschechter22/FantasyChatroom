@@ -51,8 +51,8 @@ export default function StandingsPage() {
 
   const eraYears = {
     all: null,
-    pre: [2017, 2020],
-    post: [2021, 2025],
+    pre: [2017, 2023],
+    post: [2024, 2025],
   }
 
   const filteredTeams = teams.filter(t => {
