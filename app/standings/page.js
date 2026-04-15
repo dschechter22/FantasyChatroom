@@ -181,8 +181,8 @@ export default function StandingsPage() {
 
         <div style={{ display: 'flex', gap: '8px', marginBottom: '40px', flexWrap: 'wrap' }}>
           {filterBtn('all', 'All Years')}
-          {filterBtn('pre', 'Pre-Danflation (2017-2020)')}
-          {filterBtn('post', 'Post-Danflation (2021-2025)')}
+          {filterBtn('pre', 'Pre-Danflation (2017-2023)')}
+          {filterBtn('post', 'Post-Danflation (2024-2025)')}
         </div>
 
         <div style={{ overflowX: 'auto' }}>
