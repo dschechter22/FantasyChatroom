@@ -133,10 +133,11 @@ const displayManagers = showRetired ? managers : managers.filter(m => m.active)
           All-time records between every manager
         </p>
 
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '40px' }}>
-          {toggleBtn(includePlayoffs, 'Include Playoffs', () => setIncludePlayoffs(true))}
-          {toggleBtn(!includePlayoffs, 'Regular Season Only', () => setIncludePlayoffs(false))}
-        </div>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '40px', flexWrap: 'wrap' }}>
+  {toggleBtn(includePlayoffs, 'Include Playoffs', () => setIncludePlayoffs(true))}
+  {toggleBtn(!includePlayoffs, 'Regular Season Only', () => setIncludePlayoffs(false))}
+  {toggleBtn(showRetired, 'Include Retired', () => setShowRetired(!showRetired))}
+</div>
 
         {!selected ? (
           <>
