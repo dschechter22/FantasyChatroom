@@ -43,7 +43,7 @@ export default function Home() {
       fontSize: '18px', fontWeight: '400',
       color: text, textDecoration: 'none', letterSpacing: '-0.01em',
     },
-    navLinks: { display: 'flex', gap: '28px', alignItems: 'center' },
+    navLinks: { display: 'flex', gap: '20px', alignItems: 'center' },
     navLink: {
       color: muted, textDecoration: 'none', fontSize: '11px',
       letterSpacing: '0.14em', textTransform: 'uppercase',
@@ -145,7 +145,6 @@ export default function Home() {
       background: cardBg, padding: '40px 36px',
       textDecoration: 'none', color: text, display: 'block',
     },
-    cardEmoji: { fontSize: '24px', marginBottom: '20px', display: 'block' },
     cardTitle: {
       fontFamily: "'Playfair Display', serif",
       fontSize: '21px', fontWeight: '400',
@@ -170,15 +169,21 @@ export default function Home() {
     { label: 'Season', href: '/season' },
     { label: 'Rivalries', href: '/rivalries' },
     { label: 'Managers', href: '/managers' },
+    { label: 'Writeups', href: '/writeups' },
+    { label: 'Power Rankings', href: '/power-rankings' },
+    { label: 'LJ Index', href: '/lj-index' },
   ]
 
   const cards = [
-    { emoji: '🏆', label: 'Hall of Champions', desc: 'Every champion since year one. The throne, the drought, the dynasty.', href: '/champions' },
-    { emoji: '📊', label: 'All-Time Standings', desc: 'Wins, losses, championships, and playoff appearances across every season.', href: '/standings' },
-    { emoji: '⚔️', label: 'Head-to-Head', desc: 'Every matchup between every manager. Who owns who.', href: '/h2h' },
-    { emoji: '📅', label: 'Current Season', desc: 'Live standings, weekly scores, and power rankings for 2026.', href: '/season' },
-    { emoji: '🔥', label: 'Rivalry Index', desc: 'Grudge matches, heartbreaking losses, and the feuds that define the league.', href: '/rivalries' },
-    { emoji: '👤', label: 'Manager Cards', desc: "Every manager's record, signature moments, and legacy.", href: '/managers' },
+    { label: 'Hall of Champions', desc: 'Every champion since year one. The throne, the drought, the dynasty.', href: '/champions' },
+    { label: 'All-Time Standings', desc: 'Wins, losses, championships, and playoff appearances across every season.', href: '/standings' },
+    { label: 'Head-to-Head', desc: 'Every matchup between every manager. Who owns who.', href: '/h2h' },
+    { label: 'Current Season', desc: 'Live standings, weekly scores, and power rankings for 2026.', href: '/season' },
+    { label: 'Rivalry Index', desc: 'Grudge matches, heartbreaking losses, and the feuds that define the league.', href: '/rivalries' },
+    { label: 'Manager Cards', desc: "Every manager's record, signature moments, and legacy.", href: '/managers' },
+    { label: 'Weekly Writeups', desc: 'Manager-submitted recaps, hot takes, and postgame analysis every week.', href: '/writeups' },
+    { label: 'Power Rankings', desc: 'Weekly rankings built from a custom formula. No gut feelings, just math.', href: '/power-rankings' },
+    { label: 'LJ Index', desc: 'A proprietary metric tracking something deeper than wins and losses.', href: '/lj-index' },
   ]
 
   return (
@@ -190,7 +195,7 @@ export default function Home() {
             <a key={href} href={href} style={styles.navLink}>{label}</a>
           ))}
           <button onClick={toggleTheme} style={styles.themeBtn}>
-            {theme === 'dark' ? '☀ Light' : '☾ Dark'}
+            {theme === 'dark' ? 'Light' : 'Dark'}
           </button>
         </div>
       </nav>
@@ -234,9 +239,8 @@ export default function Home() {
         <p style={styles.sectionEyebrow}>Explore the League</p>
         <h2 style={styles.sectionTitle}>Everything you need.<br />Nothing you don't.</h2>
         <div style={styles.cards}>
-          {cards.map(({ emoji, label, desc, href }) => (
+          {cards.map(({ label, desc, href }) => (
             <a key={href} href={href} style={styles.card}>
-              <span style={styles.cardEmoji}>{emoji}</span>
               <div style={styles.cardTitle}>{label}</div>
               <div style={styles.cardDesc}>{desc}</div>
               <span style={styles.cardArrow}>Explore →</span>
