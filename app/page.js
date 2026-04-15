@@ -18,44 +18,42 @@ export default function Home() {
   }
 
   const d = theme === 'dark'
+  const bg = d ? '#000' : '#fff'
+  const text = d ? '#fff' : '#0a1628'
+  const muted = d ? 'rgba(255,255,255,0.38)' : 'rgba(10,22,40,0.45)'
+  const border = d ? 'rgba(255,255,255,0.1)' : 'rgba(10,22,40,0.12)'
+  const cardBg = d ? '#0a0a0a' : '#f7f8fc'
+  const statsBg = d ? '#080808' : '#f0f2f8'
 
   const styles = {
     body: {
-      background: d ? '#080808' : '#f5f2ee',
-      color: d ? '#f0f0f0' : '#1a1a1a',
-      fontFamily: "'Inter', sans-serif",
-      minHeight: '100vh',
+      background: bg, color: text,
+      fontFamily: "'Inter', sans-serif", minHeight: '100vh',
     },
     nav: {
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '20px 48px',
-      background: d
-        ? 'linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%)'
-        : 'rgba(245,242,238,0.95)',
-      borderBottom: d ? 'none' : '1px solid #e0dbd3',
-      backdropFilter: 'blur(8px)',
+      background: d ? 'rgba(0,0,0,0.88)' : 'rgba(255,255,255,0.95)',
+      borderBottom: `1px solid ${border}`,
+      backdropFilter: 'blur(10px)',
     },
     navLogo: {
       fontFamily: "'Playfair Display', serif",
-      fontSize: '18px', fontWeight: '700',
-      color: d ? '#fff' : '#1a1a1a',
-      textDecoration: 'none', letterSpacing: '-0.01em',
+      fontSize: '18px', fontWeight: '400',
+      color: text, textDecoration: 'none', letterSpacing: '-0.01em',
     },
     navLinks: { display: 'flex', gap: '28px', alignItems: 'center' },
     navLink: {
-      color: d ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)',
-      textDecoration: 'none', fontSize: '12px',
-      letterSpacing: '0.12em', textTransform: 'uppercase',
-      fontWeight: '500', transition: 'color 0.2s',
+      color: muted, textDecoration: 'none', fontSize: '11px',
+      letterSpacing: '0.14em', textTransform: 'uppercase',
+      fontWeight: '500',
     },
     themeBtn: {
-      background: 'none', border: `1px solid ${d ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'}`,
-      color: d ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)',
-      padding: '6px 14px', cursor: 'pointer',
+      background: 'none', border: `1px solid ${border}`,
+      color: muted, padding: '6px 14px', cursor: 'pointer',
       fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase',
       fontFamily: "'Inter', sans-serif", fontWeight: '500',
-      transition: 'all 0.2s',
     },
     hero: {
       position: 'relative', height: '100vh', minHeight: '600px',
@@ -64,123 +62,40 @@ export default function Home() {
       textAlign: 'center', overflow: 'hidden',
     },
     heroBg: {
-      position: 'absolute', inset: 0,
-      background: d
-        ? 'radial-gradient(ellipse at 60% 40%, #1a1a2e 0%, #080808 70%)'
-        : 'radial-gradient(ellipse at 60% 40%, #e8e0d5 0%, #f5f2ee 70%)',
+      position: 'absolute', inset: 0, background: bg,
     },
     heroGrid: {
       position: 'absolute', inset: 0,
-      opacity: d ? 0.06 : 0.15,
-      backgroundImage: `linear-gradient(${d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)'} 1px, transparent 1px), linear-gradient(90deg, ${d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)'} 1px, transparent 1px)`,
+      opacity: d ? 0.05 : 0.07,
+      backgroundImage: `linear-gradient(${border} 1px, transparent 1px), linear-gradient(90deg, ${border} 1px, transparent 1px)`,
       backgroundSize: '60px 60px',
-    },
-    heroGlow: {
-      position: 'absolute', top: '30%', left: '50%',
-      transform: 'translate(-50%, -50%)',
-      width: '600px', height: '400px', borderRadius: '50%',
-      background: d
-        ? 'radial-gradient(ellipse, rgba(100,120,255,0.1) 0%, transparent 70%)'
-        : 'radial-gradient(ellipse, rgba(180,140,80,0.12) 0%, transparent 70%)',
-      pointerEvents: 'none',
     },
     heroContent: { position: 'relative', zIndex: 2, padding: '0 24px' },
     heroEyebrow: {
       fontFamily: "'Inter', sans-serif",
       fontSize: '11px', letterSpacing: '0.28em',
-      textTransform: 'uppercase',
-      color: d ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
-      marginBottom: '20px',
+      textTransform: 'uppercase', color: muted, marginBottom: '24px',
     },
     heroTitle: {
       fontFamily: "'Playfair Display', serif",
-      fontSize: 'clamp(56px, 10vw, 108px)',
-      fontWeight: '900', lineHeight: '0.95',
-      color: d ? '#fff' : '#1a1a1a',
-      letterSpacing: '-0.03em', marginBottom: '24px',
+      fontSize: 'clamp(64px, 11vw, 120px)',
+      fontWeight: '400', lineHeight: '0.92',
+      color: text, letterSpacing: '-0.03em', marginBottom: '28px',
     },
     heroTitleEm: {
-      fontStyle: 'italic', fontWeight: '400',
-      color: d ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)',
+      fontStyle: 'italic', fontWeight: '400', color: muted,
     },
     heroSub: {
       fontFamily: "'Inter', sans-serif",
-      fontSize: '13px', letterSpacing: '0.18em',
-      color: d ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
-      marginBottom: '44px', textTransform: 'uppercase',
+      fontSize: '11px', letterSpacing: '0.22em',
+      color: muted, marginBottom: '48px', textTransform: 'uppercase',
     },
     heroCta: {
-      display: 'inline-block', padding: '14px 36px',
-      border: `1px solid ${d ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)'}`,
-      color: d ? '#fff' : '#1a1a1a',
-      fontFamily: "'Inter', sans-serif",
-      fontSize: '11px', letterSpacing: '0.2em',
-      textTransform: 'uppercase', textDecoration: 'none',
-      fontWeight: '500',
-    },
-    statsBar: {
-      background: d ? '#0d0d0d' : '#ede8e1',
-      borderTop: `1px solid ${d ? '#1a1a1a' : '#ddd8d0'}`,
-      borderBottom: `1px solid ${d ? '#1a1a1a' : '#ddd8d0'}`,
-      display: 'flex', justifyContent: 'center',
-    },
-    statItem: {
-      padding: '32px 64px', textAlign: 'center',
-      borderRight: `1px solid ${d ? '#1a1a1a' : '#ddd8d0'}`,
-    },
-    statNumber: {
-      fontFamily: "'Playfair Display', serif",
-      fontSize: '40px', fontWeight: '700',
-      color: d ? '#fff' : '#1a1a1a', marginBottom: '6px',
-    },
-    statLabel: {
-      fontFamily: "'Inter', sans-serif",
-      fontSize: '10px', letterSpacing: '0.18em',
-      textTransform: 'uppercase',
-      color: d ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)',
-    },
-    section: { padding: '100px 48px', maxWidth: '1200px', margin: '0 auto' },
-    sectionEyebrow: {
-      fontFamily: "'Inter', sans-serif",
-      fontSize: '10px', letterSpacing: '0.28em',
-      textTransform: 'uppercase',
-      color: d ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)',
-      marginBottom: '14px',
-    },
-    sectionTitle: {
-      fontFamily: "'Playfair Display', serif",
-      fontSize: '44px', fontWeight: '700',
-      color: d ? '#fff' : '#1a1a1a',
-      marginBottom: '52px', lineHeight: '1.1',
-      letterSpacing: '-0.02em',
-    },
-    cards: {
-      display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-      gap: '1px', background: d ? '#1f1f1f' : '#d8d3cb',
-    },
-    card: {
-      background: d ? '#0d0d0d' : '#f0ece5',
-      padding: '40px 36px', textDecoration: 'none',
-      color: d ? '#f0f0f0' : '#1a1a1a', display: 'block',
-    },
-    cardEmoji: { fontSize: '26px', marginBottom: '20px', display: 'block' },
-    cardTitle: {
-      fontFamily: "'Playfair Display', serif",
-      fontSize: '22px', fontWeight: '700',
-      color: d ? '#fff' : '#1a1a1a',
-      marginBottom: '10px', letterSpacing: '-0.01em',
-    },
-    cardDesc: {
-      fontFamily: "'Inter', sans-serif",
-      fontSize: '13px', lineHeight: '1.65',
-      color: d ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.5)',
-    },
-    cardArrow: {
-      display: 'inline-block', marginTop: '24px',
-      fontFamily: "'Inter', sans-serif",
-      fontSize: '10px', letterSpacing: '0.18em',
-      textTransform: 'uppercase',
-      color: d ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.3)',
+      display: 'inline-block', padding: '13px 32px',
+      border: `1px solid ${border}`,
+      color: text, fontFamily: "'Inter', sans-serif",
+      fontSize: '11px', letterSpacing: '0.18em',
+      textTransform: 'uppercase', textDecoration: 'none', fontWeight: '500',
     },
     scrollIndicator: {
       position: 'absolute', bottom: '40px', left: '50%',
@@ -188,7 +103,63 @@ export default function Home() {
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
       fontFamily: "'Inter', sans-serif",
       fontSize: '9px', letterSpacing: '0.22em', textTransform: 'uppercase',
-      color: d ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)', zIndex: 2,
+      color: muted, zIndex: 2,
+    },
+    statsBar: {
+      background: statsBg,
+      borderTop: `1px solid ${border}`,
+      borderBottom: `1px solid ${border}`,
+      display: 'flex', justifyContent: 'center',
+    },
+    statItem: {
+      padding: '32px 64px', textAlign: 'center',
+      borderRight: `1px solid ${border}`,
+    },
+    statNumber: {
+      fontFamily: "'Playfair Display', serif",
+      fontSize: '40px', fontWeight: '400',
+      color: text, marginBottom: '6px',
+    },
+    statLabel: {
+      fontFamily: "'Inter', sans-serif",
+      fontSize: '10px', letterSpacing: '0.18em',
+      textTransform: 'uppercase', color: muted,
+    },
+    section: { padding: '100px 48px', maxWidth: '1200px', margin: '0 auto' },
+    sectionEyebrow: {
+      fontFamily: "'Inter', sans-serif",
+      fontSize: '10px', letterSpacing: '0.28em',
+      textTransform: 'uppercase', color: muted, marginBottom: '14px',
+    },
+    sectionTitle: {
+      fontFamily: "'Playfair Display', serif",
+      fontSize: '44px', fontWeight: '400',
+      color: text, marginBottom: '52px',
+      lineHeight: '1.1', letterSpacing: '-0.02em',
+    },
+    cards: {
+      display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+      gap: '1px', background: border,
+    },
+    card: {
+      background: cardBg, padding: '40px 36px',
+      textDecoration: 'none', color: text, display: 'block',
+    },
+    cardEmoji: { fontSize: '24px', marginBottom: '20px', display: 'block' },
+    cardTitle: {
+      fontFamily: "'Playfair Display', serif",
+      fontSize: '21px', fontWeight: '400',
+      color: text, marginBottom: '10px', letterSpacing: '-0.01em',
+    },
+    cardDesc: {
+      fontFamily: "'Inter', sans-serif",
+      fontSize: '13px', lineHeight: '1.65', color: muted,
+    },
+    cardArrow: {
+      display: 'inline-block', marginTop: '24px',
+      fontFamily: "'Inter', sans-serif",
+      fontSize: '10px', letterSpacing: '0.18em',
+      textTransform: 'uppercase', color: muted,
     },
   }
 
@@ -227,7 +198,6 @@ export default function Home() {
       <section style={styles.hero}>
         <div style={styles.heroBg} />
         <div style={styles.heroGrid} />
-        <div style={styles.heroGlow} />
         <div style={styles.heroContent}>
           <p style={styles.heroEyebrow}>Est. 2015 &nbsp;&middot;&nbsp; Year 12</p>
           <h1 style={styles.heroTitle}>
@@ -238,10 +208,7 @@ export default function Home() {
           <a href="/standings" style={styles.heroCta}>View All-Time Standings</a>
         </div>
         <div style={styles.scrollIndicator}>
-          <div style={{
-            width: '1px', height: '40px',
-            background: `linear-gradient(to bottom, ${d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'}, transparent)`
-          }} />
+          <div style={{ width: '1px', height: '40px', background: `linear-gradient(to bottom, ${border}, transparent)` }} />
           Scroll
         </div>
       </section>
