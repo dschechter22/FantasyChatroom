@@ -18,12 +18,12 @@ export default function Home() {
   }
 
   const d = theme === 'dark'
-  const bg = d ? '#000' : '#fff'
-  const text = d ? '#fff' : '#0a1628'
-  const muted = d ? 'rgba(255,255,255,0.38)' : 'rgba(10,22,40,0.45)'
-  const border = d ? 'rgba(255,255,255,0.1)' : 'rgba(10,22,40,0.12)'
-  const cardBg = d ? '#0a0a0a' : '#f7f8fc'
-  const statsBg = d ? '#080808' : '#f0f2f8'
+  const bg = d ? '#000' : '#f4f1ec'
+  const text = d ? '#fff' : '#0d2152'
+  const muted = d ? 'rgba(255,255,255,0.38)' : 'rgba(13,33,82,0.45)'
+  const border = d ? 'rgba(255,255,255,0.1)' : 'rgba(13,33,82,0.14)'
+  const cardBg = d ? '#0a0a0a' : '#ede9e2'
+  const statsBg = d ? '#080808' : '#e8e4dc'
 
   const styles = {
     body: {
