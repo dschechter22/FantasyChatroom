@@ -13,6 +13,9 @@ export default function StandingsPage() {
   const [teams, setTeams] = useState([])
   const [seasons, setSeasons] = useState([])
   const [expanded, setExpanded] = useState({})
+  const [sortKey, setSortKey] = useState('championships')
+  const [sortDir, setSortDir] = useState('desc')
+  const [era, setEra] = useState('all')
 
   useEffect(() => {
     const saved = localStorage.getItem('fc-theme') || 'dark'
@@ -33,6 +36,11 @@ export default function StandingsPage() {
 
   const toggleExpand = (slug) => setExpanded(prev => ({ ...prev, [slug]: !prev[slug] }))
 
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+    else { setSortKey(key); setSortDir('desc') }
+  }
+
   const d = theme === 'dark'
   const bg = d ? '#000' : '#f4f1ec'
   const text = d ? '#fff' : '#0d2152'
@@ -41,16 +49,36 @@ export default function StandingsPage() {
   const cardBg = d ? '#0a0a0a' : '#ede9e2'
   const rowAlt = d ? '#080808' : '#e8e4dc'
 
+  const eraYears = {
+    all: null,
+    pre: [2017, 2020],
+    post: [2021, 2025],
+  }
+
+  const filteredTeams = teams.filter(t => {
+    const range = eraYears[era]
+    if (!range) return true
+    return t.season.year >= range[0] && t.season.year <= range[1]
+  })
+
+  const filteredSeasons = seasons.filter(s => {
+    const range = eraYears[era]
+    if (!range) return true
+    return s.year >= range[0] && s.year <= range[1]
+  })
+
   const buildManagerStats = () => {
     return managers.map(m => {
-      const mTeams = teams.filter(t => t.manager_id === m.id)
+      const mTeams = filteredTeams.filter(t => t.manager_id === m.id)
+      if (mTeams.length === 0) return null
+
       const wins = mTeams.reduce((s, t) => s + t.wins, 0)
       const losses = mTeams.reduce((s, t) => s + t.losses, 0)
       const pf = mTeams.reduce((s, t) => s + t.points_for, 0)
       const pa = mTeams.reduce((s, t) => s + t.points_against, 0)
-      const championships = seasons.filter(s => s.champion?.id === m.id).length
+      const championships = filteredSeasons.filter(s => s.champion?.id === m.id).length
       const playoffAppearances = mTeams.filter(t => t.made_playoffs).length
-      const molBowlWins = seasons.filter(s => s.mol_bowl_winner?.id === m.id).length
+      const molBowlLosses = filteredSeasons.filter(s => s.mol_bowl_loser?.id === m.id).length
       const winPct = wins + losses > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0'
       const diff = parseFloat((pf - pa).toFixed(2))
 
@@ -65,22 +93,38 @@ export default function StandingsPage() {
           pa: t.points_against,
           diff: parseFloat((t.points_for - t.points_against).toFixed(2)),
           made_playoffs: t.made_playoffs,
-          champion: seasons.find(s => s.year === t.season.year)?.champion?.id === m.id,
-          mol_bowl_win: seasons.find(s => s.year === t.season.year)?.mol_bowl_winner?.id === m.id,
+          champion: filteredSeasons.find(s => s.year === t.season.year)?.champion?.id === m.id,
+          mol_bowl_loss: filteredSeasons.find(s => s.year === t.season.year)?.mol_bowl_loser?.id === m.id,
         }))
 
-      return { ...m, wins, losses, pf, pa, diff, championships, playoffAppearances, molBowlWins, winPct, seasonBreakdown, games: wins + losses }
+      return { ...m, wins, losses, pf, pa, diff, championships, playoffAppearances, molBowlLosses, winPct, seasonBreakdown, games: wins + losses }
     })
-    .filter(m => m.games > 0)
-    .sort((a, b) => b.championships - a.championships || b.winPct - a.winPct)
+    .filter(Boolean)
+    .sort((a, b) => {
+      const mult = sortDir === 'desc' ? -1 : 1
+      const val = (x) => {
+        if (sortKey === 'winPct') return parseFloat(x.winPct)
+        if (sortKey === 'diff') return x.diff
+        if (sortKey === 'pf') return x.pf
+        if (sortKey === 'pa') return x.pa
+        return x[sortKey]
+      }
+      return mult * (val(a) - val(b))
+    })
   }
 
   const managerStats = buildManagerStats()
 
+  const SortIcon = ({ col }) => {
+    if (sortKey !== col) return <span style={{ opacity: 0.3, marginLeft: '4px' }}>↕</span>
+    return <span style={{ marginLeft: '4px' }}>{sortDir === 'desc' ? '↓' : '↑'}</span>
+  }
+
   const hStyle = (align = 'right') => ({
     padding: '10px 14px', fontSize: '10px', letterSpacing: '0.18em',
     textTransform: 'uppercase', color: muted, textAlign: align,
-    borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap',
+    borderBottom: `1px solid ${border}`, fontWeight: '500',
+    whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none',
   })
 
   const cStyle = (align = 'right', bold = false) => ({
@@ -93,6 +137,23 @@ export default function StandingsPage() {
     padding: '12px 14px', fontSize: '12px', textAlign: align,
     borderBottom: `1px solid ${border}`, color: muted, whiteSpace: 'nowrap',
   })
+
+  const filterBtn = (val, label) => (
+    <button
+      onClick={() => setEra(val)}
+      style={{
+        background: era === val ? text : 'none',
+        border: `1px solid ${border}`,
+        color: era === val ? bg : muted,
+        padding: '7px 18px', cursor: 'pointer',
+        fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase',
+        fontFamily: "'Inter', sans-serif", fontWeight: '500',
+        transition: 'all 0.15s',
+      }}
+    >
+      {label}
+    </button>
+  )
 
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif", transition: 'background 0.2s, color 0.2s' }}>
@@ -114,24 +175,30 @@ export default function StandingsPage() {
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(40px, 6vw, 72px)', fontWeight: '400', marginBottom: '8px', letterSpacing: '-0.02em' }}>
           All-Time Standings
         </h1>
-        <p style={{ color: muted, fontSize: '13px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '64px' }}>
-          Career records across all seasons &nbsp;&middot;&nbsp; Click a row to expand
+        <p style={{ color: muted, fontSize: '13px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '40px' }}>
+          Career records across all seasons &nbsp;&middot;&nbsp; Click a row to expand &nbsp;&middot;&nbsp; Click a column to sort
         </p>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '40px', flexWrap: 'wrap' }}>
+          {filterBtn('all', 'All Years')}
+          {filterBtn('pre', 'Pre-Danflation (2017-2020)')}
+          {filterBtn('post', 'Post-Danflation (2021-2025)')}
+        </div>
 
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
             <thead>
               <tr style={{ background: cardBg }}>
-                <th style={hStyle('left')}>Manager</th>
-                <th style={hStyle()}>W</th>
-                <th style={hStyle()}>L</th>
-                <th style={hStyle()}>Win %</th>
-                <th style={hStyle()}>PF</th>
-                <th style={hStyle()}>PA</th>
-                <th style={hStyle()}>Diff</th>
-                <th style={hStyle()}>Titles</th>
-                <th style={hStyle()}>Playoffs</th>
-                <th style={hStyle()}>Mol Bowls</th>
+                <th style={hStyle('left')} onClick={() => handleSort('name')}>Manager <SortIcon col="name" /></th>
+                <th style={hStyle()} onClick={() => handleSort('wins')}>W <SortIcon col="wins" /></th>
+                <th style={hStyle()} onClick={() => handleSort('losses')}>L <SortIcon col="losses" /></th>
+                <th style={hStyle()} onClick={() => handleSort('winPct')}>Win % <SortIcon col="winPct" /></th>
+                <th style={hStyle()} onClick={() => handleSort('pf')}>PF <SortIcon col="pf" /></th>
+                <th style={hStyle()} onClick={() => handleSort('pa')}>PA <SortIcon col="pa" /></th>
+                <th style={hStyle()} onClick={() => handleSort('diff')}>Diff <SortIcon col="diff" /></th>
+                <th style={hStyle()} onClick={() => handleSort('championships')}>Titles <SortIcon col="championships" /></th>
+                <th style={hStyle()} onClick={() => handleSort('playoffAppearances')}>Playoffs <SortIcon col="playoffAppearances" /></th>
+                <th style={hStyle()} onClick={() => handleSort('molBowlLosses')}>Mol Bowls <SortIcon col="molBowlLosses" /></th>
                 <th style={hStyle('center')}></th>
               </tr>
             </thead>
@@ -152,18 +219,16 @@ export default function StandingsPage() {
                     <td style={cStyle()}>{m.winPct}%</td>
                     <td style={cStyle()}>{m.pf.toFixed(0)}</td>
                     <td style={cStyle()}>{m.pa.toFixed(0)}</td>
-                    <td style={{
-                      ...cStyle(),
-                      color: m.diff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'),
-                      fontWeight: '500'
-                    }}>
+                    <td style={{ ...cStyle(), color: m.diff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'), fontWeight: '500' }}>
                       {m.diff >= 0 ? '+' : ''}{m.diff.toFixed(0)}
                     </td>
                     <td style={{ ...cStyle(), color: m.championships > 0 ? (d ? '#fcd34d' : '#92400e') : text }}>
-                      {m.championships > 0 ? `${m.championships}` : '—'}
+                      {m.championships > 0 ? m.championships : '—'}
                     </td>
                     <td style={cStyle()}>{m.playoffAppearances}</td>
-                    <td style={cStyle()}>{m.molBowlWins > 0 ? m.molBowlWins : '—'}</td>
+                    <td style={{ ...cStyle(), color: m.molBowlLosses > 0 ? (d ? '#f87171' : '#9b1c1c') : text }}>
+                      {m.molBowlLosses > 0 ? m.molBowlLosses : '—'}
+                    </td>
                     <td style={{ ...cStyle('center'), color: muted, fontSize: '11px' }}>
                       {expanded[m.slug] ? '▲' : '▼'}
                     </td>
@@ -191,16 +256,13 @@ export default function StandingsPage() {
                           <tbody>
                             {m.seasonBreakdown.map(s => (
                               <tr key={s.year}>
-                                <td style={{ ...scStyle('left') }}>{s.year}</td>
+                                <td style={scStyle('left')}>{s.year}</td>
                                 <td style={{ ...scStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '13px', color: text }}>{s.team_name}</td>
                                 <td style={scStyle()}>{s.wins}</td>
                                 <td style={scStyle()}>{s.losses}</td>
                                 <td style={scStyle()}>{s.pf.toFixed(2)}</td>
                                 <td style={scStyle()}>{s.pa.toFixed(2)}</td>
-                                <td style={{
-                                  ...scStyle(),
-                                  color: s.diff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'),
-                                }}>
+                                <td style={{ ...scStyle(), color: s.diff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c') }}>
                                   {s.diff >= 0 ? '+' : ''}{s.diff}
                                 </td>
                                 <td style={{ ...scStyle(), color: s.made_playoffs ? (d ? '#6ee7b7' : '#0d6e3f') : muted }}>
@@ -209,8 +271,8 @@ export default function StandingsPage() {
                                 <td style={{ ...scStyle(), color: s.champion ? (d ? '#fcd34d' : '#92400e') : muted }}>
                                   {s.champion ? 'Champion' : '—'}
                                 </td>
-                                <td style={{ ...scStyle(), color: s.mol_bowl_win ? (d ? '#f87171' : '#9b1c1c') : muted }}>
-                                  {s.mol_bowl_win ? 'Winner' : '—'}
+                                <td style={{ ...scStyle(), color: s.mol_bowl_loss ? (d ? '#f87171' : '#9b1c1c') : muted }}>
+                                  {s.mol_bowl_loss ? 'Loser' : '—'}
                                 </td>
                                 <td style={scStyle()}></td>
                               </tr>
