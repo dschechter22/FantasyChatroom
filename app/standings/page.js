@@ -12,19 +12,21 @@ export default function StandingsPage() {
   const [managers, setManagers] = useState([])
   const [teams, setTeams] = useState([])
   const [seasons, setSeasons] = useState([])
+  const [matchups, setMatchups] = useState([])
   const [expanded, setExpanded] = useState({})
   const [sortKey, setSortKey] = useState('championships')
   const [sortDir, setSortDir] = useState('desc')
   const [era, setEra] = useState('all')
+  const [includePlayoffs, setIncludePlayoffs] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('fc-theme') || 'dark'
     setTheme(saved)
     document.body.setAttribute('data-theme', saved)
-
     supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
     supabase.from('teams').select('*, season:season_id(year)').then(({ data }) => setTeams(data || []))
     supabase.from('seasons').select('*, champion:champion_id(id), mol_bowl_winner:mol_bowl_winner_id(id), mol_bowl_loser:mol_bowl_loser_id(id)').then(({ data }) => setSeasons(data || []))
+    supabase.from('matchups').select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)').eq('is_playoff', true).then(({ data }) => setMatchups(data || []))
   }, [])
 
   const toggleTheme = () => {
@@ -56,7 +58,6 @@ export default function StandingsPage() {
   }
 
   const filteredTeams = teams.filter(t => {
-  const [includePloffs, setIncludePloffs] = useState(true)
     const range = eraYears[era]
     if (!range) return true
     return t.season.year >= range[0] && t.season.year <= range[1]
@@ -68,37 +69,88 @@ export default function StandingsPage() {
     return s.year >= range[0] && s.year <= range[1]
   })
 
+  const filteredMatchups = matchups.filter(m => {
+    const range = eraYears[era]
+    if (!range) return true
+    return m.season?.year >= range[0] && m.season?.year <= range[1]
+  })
+
+  const getPlayoffStats = (managerId, seasonYear) => {
+    const games = filteredMatchups.filter(m =>
+      m.season?.year === seasonYear &&
+      (m.home_team?.manager_id === managerId || m.away_team?.manager_id === managerId)
+    )
+    let pf = 0, pa = 0, wins = 0, losses = 0
+    games.forEach(m => {
+      const iAmHome = m.home_team?.manager_id === managerId
+      const myScore = iAmHome ? m.home_score : m.away_score
+      const theirScore = iAmHome ? m.away_score : m.home_score
+      pf += myScore
+      pa += theirScore
+      if (myScore > theirScore) wins++
+      else if (myScore < theirScore) losses++
+    })
+    return { pf, pa, wins, losses, games: games.length }
+  }
+
   const buildManagerStats = () => {
     return managers.map(m => {
       const mTeams = filteredTeams.filter(t => t.manager_id === m.id)
       if (mTeams.length === 0) return null
 
-      const wins = mTeams.reduce((s, t) => s + t.wins, 0)
-      const losses = mTeams.reduce((s, t) => s + t.losses, 0)
-      const pf = mTeams.reduce((s, t) => s + t.points_for, 0)
-      const pa = mTeams.reduce((s, t) => s + t.points_against, 0)
+      const regWins = mTeams.reduce((s, t) => s + t.wins, 0)
+      const regLosses = mTeams.reduce((s, t) => s + t.losses, 0)
+      const regPf = mTeams.reduce((s, t) => s + t.points_for, 0)
+      const regPa = mTeams.reduce((s, t) => s + t.points_against, 0)
+
+      let playoffWins = 0, playoffLosses = 0, playoffPf = 0, playoffPa = 0
+      if (includePlayoffs) {
+        mTeams.forEach(t => {
+          const ps = getPlayoffStats(m.id, t.season.year)
+          playoffWins += ps.wins
+          playoffLosses += ps.losses
+          playoffPf += ps.pf
+          playoffPa += ps.pa
+        })
+      }
+
+      const wins = regWins + playoffWins
+      const losses = regLosses + playoffLosses
+      const pf = regPf + playoffPf
+      const pa = regPa + playoffPa
       const championships = filteredSeasons.filter(s => s.champion?.id === m.id).length
       const playoffAppearances = mTeams.filter(t => t.made_playoffs).length
       const molBowlLosses = filteredSeasons.filter(s => s.mol_bowl_loser?.id === m.id).length
       const winPct = wins + losses > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0'
       const diff = parseFloat((pf - pa).toFixed(2))
-      const ppgDiff = mTeams.length > 0 ? parseFloat((mTeams.reduce((s, t) => s + (t.ppg_diff || 0), 0) / mTeams.length).toFixed(2)) : 0
+      const totalGames = wins + losses
+      const ppgDiff = totalGames > 0 ? parseFloat(((pf - pa) / totalGames).toFixed(2)) : 0
 
       const seasonBreakdown = mTeams
         .sort((a, b) => b.season.year - a.season.year)
-        .map(t => ({
-          year: t.season.year,
-          team_name: t.team_name,
-          wins: t.wins,
-          losses: t.losses,
-          pf: t.points_for,
-          pa: t.points_against,
-          diff: parseFloat((t.points_for - t.points_against).toFixed(2)),
-          ppg_diff: t.ppg_diff || 0,
-          made_playoffs: t.made_playoffs,
-          champion: filteredSeasons.find(s => s.year === t.season.year)?.champion?.id === m.id,
-          mol_bowl_loss: filteredSeasons.find(s => s.year === t.season.year)?.mol_bowl_loser?.id === m.id,
-        }))
+        .map(t => {
+          const ps = includePlayoffs ? getPlayoffStats(m.id, t.season.year) : { pf: 0, pa: 0, wins: 0, losses: 0 }
+          const tWins = t.wins + ps.wins
+          const tLosses = t.losses + ps.losses
+          const tPf = parseFloat((t.points_for + ps.pf).toFixed(2))
+          const tPa = parseFloat((t.points_against + ps.pa).toFixed(2))
+          const tDiff = parseFloat((tPf - tPa).toFixed(2))
+          const tGames = tWins + tLosses
+          const tPpgDiff = tGames > 0 ? parseFloat(((tPf - tPa) / tGames).toFixed(2)) : 0
+          return {
+            year: t.season.year,
+            team_name: t.team_name,
+            wins: tWins,
+            losses: tLosses,
+            pf: tPf,
+            pa: tPa,
+            diff: tDiff,
+            ppg_diff: tPpgDiff,
+            made_playoffs: t.made_playoffs,
+            champion: filteredSeasons.find(s => s.year === t.season.year)?.champion?.id === m.id,
+            mol_bowl_loss: filteredSeasons.find(s => s.year === t.season.year)?.mol_bowl_loser?.id === m.id,
+          }
+        })
 
       return { ...m, wins, losses, pf, pa, diff, ppgDiff, championships, playoffAppearances, molBowlLosses, winPct, seasonBreakdown, games: wins + losses }
     })
@@ -142,21 +194,15 @@ export default function StandingsPage() {
     borderBottom: `1px solid ${border}`, color: muted, whiteSpace: 'nowrap',
   })
 
-  const filterBtn = (val, label) => (
-    <button
-      onClick={() => setEra(val)}
-      style={{
-        background: era === val ? text : 'none',
-        border: `1px solid ${border}`,
-        color: era === val ? bg : muted,
-        padding: '7px 18px', cursor: 'pointer',
-        fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase',
-        fontFamily: "'Inter', sans-serif", fontWeight: '500',
-        transition: 'all 0.15s',
-      }}
-    >
-      {label}
-    </button>
+  const filterBtn = (active, label, onClick) => (
+    <button onClick={onClick} style={{
+      background: active ? text : 'none',
+      border: `1px solid ${border}`,
+      color: active ? bg : muted,
+      padding: '7px 18px', cursor: 'pointer',
+      fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase',
+      fontFamily: "'Inter', sans-serif", fontWeight: '500', transition: 'all 0.15s',
+    }}>{label}</button>
   )
 
   return (
@@ -183,10 +229,15 @@ export default function StandingsPage() {
           Career records across all seasons &nbsp;&middot;&nbsp; Click a row to expand &nbsp;&middot;&nbsp; Click a column to sort
         </p>
 
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          {filterBtn(era === 'all', 'All Years', () => setEra('all'))}
+          {filterBtn(era === 'pre', 'Pre-Danflation (2017-2023)', () => setEra('pre'))}
+          {filterBtn(era === 'post', 'Danflation Era (2024-2025)', () => setEra('post'))}
+        </div>
+
         <div style={{ display: 'flex', gap: '8px', marginBottom: '40px', flexWrap: 'wrap' }}>
-          {filterBtn('all', 'All Years')}
-          {filterBtn('pre', 'Pre-Danflation (2017-2023)')}
-          {filterBtn('post', 'Danflation Era (2024-2025)')}
+          {filterBtn(!includePlayoffs, 'Regular Season Only', () => setIncludePlayoffs(false))}
+          {filterBtn(includePlayoffs, 'Include Playoffs', () => setIncludePlayoffs(true))}
         </div>
 
         <div style={{ overflowX: 'auto' }}>
@@ -210,11 +261,7 @@ export default function StandingsPage() {
             <tbody>
               {managerStats.map((m, i) => (
                 <>
-                  <tr
-                    key={m.slug}
-                    onClick={() => toggleExpand(m.slug)}
-                    style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}
-                  >
+                  <tr key={m.slug} onClick={() => toggleExpand(m.slug)} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}>
                     <td style={{ ...cStyle('left', true), fontFamily: "'Playfair Display', serif", fontSize: '16px' }}>
                       {m.name}
                       {!m.active && <span style={{ fontSize: '10px', color: muted, marginLeft: '8px', letterSpacing: '0.1em' }}>retired</span>}
