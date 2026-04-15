@@ -56,6 +56,7 @@ export default function StandingsPage() {
   }
 
   const filteredTeams = teams.filter(t => {
+  const [includePloffs, setIncludePloffs] = useState(true)
     const range = eraYears[era]
     if (!range) return true
     return t.season.year >= range[0] && t.season.year <= range[1]
