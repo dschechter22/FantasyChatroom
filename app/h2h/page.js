@@ -38,8 +38,9 @@ export default function H2HPage() {
   const cardBg = d ? '#0a0a0a' : '#ede9e2'
   const rowAlt = d ? '#080808' : '#e8e4dc'
 
-  const activeManagers = managers.filter(m => m.active)
-
+const [showRetired, setShowRetired] = useState(false)
+const displayManagers = showRetired ? managers : managers.filter(m => m.active)
+  
   const filteredMatchups = matchups.filter(m => includePlayoffs ? true : !m.is_playoff)
 
   const getH2H = (managerA, managerB) => {
