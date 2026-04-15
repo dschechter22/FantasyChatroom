@@ -184,6 +184,7 @@ export default function Home() {
     { label: 'Weekly Writeups', desc: 'Manager-submitted recaps, hot takes, and postgame analysis every week.', href: '/writeups' },
     { label: 'Power Rankings', desc: 'Weekly rankings built from a custom formula. No gut feelings, just math.', href: '/power-rankings' },
     { label: 'LJ Index', desc: 'A proprietary metric tracking something deeper than wins and losses.', href: '/lj-index' },
+    { label: 'All-Time Teams', desc: 'Every team in league history ranked by point differential.', href: '/all-time-teams' },
   ]
 
   return (
