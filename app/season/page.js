@@ -1,6 +1,3 @@
-Here's `app/season/page.js`:
-
-```js
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
@@ -312,6 +309,3 @@ export default function SeasonPage() {
     </div>
   )
 }
-```
-
-Commit and let me know how it looks.
