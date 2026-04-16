@@ -39,9 +39,17 @@ export function LayoutProvider({ children }) {
 
   // effectiveMobile: use override if set, else use actual screen size
   // Before mount, fall back to CSS media query (isMobile stays false until mounted)
-  const effectiveMobile = mounted
-    ? (mobileOverride ? mobileOverride === 'mobile' : isMobile)
-    : false
+  // Use CSS media query result synchronously before JS mounts
+const [cssIsMobile, setCssIsMobile] = useState(false)
+
+useEffect(() => {
+  // Read CSS media query result immediately on first render
+  setCssIsMobile(window.matchMedia('(max-width: 768px)').matches)
+}, [])
+
+const effectiveMobile = mounted
+  ? (mobileOverride ? mobileOverride === 'mobile' : isMobile)
+  : cssIsMobile
 
   const d = theme === 'dark'
 
