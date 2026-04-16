@@ -118,15 +118,23 @@ export default function LJIndexPage() {
 
   const xVals = plotData.map(r => r.x)
   const yVals = plotData.map(r => r.y)
-  const xMax = Math.max(50, ...xVals.map(Math.abs)) * 1.2
-  const yMax = Math.max(50, ...yVals.map(Math.abs)) * 1.2
+  // Use actual data range + padding so bubbles spread out naturally
+  const xPad = Math.max(5, (Math.max(...xVals.map(Math.abs))) * 0.35)
+  const yPad = Math.max(5, (Math.max(...yVals.map(Math.abs))) * 0.35)
+  const xMax = Math.max(...xVals.map(Math.abs)) + xPad
+  const yMax = Math.max(...yVals.map(Math.abs)) + yPad
 
   const toSvgX = (x) => PAD.left + ((x + xMax) / (2 * xMax)) * chartW
   const toSvgY = (y) => PAD.top + ((yMax - y) / (2 * yMax)) * chartH
 
-  const minBubble = effectiveMobile ? 10 : 14
-  const maxBubble = effectiveMobile ? 22 : 32
-  const gridLines = [-50, -25, 0, 25, 50]
+  const minBubble = effectiveMobile ? 7 : 10
+  const maxBubble = effectiveMobile ? 16 : 22
+  // Dynamic grid lines based on actual range
+  const gridStep = xMax <= 15 ? 5 : xMax <= 30 ? 10 : 25
+  const gridLines = []
+  for (let v = -Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v <= Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v += gridStep) {
+    gridLines.push(v)
+  }
   const axisColor = d ? 'rgba(255,255,255,0.2)' : 'rgba(13,33,82,0.25)'
   const gridColor = d ? 'rgba(255,255,255,0.06)' : 'rgba(13,33,82,0.08)'
 
