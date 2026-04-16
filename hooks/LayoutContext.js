@@ -4,21 +4,24 @@ import { createContext, useContext, useState, useEffect } from 'react'
 const LayoutContext = createContext(null)
 
 export function LayoutProvider({ children }) {
-  const [theme, setThemeState] = useState('light')
-  const [isMobile, setIsMobile] = useState(false)
-  const [mobileOverride, setMobileOverride] = useState(null)
-  const [mounted, setMounted] = useState(false)
+  const [theme, setThemeState] = useState(() => {
+    if (typeof window === 'undefined') return 'light'
+    return localStorage.getItem('fc-theme') || 'light'
+  })
+
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.innerWidth <= 768
+  })
+
+  const [mobileOverride, setMobileOverride] = useState(() => {
+    if (typeof window === 'undefined') return null
+    return localStorage.getItem('fc-layout') || null
+  })
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('fc-theme') || 'light'
-    const savedOverride = localStorage.getItem('fc-layout') || null
-    setThemeState(savedTheme)
-    setMobileOverride(savedOverride)
-
     const checkSize = () => setIsMobile(window.innerWidth <= 768)
-    checkSize()
     window.addEventListener('resize', checkSize)
-    setMounted(true)
     return () => window.removeEventListener('resize', checkSize)
   }, [])
 
@@ -30,26 +33,12 @@ export function LayoutProvider({ children }) {
   const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light')
 
   const toggleLayout = () => {
-    // effectiveMobile based on current state
-    const em = mobileOverride ? mobileOverride === 'mobile' : isMobile
-    const next = em ? 'desktop' : 'mobile'
+    const next = effectiveMobile ? 'desktop' : 'mobile'
     setMobileOverride(next)
     localStorage.setItem('fc-layout', next)
   }
 
-  // effectiveMobile: use override if set, else use actual screen size
-  // Before mount, fall back to CSS media query (isMobile stays false until mounted)
-  // Use CSS media query result synchronously before JS mounts
-const [cssIsMobile, setCssIsMobile] = useState(false)
-
-useEffect(() => {
-  // Read CSS media query result immediately on first render
-  setCssIsMobile(window.matchMedia('(max-width: 768px)').matches)
-}, [])
-
-const effectiveMobile = mounted
-  ? (mobileOverride ? mobileOverride === 'mobile' : isMobile)
-  : cssIsMobile
+  const effectiveMobile = mobileOverride ? mobileOverride === 'mobile' : isMobile
 
   const d = theme === 'dark'
 
@@ -61,41 +50,25 @@ const effectiveMobile = mounted
     cardBg:    d ? '#0a0a0a'                : '#ede9e2',
     rowAlt:    d ? '#080808'                : '#e8e4dc',
     statsBg:   d ? '#050505'                : '#e4e0d8',
-    highlight: d ? '#0d0d1a'               : '#e8edf5',
+    highlight: d ? '#0d0d1a'                : '#e8edf5',
     green:     d ? '#6ee7b7'                : '#0d6e3f',
     red:       d ? '#f87171'                : '#9b1c1c',
     gold:      d ? '#fcd34d'                : '#92400e',
     blue:      d ? '#93c5fd'                : '#1e3a8a',
   }
 
-  // Inject global CSS for mobile-first responsive layout
-  // Pages use .fc-desktop and .fc-mobile classes to show/hide content
   const globalCSS = `
-    body { background: ${tokens.bg}; color: ${tokens.text}; transition: background 0.2s, color 0.2s; font-family: 'Inter', sans-serif; }
-
-    /* Default: CSS media query drives layout */
-    .fc-mobile-only { display: none; }
-    .fc-desktop-only { display: block; }
-
-    @media (max-width: 768px) {
-      .fc-mobile-only { display: block; }
-      .fc-desktop-only { display: none; }
+    body {
+      background: ${tokens.bg};
+      color: ${tokens.text};
+      transition: background 0.2s, color 0.2s;
+      font-family: 'Inter', sans-serif;
     }
-
-    /* JS override takes precedence once mounted */
-    ${mounted && effectiveMobile ? `
-      .fc-mobile-only { display: block !important; }
-      .fc-desktop-only { display: none !important; }
-    ` : ''}
-    ${mounted && !effectiveMobile ? `
-      .fc-mobile-only { display: none !important; }
-      .fc-desktop-only { display: block !important; }
-    ` : ''}
   `
 
   return (
     <LayoutContext.Provider value={{
-      theme, d, effectiveMobile, isMobile, mobileOverride, mounted,
+      theme, d, effectiveMobile, isMobile, mobileOverride,
       toggleTheme, toggleLayout,
       ...tokens,
     }}>
