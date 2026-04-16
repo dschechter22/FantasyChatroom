@@ -10,15 +10,12 @@ export function LayoutProvider({ children }) {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    // Read persisted values
     const savedTheme = localStorage.getItem('fc-theme') || 'light'
     const savedOverride = localStorage.getItem('fc-layout') || null
-
     setThemeState(savedTheme)
     setMobileOverride(savedOverride)
 
-    // Detect screen size
-    const checkSize = () => setIsMobile(window.innerWidth < 768)
+    const checkSize = () => setIsMobile(window.innerWidth <= 768)
     checkSize()
     window.addEventListener('resize', checkSize)
     setMounted(true)
@@ -28,24 +25,20 @@ export function LayoutProvider({ children }) {
   const setTheme = (next) => {
     setThemeState(next)
     localStorage.setItem('fc-theme', next)
-    document.documentElement.setAttribute('data-theme', next)
   }
 
   const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light')
 
   const toggleLayout = () => {
-    const effectiveMobile = mobileOverride ? mobileOverride === 'mobile' : isMobile
-    const next = effectiveMobile ? 'desktop' : 'mobile'
+    // effectiveMobile based on current state
+    const em = mobileOverride ? mobileOverride === 'mobile' : isMobile
+    const next = em ? 'desktop' : 'mobile'
     setMobileOverride(next)
     localStorage.setItem('fc-layout', next)
   }
 
-  const resetLayoutOverride = () => {
-    setMobileOverride(null)
-    localStorage.removeItem('fc-layout')
-  }
-
-  // Before mount, use light/desktop defaults to avoid flash
+  // effectiveMobile: use override if set, else use actual screen size
+  // Before mount, fall back to CSS media query (isMobile stays false until mounted)
   const effectiveMobile = mounted
     ? (mobileOverride ? mobileOverride === 'mobile' : isMobile)
     : false
@@ -60,19 +53,45 @@ export function LayoutProvider({ children }) {
     cardBg:    d ? '#0a0a0a'                : '#ede9e2',
     rowAlt:    d ? '#080808'                : '#e8e4dc',
     statsBg:   d ? '#050505'                : '#e4e0d8',
-    highlight: d ? '#0d0d1a'                : '#e8edf5',
+    highlight: d ? '#0d0d1a'               : '#e8edf5',
     green:     d ? '#6ee7b7'                : '#0d6e3f',
     red:       d ? '#f87171'                : '#9b1c1c',
     gold:      d ? '#fcd34d'                : '#92400e',
     blue:      d ? '#93c5fd'                : '#1e3a8a',
   }
 
+  // Inject global CSS for mobile-first responsive layout
+  // Pages use .fc-desktop and .fc-mobile classes to show/hide content
+  const globalCSS = `
+    body { background: ${tokens.bg}; color: ${tokens.text}; transition: background 0.2s, color 0.2s; font-family: 'Inter', sans-serif; }
+
+    /* Default: CSS media query drives layout */
+    .fc-mobile-only { display: none; }
+    .fc-desktop-only { display: block; }
+
+    @media (max-width: 768px) {
+      .fc-mobile-only { display: block; }
+      .fc-desktop-only { display: none; }
+    }
+
+    /* JS override takes precedence once mounted */
+    ${mounted && effectiveMobile ? `
+      .fc-mobile-only { display: block !important; }
+      .fc-desktop-only { display: none !important; }
+    ` : ''}
+    ${mounted && !effectiveMobile ? `
+      .fc-mobile-only { display: none !important; }
+      .fc-desktop-only { display: block !important; }
+    ` : ''}
+  `
+
   return (
     <LayoutContext.Provider value={{
-      theme, d, effectiveMobile, isMobile, mobileOverride,
-      toggleTheme, toggleLayout, resetLayoutOverride, mounted,
+      theme, d, effectiveMobile, isMobile, mobileOverride, mounted,
+      toggleTheme, toggleLayout,
       ...tokens,
     }}>
+      <style dangerouslySetInnerHTML={{ __html: globalCSS }} />
       {children}
     </LayoutContext.Provider>
   )
