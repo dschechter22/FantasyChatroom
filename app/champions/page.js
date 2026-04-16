@@ -1,6 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import Nav from '../../components/Nav'
+import { useLayout } from '../../hooks/useLayout'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,121 +10,146 @@ const supabase = createClient(
 )
 
 export default function ChampionsPage() {
-  const [theme, setTheme] = useState('dark')
+  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, gold, red } = useLayout()
+
   const [seasons, setSeasons] = useState([])
+  const [managers, setManagers] = useState([])
+  const [searchText, setSearchText] = useState('')
 
   useEffect(() => {
-    const saved = localStorage.getItem('fc-theme') || 'dark'
-    setTheme(saved)
-    document.body.setAttribute('data-theme', saved)
-
-    supabase
-      .from('seasons')
-      .select(`
-        year, season_number,
-        champion:champion_id(name, slug),
-        mol_bowl_winner:mol_bowl_winner_id(name, slug),
-        mol_bowl_loser:mol_bowl_loser_id(name, slug)
-      `)
+    supabase.from('seasons')
+      .select('*, champion:champion_id(id, name, slug), mol_bowl_winner:mol_bowl_winner_id(id, name), mol_bowl_loser:mol_bowl_loser_id(id, name)')
       .order('year', { ascending: false })
       .then(({ data }) => setSeasons(data || []))
+    supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
   }, [])
 
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    localStorage.setItem('fc-theme', next)
-    document.body.setAttribute('data-theme', next)
-  }
+  const filteredSeasons = seasons.filter(s =>
+    !searchText ||
+    s.champion?.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+    s.mol_bowl_loser?.name?.toLowerCase().includes(searchText.toLowerCase())
+  )
 
-  const d = theme === 'dark'
-  const bg = d ? '#000' : '#f4f1ec'
-  const text = d ? '#fff' : '#0d2152'
-  const muted = d ? 'rgba(255,255,255,0.38)' : 'rgba(13,33,82,0.85)'
-  const border = d ? 'rgba(255,255,255,0.1)' : 'rgba(13,33,82,0.14)'
-  const cardBg = d ? '#0a0a0a' : '#ede9e2'
-  const statsBg = d ? '#080808' : '#e8e4dc'
+  // Championship counts per manager
+  const champCounts = managers.map(m => ({
+    ...m,
+    count: seasons.filter(s => s.champion?.id === m.id).length,
+    molBowls: seasons.filter(s => s.mol_bowl_loser?.id === m.id).length,
+  })).filter(m => m.count > 0).sort((a, b) => b.count - a.count)
 
-  const championCounts = {}
-  seasons.forEach(s => {
-    if (s.champion) {
-      championCounts[s.champion.name] = (championCounts[s.champion.name] || 0) + 1
-    }
+  const hStyle = (align = 'left') => ({
+    padding: effectiveMobile ? '8px 10px' : '10px 14px',
+    fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase',
+    color: muted, textAlign: align, borderBottom: `1px solid ${border}`,
+    fontWeight: '500', whiteSpace: 'nowrap',
   })
 
+  const cStyle = (align = 'left') => ({
+    padding: effectiveMobile ? '12px 10px' : '16px 14px',
+    fontSize: effectiveMobile ? '12px' : '13px', textAlign: align,
+    borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap',
+  })
+
+  const inputStyle = {
+    background: cardBg, border: `1px solid ${border}`, color: text,
+    padding: '7px 12px', fontSize: '12px', fontFamily: "'Inter', sans-serif",
+    outline: 'none', width: effectiveMobile ? '100%' : '220px',
+  }
+
   return (
-    <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif", transition: 'background 0.2s, color 0.2s' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500&display=swap'); * { box-sizing: border-box; margin: 0; padding: 0; }`}</style>
+    <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
+      <Nav />
+      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
 
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '20px 48px',
-        background: d ? 'rgba(0,0,0,0.88)' : 'rgba(244,241,236,0.95)',
-        borderBottom: `1px solid ${border}`,
-        backdropFilter: 'blur(10px)',
-      }}>
-        <a href="/" style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', fontWeight: '400', color: text, textDecoration: 'none' }}>Fantasy Chatroom</a>
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-          {[['Champions','/champions'],['Standings','/standings'],['H2H','/h2h'],['Season','/season'],['Rivalries','/rivalries'],['Managers','/managers'],['Writeups','/writeups'],['Power Rankings','/power-rankings'],['LJ Index','/lj-index']].map(([label, href]) => (
-            <a key={href} href={href} style={{ color: muted, textDecoration: 'none', fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: '500' }}>{label}</a>
-          ))}
-          <button onClick={toggleTheme} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 14px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>
-            {d ? 'Light' : 'Dark'}
-          </button>
-        </div>
-      </nav>
-
-      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '120px 24px 80px' }}>
-        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(40px, 6vw, 72px)', fontWeight: '400', marginBottom: '8px', letterSpacing: '-0.02em' }}>
+        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', marginBottom: '8px', letterSpacing: '-0.02em' }}>
           Hall of Champions
         </h1>
-        <p style={{ color: muted, fontSize: '13px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '64px' }}>
-          {seasons.length} seasons &nbsp;&middot;&nbsp; Est. 2015
+        <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '40px' }}>
+          {seasons.length} seasons · {seasons.filter(s => s.champion).length} crowned
         </p>
 
-        <div style={{ marginBottom: '80px' }}>
-          <p style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '24px' }}>Championship Count</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-            {Object.entries(championCounts)
-              .sort((a, b) => b[1] - a[1])
-              .map(([name, count]) => (
-                <div key={name} style={{ padding: '12px 20px', border: `1px solid ${border}`, background: cardBg, display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '28px', fontWeight: '400', color: text }}>{count}</span>
-                  <span style={{ fontSize: '13px', color: muted }}>{name}</span>
-                </div>
-              ))}
-          </div>
-        </div>
-
-        <div style={{ borderTop: `1px solid ${border}` }}>
-          {seasons.map((season, i) => (
-            <div key={season.year} style={{
-              display: 'grid', gridTemplateColumns: '80px 1fr 1fr',
-              padding: '28px 0',
-              borderBottom: `1px solid ${border}`,
-              alignItems: 'center',
-              gap: '24px'
-            }}>
-              <div>
-                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '32px', fontWeight: '400', color: i === 0 ? text : muted }}>{season.year}</div>
-                <div style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginTop: '2px' }}>Year {season.season_number}</div>
+        {/* Championship counts */}
+        <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1px', background: border, marginBottom: '60px' }}>
+          {champCounts.map(m => (
+            <div key={m.id} style={{ background: cardBg, padding: effectiveMobile ? '16px' : '24px 20px' }}>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '16px' : '20px', color: text, marginBottom: '6px' }}>{m.name}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                <span style={{ fontSize: effectiveMobile ? '28px' : '36px', fontFamily: "'Playfair Display', serif", color: gold, lineHeight: 1 }}>{m.count}</span>
+                <span style={{ fontSize: '11px', color: muted }}>title{m.count !== 1 ? 's' : ''}</span>
               </div>
-              <div>
-                <div style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Champion</div>
-                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '22px', fontWeight: '400', color: text }}>
-                  {season.champion?.name || '—'}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Mol Bowl</div>
-                <div style={{ fontSize: '14px', color: muted }}>
-                  {season.mol_bowl_winner ? `${season.mol_bowl_winner.name} def. ${season.mol_bowl_loser?.name}` : '—'}
-                </div>
-              </div>
+              {m.molBowls > 0 && (
+                <div style={{ fontSize: '11px', color: red, marginTop: '4px' }}>{m.molBowls} Mol Bowl{m.molBowls !== 1 ? 's' : ''}</div>
+              )}
             </div>
           ))}
         </div>
+
+        {/* Filter */}
+        <div style={{ marginBottom: '24px' }}>
+          <input
+            placeholder="Search manager..."
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        {/* Year by year table */}
+        {effectiveMobile ? (
+          <div>
+            {filteredSeasons.map((s, i) => (
+              <div key={s.year} style={{ background: i % 2 === 0 ? 'transparent' : cardBg, padding: '14px 4px', borderBottom: `1px solid ${border}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <span style={{ fontSize: '11px', color: muted, letterSpacing: '0.1em', marginRight: '8px' }}>Year {s.season_number}</span>
+                    <span style={{ fontSize: '13px', color: muted }}>{s.year}</span>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: s.champion ? text : muted }}>
+                      {s.champion?.name || '—'}
+                      {s.champion && <span style={{ marginLeft: '6px' }}>🏆</span>}
+                    </div>
+                    {s.mol_bowl_loser && (
+                      <div style={{ fontSize: '11px', color: red, marginTop: '2px' }}>
+                        Mol Bowl: {s.mol_bowl_loser.name}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+              <thead>
+                <tr style={{ background: cardBg }}>
+                  <th style={hStyle('center')}>Year</th>
+                  <th style={hStyle('center')}>Season</th>
+                  <th style={hStyle()}>Champion</th>
+                  <th style={hStyle()}>Mol Bowl</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSeasons.map((s, i) => (
+                  <tr key={s.year} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                    <td style={{ ...cStyle('center'), color: muted }}>{s.year}</td>
+                    <td style={{ ...cStyle('center'), color: muted }}>Year {s.season_number}</td>
+                    <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '16px' }}>
+                      {s.champion?.name
+                        ? <><span style={{ color: gold, marginRight: '8px' }}>🏆</span>{s.champion.name}</>
+                        : <span style={{ color: muted }}>—</span>
+                      }
+                    </td>
+                    <td style={{ ...cStyle(), color: s.mol_bowl_loser ? red : muted, fontSize: '13px' }}>
+                      {s.mol_bowl_loser?.name || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
