@@ -1,119 +1,91 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import Nav from '../../components/Nav'
+import { useLayout } from '../../hooks/useLayout'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
+const RESULT_OPTIONS = ['All', 'Champion', 'Runner Up', 'Third Place', 'Mol Bowl Loser', 'Made Playoffs', 'Missed Playoffs']
+
 export default function AllTimeTeamsPage() {
-  const [theme, setTheme] = useState('dark')
+  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold, blue } = useLayout()
+
   const [teams, setTeams] = useState([])
-  const [matchups, setMatchups] = useState([])
-  const [sortKey, setSortKey] = useState('diff')
+  const [sortKey, setSortKey] = useState('points_for')
   const [sortDir, setSortDir] = useState('desc')
   const [includePlayoffs, setIncludePlayoffs] = useState(false)
+  const [searchText, setSearchText] = useState('')
+  const [filterYear, setFilterYear] = useState('all')
+  const [filterManager, setFilterManager] = useState('all')
+  const [filterResult, setFilterResult] = useState('All')
 
   useEffect(() => {
-    const saved = localStorage.getItem('fc-theme') || 'dark'
-    setTheme(saved)
-    document.body.setAttribute('data-theme', saved)
-
-    supabase
-      .from('teams')
-      .select('*, season:season_id(year), manager:manager_id(name, slug)')
+    supabase.from('teams')
+      .select('*, manager:manager_id(name, slug), season:season_id(year)')
       .then(({ data }) => setTeams(data || []))
-
-    supabase
-      .from('matchups')
-      .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id)')
-      .eq('is_playoff', true)
-      .then(({ data }) => setMatchups(data || []))
   }, [])
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    localStorage.setItem('fc-theme', next)
-    document.body.setAttribute('data-theme', next)
-  }
 
   const handleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
     else { setSortKey(key); setSortDir('desc') }
   }
 
-  const d = theme === 'dark'
-  const bg = d ? '#000' : '#f4f1ec'
-  const text = d ? '#fff' : '#0d2152'
-  const muted = d ? 'rgba(255,255,255,0.38)' : 'rgba(13,33,82,0.75)'
-  const border = d ? 'rgba(255,255,255,0.1)' : 'rgba(13,33,82,0.14)'
-  const cardBg = d ? '#0a0a0a' : '#ede9e2'
-  const rowAlt = d ? '#080808' : '#e8e4dc'
+  const allYears = [...new Set(teams.map(t => t.season?.year))].filter(Boolean).sort((a, b) => b - a)
+  const allManagers = [...new Map(teams.map(t => [t.manager?.slug, t.manager?.name])).entries()]
+    .filter(([slug]) => slug)
+    .sort((a, b) => a[1].localeCompare(b[1]))
 
   const resultColor = (result) => {
     if (!result) return muted
-    if (result === 'Champion') return d ? '#fcd34d' : '#92400e'
-    if (result === 'Runner Up') return d ? '#d1d5db' : '#374151'
-    if (result === 'Third Place') return d ? '#c084fc' : '#6b21a8'
-    if (result === 'Mol Bowl Loser') return d ? '#f87171' : '#9b1c1c'
-    if (result === 'Mol Bowl Winner') return d ? '#6ee7b7' : '#065f46'
+    if (result === 'Champion') return gold
+    if (result === 'Runner Up') return d ? 'rgba(192,192,192,0.9)' : '#555'
+    if (result === 'Third Place') return d ? '#cd7f32' : '#7c4a00'
+    if (result?.includes('Mol Bowl')) return red
     return muted
   }
 
-  const getPlayoffStats = (teamId) => {
-    const games = matchups.filter(m =>
-      m.home_team?.id === teamId || m.away_team?.id === teamId
-    )
-    if (games.length === 0) return { pf: 0, pa: 0, games: 0, diff: 0, ppg_diff: 0 }
-    let pf = 0, pa = 0
-    games.forEach(m => {
-      if (m.home_team?.id === teamId) { pf += m.home_score; pa += m.away_score }
-      else { pf += m.away_score; pa += m.home_score }
-    })
-    const diff = parseFloat((pf - pa).toFixed(2))
-    const ppg_diff = parseFloat(((pf - pa) / games.length).toFixed(2))
-    return { pf: parseFloat(pf.toFixed(2)), pa: parseFloat(pa.toFixed(2)), games: games.length, diff, ppg_diff }
+  const matchesResultFilter = (t) => {
+    if (filterResult === 'All') return true
+    if (filterResult === 'Champion') return t.playoff_result === 'Champion'
+    if (filterResult === 'Runner Up') return t.playoff_result === 'Runner Up'
+    if (filterResult === 'Third Place') return t.playoff_result === 'Third Place'
+    if (filterResult === 'Mol Bowl Loser') return t.playoff_result?.includes('Mol Bowl')
+    if (filterResult === 'Made Playoffs') return t.made_playoffs
+    if (filterResult === 'Missed Playoffs') return !t.made_playoffs
+    return true
   }
 
-  const rankedTeams = [...teams]
-    .map(t => {
-      const regDiff = parseFloat((t.points_for - t.points_against).toFixed(2))
-      const regPpgDiff = t.ppg_diff || parseFloat(((t.points_for - t.points_against) / (t.wins + t.losses || 1)).toFixed(2))
-      const playoff = getPlayoffStats(t.id)
-
-      const totalPf = includePlayoffs ? parseFloat((t.points_for + playoff.pf).toFixed(2)) : t.points_for
-      const totalPa = includePlayoffs ? parseFloat((t.points_against + playoff.pa).toFixed(2)) : t.points_against
-      const totalGames = includePlayoffs ? (t.wins + t.losses + playoff.games) : (t.wins + t.losses)
-      const totalDiff = parseFloat((totalPf - totalPa).toFixed(2))
-      const totalPpgDiff = totalGames > 0 ? parseFloat(((totalPf - totalPa) / totalGames).toFixed(2)) : 0
-
-      return {
-        ...t,
-        displayPf: totalPf,
-        displayPa: totalPa,
-        displayDiff: totalDiff,
-        displayPpgDiff: totalPpgDiff,
-        playoffGames: playoff.games,
-        playoffPf: playoff.pf,
-        playoffPa: playoff.pa,
+  const filteredTeams = teams
+    .filter(t => {
+      if (filterYear !== 'all' && t.season?.year !== parseInt(filterYear)) return false
+      if (filterManager !== 'all' && t.manager?.slug !== filterManager) return false
+      if (!matchesResultFilter(t)) return false
+      if (searchText) {
+        const q = searchText.toLowerCase()
+        if (!t.manager?.name?.toLowerCase().includes(q) && !t.team_name?.toLowerCase().includes(q)) return false
       }
+      return true
+    })
+    .map(t => {
+      const pf = t.points_for
+      const pa = t.points_against
+      const diff = parseFloat((pf - pa).toFixed(2))
+      const games = t.wins + t.losses
+      const ppgDiff = games > 0 ? parseFloat(((pf - pa) / games).toFixed(2)) : 0
+      return { ...t, diff, ppgDiff }
     })
     .sort((a, b) => {
       const mult = sortDir === 'desc' ? -1 : 1
       const val = (x) => {
-        if (sortKey === 'diff') return x.displayDiff
-        if (sortKey === 'ppg_diff') return x.displayPpgDiff
-        if (sortKey === 'points_for') return x.displayPf
-        if (sortKey === 'points_against') return x.displayPa
-        if (sortKey === 'wins') return x.wins
-        if (sortKey === 'losses') return x.losses
-        if (sortKey === 'year') return x.season?.year || 0
+        if (sortKey === 'year') return x.season?.year
         if (sortKey === 'manager') return x.manager?.name || ''
         if (sortKey === 'team_name') return x.team_name || ''
-        if (sortKey === 'playoff_result') return x.playoff_result || 'zzz'
-        return 0
+        if (sortKey === 'winPct') return x.wins / Math.max(x.wins + x.losses, 1)
+        return x[sortKey] ?? 0
       }
       const av = val(a), bv = val(b)
       if (typeof av === 'string') return mult * av.localeCompare(bv)
@@ -121,112 +93,169 @@ export default function AllTimeTeamsPage() {
     })
 
   const SortIcon = ({ col }) => {
-    if (sortKey !== col) return <span style={{ opacity: 0.3, marginLeft: '4px' }}>↕</span>
-    return <span style={{ marginLeft: '4px' }}>{sortDir === 'desc' ? '↓' : '↑'}</span>
+    if (sortKey !== col) return <span style={{ opacity: 0.3, marginLeft: '3px' }}>↕</span>
+    return <span style={{ marginLeft: '3px' }}>{sortDir === 'desc' ? '↓' : '↑'}</span>
   }
 
+  const filterBtn = (active, label, onClick) => (
+    <button onClick={onClick} style={{
+      background: active ? text : 'none', border: `1px solid ${border}`,
+      color: active ? bg : muted, padding: effectiveMobile ? '6px 10px' : '7px 16px',
+      cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase',
+      fontFamily: "'Inter', sans-serif", fontWeight: '500', transition: 'all 0.15s', whiteSpace: 'nowrap',
+    }}>{label}</button>
+  )
+
+  const inputStyle = {
+    background: cardBg, border: `1px solid ${border}`, color: text,
+    padding: '7px 12px', fontSize: '12px', fontFamily: "'Inter', sans-serif",
+    outline: 'none', width: effectiveMobile ? '100%' : '180px',
+  }
+
+  const selectStyle = { ...inputStyle, cursor: 'pointer' }
+
   const hStyle = (align = 'right') => ({
-    padding: '10px 14px', fontSize: '10px', letterSpacing: '0.18em',
+    padding: '10px 12px', fontSize: '10px', letterSpacing: '0.14em',
     textTransform: 'uppercase', color: muted, textAlign: align,
     borderBottom: `1px solid ${border}`, fontWeight: '500',
     whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none',
   })
 
   const cStyle = (align = 'right') => ({
-    padding: '16px 14px', fontSize: '13px', textAlign: align,
+    padding: '14px 12px', fontSize: '13px', textAlign: align,
     borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap',
   })
 
-  const toggleBtn = (active, label, onClick) => (
-    <button onClick={onClick} style={{
-      background: active ? text : 'none',
-      border: `1px solid ${border}`,
-      color: active ? bg : muted,
-      padding: '7px 18px', cursor: 'pointer',
-      fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase',
-      fontFamily: "'Inter', sans-serif", fontWeight: '500', transition: 'all 0.15s',
-    }}>{label}</button>
+  // Mobile card
+  const MobileTeamCard = ({ t, i }) => (
+    <div style={{ background: i % 2 === 0 ? 'transparent' : cardBg, padding: '14px', borderBottom: `1px solid ${border}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+        <div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', color: text }}>{t.manager?.name}</div>
+          <div style={{ fontSize: '11px', color: muted, marginTop: '2px' }}>{t.team_name} · {t.season?.year}</div>
+        </div>
+        <div style={{ fontSize: '12px', color: resultColor(t.playoff_result), textAlign: 'right', fontWeight: '500' }}>
+          {t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+        {[
+          ['Record', `${t.wins}-${t.losses}`],
+          ['PF', t.points_for.toFixed(0)],
+          ['PA', t.points_against.toFixed(0)],
+          ['Diff', `${t.diff >= 0 ? '+' : ''}${t.diff.toFixed(0)}`],
+        ].map(([label, val]) => (
+          <div key={label}>
+            <div style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '2px' }}>{label}</div>
+            <div style={{ fontSize: '13px', color: label === 'Diff' ? (t.diff >= 0 ? green : red) : text }}>{val}</div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 
   return (
-    <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif", transition: 'background 0.2s, color 0.2s' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500&display=swap'); * { box-sizing: border-box; margin: 0; padding: 0; }`}</style>
+    <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
+      <Nav />
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
 
-      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 48px', background: d ? 'rgba(0,0,0,0.88)' : 'rgba(244,241,236,0.95)', borderBottom: `1px solid ${border}`, backdropFilter: 'blur(10px)' }}>
-        <a href="/" style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', fontWeight: '400', color: text, textDecoration: 'none' }}>Fantasy Chatroom</a>
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-          {[['Champions','/champions'],['Standings','/standings'],['H2H','/h2h'],['Season','/season'],['Rivalries','/rivalries'],['Managers','/managers'],['Writeups','/writeups'],['Power Rankings','/power-rankings'],['LJ Index','/lj-index'],['All-Time Teams','/all-time-teams']].map(([label, href]) => (
-            <a key={href} href={href} style={{ color: muted, textDecoration: 'none', fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: '500' }}>{label}</a>
-          ))}
-          <button onClick={toggleTheme} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 14px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>
-            {d ? 'Light' : 'Dark'}
-          </button>
-        </div>
-      </nav>
-
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '120px 24px 80px' }}>
-        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(40px, 6vw, 72px)', fontWeight: '400', marginBottom: '8px', letterSpacing: '-0.02em' }}>
+        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', marginBottom: '8px', letterSpacing: '-0.02em' }}>
           All-Time Teams
         </h1>
-        <p style={{ color: muted, fontSize: '13px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '40px' }}>
-          {teams.length} team seasons &nbsp;&middot;&nbsp; Click a column to sort
+        <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '32px' }}>
+          {filteredTeams.length} team seasons · click column to sort
         </p>
 
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '40px', flexWrap: 'wrap' }}>
-          {toggleBtn(!includePlayoffs, 'Regular Season Only', () => setIncludePlayoffs(false))}
-          {toggleBtn(includePlayoffs, 'Include Playoffs', () => setIncludePlayoffs(true))}
+        {/* Filters */}
+        <div style={{ display: 'flex', flexDirection: effectiveMobile ? 'column' : 'row', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+          <input
+            placeholder="Search manager or team..."
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            style={{ ...inputStyle, width: effectiveMobile ? '100%' : '220px' }}
+          />
+          <select value={filterYear} onChange={e => setFilterYear(e.target.value)} style={selectStyle}>
+            <option value="all">All Years</option>
+            {allYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select value={filterManager} onChange={e => setFilterManager(e.target.value)} style={selectStyle}>
+            <option value="all">All Managers</option>
+            {allManagers.map(([slug, name]) => <option key={slug} value={slug}>{name}</option>)}
+          </select>
+          <select value={filterResult} onChange={e => setFilterResult(e.target.value)} style={selectStyle}>
+            {RESULT_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
-            <thead>
-              <tr style={{ background: cardBg }}>
-                <th style={hStyle('center')}>Rk</th>
-                <th style={hStyle('left')} onClick={() => handleSort('manager')}>Manager <SortIcon col="manager" /></th>
-                <th style={hStyle('left')} onClick={() => handleSort('team_name')}>Team Name <SortIcon col="team_name" /></th>
-                <th style={hStyle('center')} onClick={() => handleSort('year')}>Year <SortIcon col="year" /></th>
-                <th style={hStyle()} onClick={() => handleSort('wins')}>W <SortIcon col="wins" /></th>
-                <th style={hStyle()} onClick={() => handleSort('losses')}>L <SortIcon col="losses" /></th>
-                <th style={hStyle()} onClick={() => handleSort('points_for')}>PF <SortIcon col="points_for" /></th>
-                <th style={hStyle()} onClick={() => handleSort('points_against')}>PA <SortIcon col="points_against" /></th>
-                <th style={hStyle()} onClick={() => handleSort('diff')}>Diff <SortIcon col="diff" /></th>
-                <th style={hStyle()} onClick={() => handleSort('ppg_diff')}>PPG Diff <SortIcon col="ppg_diff" /></th>
-                <th style={hStyle('left')} onClick={() => handleSort('playoff_result')}>Result <SortIcon col="playoff_result" /></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rankedTeams.map((t, i) => (
-                <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
-                  <td style={{ ...cStyle('center'), color: muted, fontSize: '12px' }}>{i + 1}</td>
-                  <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{t.manager?.name}</td>
-                  <td style={{ ...cStyle('left'), color: muted, fontSize: '12px' }}>{t.team_name}</td>
-                  <td style={{ ...cStyle('center'), color: muted }}>{t.season?.year}</td>
-                  <td style={cStyle()}>{t.wins}</td>
-                  <td style={cStyle()}>{t.losses}</td>
-                  <td style={cStyle()}>{t.displayPf.toFixed(2)}</td>
-                  <td style={cStyle()}>{t.displayPa.toFixed(2)}</td>
-                  <td style={{
-                    ...cStyle(),
-                    color: t.displayDiff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'),
-                    fontWeight: '500'
-                  }}>
-                    {t.displayDiff >= 0 ? '+' : ''}{t.displayDiff}
-                  </td>
-                  <td style={{
-                    ...cStyle(),
-                    color: t.displayPpgDiff >= 0 ? (d ? '#6ee7b7' : '#0d6e3f') : (d ? '#fca5a5' : '#9b1c1c'),
-                    fontWeight: '500'
-                  }}>
-                    {t.displayPpgDiff >= 0 ? '+' : ''}{t.displayPpgDiff}
-                  </td>
-                  <td style={{ ...cStyle('left'), color: resultColor(t.playoff_result), fontWeight: t.playoff_result === 'Champion' ? '600' : '400', fontSize: '12px' }}>
-                    {t.playoff_result || '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '32px', flexWrap: 'wrap' }}>
+          {filterBtn(!includePlayoffs, 'Regular Season Only', () => setIncludePlayoffs(false))}
+          {filterBtn(includePlayoffs, 'Include Playoffs', () => setIncludePlayoffs(true))}
         </div>
+
+        {/* Mobile card view */}
+        {effectiveMobile ? (
+          <div style={{ borderTop: `1px solid ${border}` }}>
+            {filteredTeams.map((t, i) => <MobileTeamCard key={t.id} t={t} i={i} />)}
+            {filteredTeams.length === 0 && (
+              <p style={{ color: muted, padding: '24px 0', fontSize: '13px' }}>No teams match your filters.</p>
+            )}
+          </div>
+        ) : (
+          /* Desktop table */
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+              <thead>
+                <tr style={{ background: cardBg }}>
+                  <th style={hStyle('center')} onClick={() => handleSort('final_standing')}>Rk <SortIcon col="final_standing" /></th>
+                  <th style={hStyle('left')} onClick={() => handleSort('manager')}>Manager <SortIcon col="manager" /></th>
+                  <th style={hStyle('left')} onClick={() => handleSort('team_name')}>Team Name <SortIcon col="team_name" /></th>
+                  <th style={hStyle('center')} onClick={() => handleSort('year')}>Year <SortIcon col="year" /></th>
+                  <th style={hStyle()} onClick={() => handleSort('wins')}>W <SortIcon col="wins" /></th>
+                  <th style={hStyle()} onClick={() => handleSort('losses')}>L <SortIcon col="losses" /></th>
+                  <th style={hStyle()} onClick={() => handleSort('winPct')}>Win % <SortIcon col="winPct" /></th>
+                  <th style={hStyle()} onClick={() => handleSort('points_for')}>PF <SortIcon col="points_for" /></th>
+                  <th style={hStyle()} onClick={() => handleSort('points_against')}>PA <SortIcon col="points_against" /></th>
+                  <th style={hStyle()} onClick={() => handleSort('diff')}>Diff <SortIcon col="diff" /></th>
+                  <th style={hStyle()} onClick={() => handleSort('ppgDiff')}>PPG Diff <SortIcon col="ppgDiff" /></th>
+                  <th style={hStyle('center')} onClick={() => handleSort('playoff_result')}>Result <SortIcon col="playoff_result" /></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTeams.map((t, i) => (
+                  <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                    <td style={{ ...cStyle('center'), color: muted }}>{t.final_standing}</td>
+                    <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{t.manager?.name}</td>
+                    <td style={{ ...cStyle('left'), color: muted, fontSize: '12px' }}>{t.team_name}</td>
+                    <td style={{ ...cStyle('center'), color: muted }}>{t.season?.year}</td>
+                    <td style={cStyle()}>{t.wins}</td>
+                    <td style={cStyle()}>{t.losses}</td>
+                    <td style={cStyle()}>
+                      {((t.wins / Math.max(t.wins + t.losses, 1)) * 100).toFixed(1)}%
+                    </td>
+                    <td style={cStyle()}>{t.points_for.toFixed(2)}</td>
+                    <td style={cStyle()}>{t.points_against.toFixed(2)}</td>
+                    <td style={{ ...cStyle(), color: t.diff >= 0 ? green : red, fontWeight: '500' }}>
+                      {t.diff >= 0 ? '+' : ''}{t.diff}
+                    </td>
+                    <td style={{ ...cStyle(), color: t.ppgDiff >= 0 ? green : red, fontWeight: '500' }}>
+                      {t.ppgDiff >= 0 ? '+' : ''}{t.ppgDiff}
+                    </td>
+                    <td style={{ ...cStyle('center'), color: resultColor(t.playoff_result), fontSize: '12px', fontWeight: '500' }}>
+                      {t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}
+                    </td>
+                  </tr>
+                ))}
+                {filteredTeams.length === 0 && (
+                  <tr>
+                    <td colSpan={12} style={{ padding: '24px', color: muted, textAlign: 'center', fontSize: '13px' }}>
+                      No teams match your filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
