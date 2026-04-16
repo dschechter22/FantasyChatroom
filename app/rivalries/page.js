@@ -14,9 +14,9 @@ const INTERPERSONAL = {
   'wally':        ['reid', 'john', 'dan', 'mamby-tenner'],
   'mamby-tenner': ['john', 'wally', 'reid', 'dan'],
   'braden':       ['caden', 'reid', 'wally', 'dan'],
-  'john':         ['reid', 'mamby-tenner', 'wally'],
+  'john':         ['reid', 'mamby-tenner', 'wally', 'freed'],
   'jm':           ['braden', 'freed', 'dan'],
-  'freed':        ['dan', 'braden', 'wally'],
+  'freed':        ['dan', 'braden', 'wally', 'john', 'jm'],
   'reid':         ['wally', 'john', 'mamby-tenner', 'dan'],
   'big-e':        ['wally', 'mamby-tenner', 'caden', 'freed'],
   'dan':          ['caden', 'freed', 'braden', 'wally', 'mamby-tenner', 'reid'],
@@ -53,6 +53,8 @@ const NARRATIVES = {
   'big-e-freed':          "Big E has three rings. Freed has one. Both have been legitimate contenders for most of the league's history and the h2h between them reflects that.",
   'big-e-mamby-tenner':   "Big E has three championships. Mamby-Tenner has one. The history between them is long and the ring count makes Big E the clear winner of this rivalry so far.",
   'caden-mamby-tenner':   "Two rings for Caden, one for Mamby-Tenner. Tenner and Caden are reportedly still on speaking terms, which is more than can be said for most of Caden's relationships in the league.",
+  'freed-jm':             "Freed has a ring. JM does not. But what happened in DC suggests the scoreboard doesn't tell the whole story of who the dominant one is in this matchup.",
+  'freed-john':           "John has made claims about the nature of Freed's relationship with his dog that are still being discussed in the group chat. The Springfield trip didn't help Freed's reputation either. The fantasy record is almost secondary at this point.",
 }
 
 const getNarrative = (slugA, slugB) => {
@@ -186,25 +188,29 @@ export default function RivalriesPage() {
 
     return (
       <div style={{ background: cardBg, border: `1px solid ${border}`, padding: compact ? '16px' : effectiveMobile ? '16px' : '24px', marginBottom: '1px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-          <div>
-            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: compact ? '16px' : effectiveMobile ? '18px' : '22px', color: text, fontWeight: '400', marginBottom: '4px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: compact ? '16px' : effectiveMobile ? '18px' : '22px', color: text, fontWeight: '400', marginBottom: '6px' }}>
               {managerA.name} vs {managerB.name}
             </h3>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* Rivalry score -- big and prominent */}
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: compact ? '28px' : effectiveMobile ? '32px' : '40px', color: text, lineHeight: 1, fontWeight: '400' }}>
+                  {(score * 100).toFixed(0)}
+                </span>
+                <span style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted }}>/ 100</span>
+              </div>
               {isInterpersonal && (
                 <span style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: red, border: `1px solid ${red}`, padding: '2px 6px' }}>Named Rival</span>
               )}
-              <span style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted }}>
-                Rivalry Score: {(score * 100).toFixed(0)}
-              </span>
             </div>
           </div>
-          <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '12px' }}>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: compact ? '18px' : '24px', color: text }}>
+          <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '16px' }}>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: compact ? '22px' : effectiveMobile ? '24px' : '28px', color: text, marginBottom: '2px' }}>
               {stats.winsA}–{stats.winsB}
             </div>
-            <div style={{ fontSize: '10px', color: muted }}>
+            <div style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted }}>
               {leadingManager ? `${leadingManager.name.split(' ')[0]} leads` : 'Even'}
             </div>
           </div>
