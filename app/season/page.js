@@ -1,6 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import Nav from '../../components/Nav'
+import { useLayout } from '../../hooks/useLayout'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,7 +10,8 @@ const supabase = createClient(
 )
 
 export default function SeasonPage() {
-  const [theme, setTheme] = useState('dark')
+  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, highlight, green, red, gold, blue } = useLayout()
+
   const [seasons, setSeasons] = useState([])
   const [selectedYear, setSelectedYear] = useState(2025)
   const [matchups, setMatchups] = useState([])
@@ -17,9 +20,6 @@ export default function SeasonPage() {
   const [selectedTeam, setSelectedTeam] = useState(null)
 
   useEffect(() => {
-    const saved = localStorage.getItem('fc-theme') || 'dark'
-    setTheme(saved)
-    document.body.setAttribute('data-theme', saved)
     supabase.from('seasons').select('year, season_number').order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
     supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
   }, [])
@@ -36,61 +36,31 @@ export default function SeasonPage() {
       .then(({ data }) => setTeams((data || []).filter(t => t.season?.year === selectedYear).sort((a, b) => a.final_standing - b.final_standing)))
   }, [selectedYear])
 
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    localStorage.setItem('fc-theme', next)
-    document.body.setAttribute('data-theme', next)
-  }
-
-  const d = theme === 'dark'
-  const bg = d ? '#000' : '#f4f1ec'
-  const text = d ? '#fff' : '#0d2152'
-  const muted = d ? 'rgba(255,255,255,0.38)' : 'rgba(13,33,82,0.75)'
-  const border = d ? 'rgba(255,255,255,0.1)' : 'rgba(13,33,82,0.14)'
-  const cardBg = d ? '#0a0a0a' : '#ede9e2'
-  const rowAlt = d ? '#080808' : '#e8e4dc'
-  const highlight = d ? '#0d0d1a' : '#e8edf5'
-  const green = d ? '#6ee7b7' : '#0d6e3f'
-  const red = d ? '#f87171' : '#9b1c1c'
-  const gold = d ? '#fcd34d' : '#92400e'
-  const blue = d ? '#93c5fd' : '#1e3a8a'
-
   const getManagerName = (managerId) => managers.find(m => m.id === managerId)?.name || '—'
-  const getManagerById = (managerId) => managers.find(m => m.id === managerId)
+  const getTeamByManagerId = (managerId) => teams.find(t => t.manager?.id === managerId)
 
   const regMatchups = matchups.filter(m => !m.is_playoff)
   const playoffMatchups = matchups.filter(m => m.is_playoff)
   const weeks = [...new Set(regMatchups.map(m => m.week))].sort((a, b) => a - b)
   const playoffWeeks = [...new Set(playoffMatchups.map(m => m.week))].sort((a, b) => a - b)
 
-  const filteredReg = selectedTeam
-    ? regMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam)
-    : regMatchups
-  const filteredPlayoff = selectedTeam
-    ? playoffMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam)
-    : playoffMatchups
+  const filteredReg = selectedTeam ? regMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam) : regMatchups
+  const filteredPlayoff = selectedTeam ? playoffMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam) : playoffMatchups
 
-  // Seed playoff teams by regular season record (wins desc, then PF desc)
-const playoffTeams = teams
-  .filter(t => t.made_playoffs)
-  .sort((a, b) => {
+  const playoffTeams = teams.filter(t => t.made_playoffs).sort((a, b) => {
     if (b.wins !== a.wins) return b.wins - a.wins
     return b.points_for - a.points_for
   })
-
-const getPlayoffSeed = (teamId) => {
-  const idx = playoffTeams.findIndex(t => t.id === teamId)
-  return idx === -1 ? 99 : idx + 1
-}
-  const getTeamByManagerId = (managerId) => teams.find(t => t.manager?.id === managerId)
+  const getPlayoffSeed = (teamId) => {
+    const idx = playoffTeams.findIndex(t => t.id === teamId)
+    return idx === -1 ? 99 : idx + 1
+  }
   const is6Team = selectedYear >= 2021
 
   // ---- STATS ----
   const calcStats = () => {
     if (regMatchups.length === 0 || teams.length === 0) return null
 
-    // Build weekly scores per team
     const teamScores = {}
     teams.forEach(t => { teamScores[t.id] = [] })
     regMatchups.forEach(m => {
@@ -100,7 +70,6 @@ const getPlayoffSeed = (teamId) => {
         teamScores[m.away_team.id].push({ score: m.away_score, week: m.week, oppScore: m.home_score, oppManagerId: m.home_team?.manager_id, won: m.away_score > m.home_score })
     })
 
-    // All-play win% per team (sum over all weeks)
     const allPlaySum = {}
     teams.forEach(t => { allPlaySum[t.id] = 0 })
     weeks.forEach(week => {
@@ -114,12 +83,10 @@ const getPlayoffSeed = (teamId) => {
       if (n < 2) return
       allScores.forEach(({ teamId, score }) => {
         if (allPlaySum[teamId] === undefined) return
-        const wins = allScores.filter(o => o.teamId !== teamId && score > o.score).length
-        allPlaySum[teamId] += wins / (n - 1)
+        allPlaySum[teamId] += allScores.filter(o => o.teamId !== teamId && score > o.score).length / (n - 1)
       })
     })
 
-    // Median helper
     const median = (arr) => {
       if (!arr.length) return 0
       const s = [...arr].sort((a, b) => a - b)
@@ -127,7 +94,6 @@ const getPlayoffSeed = (teamId) => {
       return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2
     }
 
-    // Power Score: ((Win%/max*100*2) + (AvgScore/max*100*4) + (AllPlayWin%/max*100*2) + (MedianScore/max*100*2)) / 10
     const teamMetrics = teams.map(t => {
       const scores = teamScores[t.id]?.map(g => g.score) || []
       const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0
@@ -143,72 +109,36 @@ const getPlayoffSeed = (teamId) => {
     const maxAp = Math.max(...teamMetrics.map(r => r.allPlayWinPct))
 
     const composites = teamMetrics.map(r => {
-      const score = (
-        (r.winPct / (maxWin || 1) * 100 * 2) +
-        (r.avgScore / (maxAvg || 1) * 100 * 4) +
-        (r.allPlayWinPct / (maxAp || 1) * 100 * 2) +
-        (r.medianScore / (maxMed || 1) * 100 * 2)
-      ) / 10
-      return { t: r.t, score: parseFloat(score.toFixed(2)), allPlayWinPct: r.allPlayWinPct, winPct: r.winPct, avgScore: r.avgScore }
+      const score = ((r.winPct / (maxWin || 1) * 100 * 2) + (r.avgScore / (maxAvg || 1) * 100 * 4) + (r.allPlayWinPct / (maxAp || 1) * 100 * 2) + (r.medianScore / (maxMed || 1) * 100 * 2)) / 10
+      return { t: r.t, score: parseFloat(score.toFixed(2)), winPct: r.winPct, avgScore: r.avgScore }
     })
 
-    // Luck = actual wins - expected wins (sum of all-play win% per week)
-    const getLuck = (t) => {
-      const expected = allPlaySum[t.id] || 0
-      return parseFloat((t.wins - expected).toFixed(2))
-    }
+    const getLuck = (t) => parseFloat((t.wins - (allPlaySum[t.id] || 0)).toFixed(2))
 
-    // 1. Highest score (individual game, not who won)
     let highGame = null
     regMatchups.forEach(m => {
-      if (!highGame || m.home_score > highGame.score)
-        highGame = { score: m.home_score, managerId: m.home_team?.manager_id, teamName: m.home_team?.team_name, week: m.week, oppScore: m.away_score, oppManagerId: m.away_team?.manager_id, won: m.home_score > m.away_score }
-      if (m.away_score > (highGame?.score || 0))
-        highGame = { score: m.away_score, managerId: m.away_team?.manager_id, teamName: m.away_team?.team_name, week: m.week, oppScore: m.home_score, oppManagerId: m.home_team?.manager_id, won: m.away_score > m.home_score }
+      if (!highGame || m.home_score > highGame.score) highGame = { score: m.home_score, managerId: m.home_team?.manager_id, week: m.week, oppScore: m.away_score, oppManagerId: m.away_team?.manager_id, won: m.home_score > m.away_score }
+      if (m.away_score > (highGame?.score || 0)) highGame = { score: m.away_score, managerId: m.away_team?.manager_id, week: m.week, oppScore: m.home_score, oppManagerId: m.home_team?.manager_id, won: m.away_score > m.home_score }
     })
 
-    // 2. Lowest score
     let lowGame = null
     regMatchups.forEach(m => {
-      if (!lowGame || m.home_score < lowGame.score)
-        lowGame = { score: m.home_score, managerId: m.home_team?.manager_id, week: m.week, oppScore: m.away_score, oppManagerId: m.away_team?.manager_id, won: m.home_score > m.away_score }
-      if (m.away_score < (lowGame?.score ?? Infinity))
-        lowGame = { score: m.away_score, managerId: m.away_team?.manager_id, week: m.week, oppScore: m.home_score, oppManagerId: m.home_team?.manager_id, won: m.away_score > m.home_score }
+      if (!lowGame || m.home_score < lowGame.score) lowGame = { score: m.home_score, managerId: m.home_team?.manager_id, week: m.week, oppScore: m.away_score, oppManagerId: m.away_team?.manager_id, won: m.home_score > m.away_score }
+      if (m.away_score < (lowGame?.score ?? Infinity)) lowGame = { score: m.away_score, managerId: m.away_team?.manager_id, week: m.week, oppScore: m.home_score, oppManagerId: m.home_team?.manager_id, won: m.away_score > m.home_score }
     })
 
-    // 3. Biggest blowout
     let bigBlowout = null
     regMatchups.forEach(m => {
       const diff = parseFloat(Math.abs(m.home_score - m.away_score).toFixed(2))
-      if (!bigBlowout || diff > bigBlowout.diff) {
-        bigBlowout = {
-          diff,
-          winnerId: m.home_score > m.away_score ? m.home_team?.manager_id : m.away_team?.manager_id,
-          loserId: m.home_score > m.away_score ? m.away_team?.manager_id : m.home_team?.manager_id,
-          winnerScore: Math.max(m.home_score, m.away_score),
-          loserScore: Math.min(m.home_score, m.away_score),
-          week: m.week,
-        }
-      }
+      if (!bigBlowout || diff > bigBlowout.diff) bigBlowout = { diff, winnerId: m.home_score > m.away_score ? m.home_team?.manager_id : m.away_team?.manager_id, loserId: m.home_score > m.away_score ? m.away_team?.manager_id : m.home_team?.manager_id, winnerScore: Math.max(m.home_score, m.away_score), loserScore: Math.min(m.home_score, m.away_score), week: m.week }
     })
 
-    // 4. Closest game
     let closestGame = null
     regMatchups.forEach(m => {
       const diff = parseFloat(Math.abs(m.home_score - m.away_score).toFixed(2))
-      if (!closestGame || diff < closestGame.diff) {
-        closestGame = {
-          diff,
-          winnerId: m.home_score > m.away_score ? m.home_team?.manager_id : m.away_team?.manager_id,
-          loserId: m.home_score > m.away_score ? m.away_team?.manager_id : m.home_team?.manager_id,
-          winnerScore: Math.max(m.home_score, m.away_score),
-          loserScore: Math.min(m.home_score, m.away_score),
-          week: m.week,
-        }
-      }
+      if (!closestGame || diff < closestGame.diff) closestGame = { diff, winnerId: m.home_score > m.away_score ? m.home_team?.manager_id : m.away_team?.manager_id, loserId: m.home_score > m.away_score ? m.away_team?.manager_id : m.home_team?.manager_id, winnerScore: Math.max(m.home_score, m.away_score), loserScore: Math.min(m.home_score, m.away_score), week: m.week }
     })
 
-    // 5 & 6. Std deviation
     const stdDevs = teams.map(t => {
       const scores = teamScores[t.id]?.map(g => g.score) || []
       if (scores.length < 2) return { t, std: 0, mean: 0 }
@@ -219,7 +149,6 @@ const getPlayoffSeed = (teamId) => {
     const mostConsistent = [...stdDevs].sort((a, b) => a.std - b.std)[0]
     const boomOrBust = [...stdDevs].sort((a, b) => b.std - a.std)[0]
 
-    // 7 & 8. Lucky / Unlucky
     let unluckiest = null, luckiest = null
     teams.forEach(t => {
       const luck = getLuck(t)
@@ -228,28 +157,18 @@ const getPlayoffSeed = (teamId) => {
       if (!luckiest || luck > luckiest.luck) luckiest = { t, luck, actual: t.wins, expected }
     })
 
-    // 9. Best second half
     const halfPoint = Math.floor(weeks.length / 2)
-    const firstHalfWeeks = weeks.slice(0, halfPoint)
-    const secondHalfWeeks = weeks.slice(halfPoint)
     let bestSecondHalf = null
     teams.forEach(t => {
-      const getWins = (wks) => regMatchups.filter(m => wks.includes(m.week)).filter(m =>
-        (m.home_team?.id === t.id && m.home_score > m.away_score) ||
-        (m.away_team?.id === t.id && m.away_score > m.home_score)
-      ).length
-      const firstW = getWins(firstHalfWeeks)
-      const secondW = getWins(secondHalfWeeks)
-      const improvement = secondW - firstW
-      if (!bestSecondHalf || improvement > bestSecondHalf.improvement)
-        bestSecondHalf = { t, improvement, firstW, secondW }
+      const getWins = (wks) => regMatchups.filter(m => wks.includes(m.week)).filter(m => (m.home_team?.id === t.id && m.home_score > m.away_score) || (m.away_team?.id === t.id && m.away_score > m.home_score)).length
+      const firstW = getWins(weeks.slice(0, halfPoint))
+      const secondW = getWins(weeks.slice(halfPoint))
+      if (!bestSecondHalf || (secondW - firstW) > bestSecondHalf.improvement) bestSecondHalf = { t, improvement: secondW - firstW, firstW, secondW }
     })
 
-    // 10 & 11. Most dominant / worst season
     const mostDominant = [...composites].sort((a, b) => b.score - a.score)[0]
     const worstSeason = [...composites].sort((a, b) => a.score - b.score)[0]
 
-    // 12. Most close games (<10 pts margin)
     const closeCount = {}
     teams.forEach(t => { closeCount[t.id] = 0 })
     regMatchups.forEach(m => {
@@ -264,15 +183,11 @@ const getPlayoffSeed = (teamId) => {
       if (!mostCloseGames || count > mostCloseGames.count) mostCloseGames = { t, count }
     })
 
-    // 13. The Choker
-    // Best composite team that lost in R1 or R2 to a team with a lower composite
-    // Must have made playoffs; pick the biggest composite gap
     let choker = null
     if (playoffMatchups.length > 0 && playoffWeeks.length > 1) {
       const finalWeek = playoffWeeks[playoffWeeks.length - 1]
-      const earlyGames = playoffMatchups.filter(m => m.week !== finalWeek)
       const upsets = []
-      earlyGames.forEach(m => {
+      playoffMatchups.filter(m => m.week !== finalWeek).forEach(m => {
         const homeWon = m.home_score > m.away_score
         const loserManagerId = homeWon ? m.away_team?.manager_id : m.home_team?.manager_id
         const winnerManagerId = homeWon ? m.home_team?.manager_id : m.away_team?.manager_id
@@ -281,15 +196,13 @@ const getPlayoffSeed = (teamId) => {
         if (!loserTeam?.made_playoffs || !winnerTeam?.made_playoffs) return
         const loserComp = composites.find(c => c.t.id === loserTeam.id)
         const winnerComp = composites.find(c => c.t.id === winnerTeam.id)
-        if (!loserComp || !winnerComp) return
-        if (loserComp.score > winnerComp.score) {
+        if (loserComp && winnerComp && loserComp.score > winnerComp.score)
           upsets.push({ loserTeam, loserComp, winnerTeam, winnerComp, gap: parseFloat((loserComp.score - winnerComp.score).toFixed(2)) })
-        }
       })
       if (upsets.length > 0) choker = upsets.sort((a, b) => b.gap - a.gap)[0]
     }
 
-    return { highGame, lowGame, bigBlowout, closestGame, mostConsistent, boomOrBust, unluckiest, luckiest, bestSecondHalf, mostDominant, worstSeason, mostCloseGames, choker, composites }
+    return { highGame, lowGame, bigBlowout, closestGame, mostConsistent, boomOrBust, unluckiest, luckiest, bestSecondHalf, mostDominant, worstSeason, mostCloseGames, choker }
   }
 
   const stats = calcStats()
@@ -303,20 +216,18 @@ const getPlayoffSeed = (teamId) => {
     const awaySeed = getPlayoffSeed(awayTeam?.id)
     const homeWon = game.home_score > game.away_score
     const awayWon = game.away_score > game.home_score
-
     const Line = ({ name, teamName, seed, score, won }) => (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: won ? (d ? 'rgba(255,255,255,0.05)' : 'rgba(13,33,82,0.06)') : 'transparent' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
           <span style={{ fontSize: '10px', color: won ? gold : muted, fontWeight: '700', minWidth: '14px' }}>{seed}</span>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '13px', color: won ? text : muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}>{name}</div>
-            <div style={{ fontSize: '10px', color: muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}>{teamName}</div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '13px', color: won ? text : muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: effectiveMobile ? '90px' : '130px' }}>{name}</div>
+            <div style={{ fontSize: '10px', color: muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: effectiveMobile ? '90px' : '130px' }}>{teamName}</div>
           </div>
         </div>
-        <span style={{ fontSize: '14px', fontWeight: '600', color: won ? text : muted, marginLeft: '12px', flexShrink: 0 }}>{score}</span>
+        <span style={{ fontSize: '14px', fontWeight: '600', color: won ? text : muted, marginLeft: '8px', flexShrink: 0 }}>{score}</span>
       </div>
     )
-
     return (
       <div style={{ border: `1px solid ${border}`, background: cardBg, marginBottom: '10px' }}>
         <Line name={getManagerName(game.away_team?.manager_id)} teamName={awayTeam?.team_name} seed={awaySeed} score={game.away_score} won={awayWon} />
@@ -336,190 +247,140 @@ const getPlayoffSeed = (teamId) => {
     </div>
   )
 
-  const colStyle = { flex: 1, minWidth: '190px', maxWidth: '230px' }
-  const roundLabel = (label) => (
-    <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '14px', textAlign: 'center' }}>{label}</div>
-  )
-  const connector = <div style={{ width: '20px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '20px', height: '1px', background: border }} /></div>
+  const colStyle = { flex: 1, minWidth: effectiveMobile ? '150px' : '190px', maxWidth: effectiveMobile ? '170px' : '230px' }
+  const roundLabel = (label) => <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '14px', textAlign: 'center' }}>{label}</div>
+  const connector = <div style={{ width: '16px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '16px', height: '1px', background: border }} /></div>
+
+  const getSeedMin = (g) => {
+    const ht = getTeamByManagerId(g.home_team?.manager_id)
+    const at = getTeamByManagerId(g.away_team?.manager_id)
+    return Math.min(getPlayoffSeed(ht?.id), getPlayoffSeed(at?.id))
+  }
 
   const render6TeamBracket = () => {
-  const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
-  const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
-  const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
-  const byeTeam1 = playoffTeams[0]
-  const byeTeam2 = playoffTeams[1]
-
-  const getSeedMin = (g) => {
-    const ht = getTeamByManagerId(g.home_team?.manager_id)
-    const at = getTeamByManagerId(g.away_team?.manager_id)
-    return Math.min(getPlayoffSeed(ht?.id), getPlayoffSeed(at?.id))
+    const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
+    const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
+    const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
+    const byeTeam1 = playoffTeams[0]
+    const byeTeam2 = playoffTeams[1]
+    const sortedR1 = [...r1Games].sort((a, b) => getSeedMin(a) - getSeedMin(b)).slice(0, 2)
+    const topR1 = sortedR1[0]
+    const botR1 = sortedR1[1]
+    const seed1Mid = byeTeam1?.manager?.id
+    const seed2Mid = byeTeam2?.manager?.id
+    const winnerR2 = r2Games.filter(g => {
+      const ids = [g.home_team?.manager_id, g.away_team?.manager_id]
+      return ids.includes(seed1Mid) || ids.includes(seed2Mid) || getSeedMin(g) <= 4
+    }).sort((a, b) => getSeedMin(a) - getSeedMin(b))
+    const topR2 = winnerR2.find(g => [g.home_team?.manager_id, g.away_team?.manager_id].includes(seed1Mid)) || winnerR2[0]
+    const botR2 = winnerR2.find(g => [g.home_team?.manager_id, g.away_team?.manager_id].includes(seed2Mid)) || winnerR2[1]
+    const championship = [...r3Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))[0]
+    return (
+      <div style={{ display: 'flex', gap: '0', minWidth: effectiveMobile ? '500px' : '640px' }}>
+        <div style={colStyle}>
+          {roundLabel('Round 1')}
+          <ByeCard team={byeTeam1} seed={1} />
+          <div style={{ height: '10px' }} />
+          <BracketGameCard game={topR1} />
+          <div style={{ height: '20px' }} />
+          <BracketGameCard game={botR1} />
+          <div style={{ height: '10px' }} />
+          <ByeCard team={byeTeam2} seed={2} />
+        </div>
+        {connector}
+        <div style={colStyle}>
+          {roundLabel('Semifinals')}
+          <div style={{ height: '52px' }} />
+          <BracketGameCard game={topR2} />
+          <div style={{ height: '20px' }} />
+          <BracketGameCard game={botR2} />
+        </div>
+        {connector}
+        <div style={colStyle}>
+          {roundLabel('Championship')}
+          <div style={{ height: '90px' }} />
+          <BracketGameCard game={championship} />
+        </div>
+      </div>
+    )
   }
 
-  // R1: only take the 2 games with the lowest seeds (3v6 and 4v5), ignore consolation
-  const sortedR1 = [...r1Games].sort((a, b) => getSeedMin(a) - getSeedMin(b)).slice(0, 2)
-  const topR1 = sortedR1[0]
-  const botR1 = sortedR1[1]
-
-  // R2: only take the 2 games featuring teams seeded 1-4, ignore consolation
-  const playoffSeedIds = new Set(playoffTeams.slice(0, 4).map(t => t.manager?.id))
-  const winnerR2 = r2Games.filter(g =>
-    playoffSeedIds.has(g.home_team?.manager_id) ||
-    playoffSeedIds.has(g.away_team?.manager_id)
-  ).sort((a, b) => getSeedMin(a) - getSeedMin(b))
-  const topR2 = winnerR2[0]
-  const botR2 = winnerR2[1]
-
-  // R3: only take 1 game -- the one with the highest combined seed (lowest seed numbers = best teams)
-  const championship = [...r3Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))[0]
-
-  const seed1ManagerId = byeTeam1?.manager?.id
-  const seed2ManagerId = byeTeam2?.manager?.id
-  const topR2Final = winnerR2.find(g => g.home_team?.manager_id === seed1ManagerId || g.away_team?.manager_id === seed1ManagerId) || winnerR2[0]
-  const botR2Final = winnerR2.find(g => g.home_team?.manager_id === seed2ManagerId || g.away_team?.manager_id === seed2ManagerId) || winnerR2[1]
-
-  return (
-    <div style={{ display: 'flex', gap: '0', minWidth: '680px' }}>
-      <div style={colStyle}>
-        {roundLabel('Round 1')}
-        <ByeCard team={byeTeam1} seed={1} />
-        <div style={{ height: '10px' }} />
-        <BracketGameCard game={topR1} />
-        <div style={{ height: '20px' }} />
-        <BracketGameCard game={botR1} />
-        <div style={{ height: '10px' }} />
-        <ByeCard team={byeTeam2} seed={2} />
+  const render8TeamBracket = () => {
+    const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
+    const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
+    const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
+    const sortedR1 = [...r1Games].sort((a, b) => getSeedMin(a) - getSeedMin(b)).slice(0, 4)
+    const topR1 = sortedR1.filter(g => [1, 4].includes(getSeedMin(g)))
+    const botR1 = sortedR1.filter(g => [2, 3].includes(getSeedMin(g)))
+    const sortedR2 = [...r2Games].sort((a, b) => getSeedMin(a) - getSeedMin(b)).slice(0, 2)
+    const championship = [...r3Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))[0]
+    return (
+      <div style={{ display: 'flex', gap: '0', minWidth: effectiveMobile ? '500px' : '640px' }}>
+        <div style={colStyle}>
+          {roundLabel('Round 1')}
+          {topR1.map(g => <BracketGameCard key={g.id} game={g} />)}
+          <div style={{ height: '16px' }} />
+          {botR1.map(g => <BracketGameCard key={g.id} game={g} />)}
+        </div>
+        {connector}
+        <div style={colStyle}>
+          {roundLabel('Semifinals')}
+          <div style={{ height: '46px' }} />
+          {sortedR2.slice(0, 1).map(g => <BracketGameCard key={g.id} game={g} />)}
+          <div style={{ height: '20px' }} />
+          {sortedR2.slice(1, 2).map(g => <BracketGameCard key={g.id} game={g} />)}
+        </div>
+        {connector}
+        <div style={colStyle}>
+          {roundLabel('Championship')}
+          <div style={{ height: '90px' }} />
+          <BracketGameCard game={championship} />
+        </div>
       </div>
-      {connector}
-      <div style={colStyle}>
-        {roundLabel('Semifinals')}
-        <div style={{ height: '52px' }} />
-        <BracketGameCard game={topR2Final} />
-        <div style={{ height: '20px' }} />
-        <BracketGameCard game={botR2Final} />
-      </div>
-      {connector}
-      <div style={colStyle}>
-        {roundLabel('Championship')}
-        <div style={{ height: '90px' }} />
-        <BracketGameCard game={championship} />
-      </div>
-    </div>
-  )
-}
-
-const render8TeamBracket = () => {
-  const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
-  const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
-  const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
-
-  const getSeedMin = (g) => {
-    const ht = getTeamByManagerId(g.home_team?.manager_id)
-    const at = getTeamByManagerId(g.away_team?.manager_id)
-    return Math.min(getPlayoffSeed(ht?.id), getPlayoffSeed(at?.id))
+    )
   }
-
-  // R1: take only 4 games (all 8 playoff teams), sorted by seed
-  const sortedR1 = [...r1Games].sort((a, b) => getSeedMin(a) - getSeedMin(b)).slice(0, 4)
-  const topR1 = sortedR1.filter(g => [1, 4].includes(getSeedMin(g)))
-  const botR1 = sortedR1.filter(g => [2, 3].includes(getSeedMin(g)))
-
-  // R2: take only 2 winner bracket games
-  const playoffSeedIds = new Set(playoffTeams.slice(0, 8).map(t => t.manager?.id))
-  const sortedR2 = [...r2Games]
-    .sort((a, b) => getSeedMin(a) - getSeedMin(b))
-    .slice(0, 2)
-
-  // R3: championship only -- lowest seed min
-  const championship = [...r3Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))[0]
-
-  return (
-    <div style={{ display: 'flex', gap: '0', minWidth: '680px' }}>
-      <div style={colStyle}>
-        {roundLabel('Round 1')}
-        {topR1.map(g => <BracketGameCard key={g.id} game={g} />)}
-        <div style={{ height: '16px' }} />
-        {botR1.map(g => <BracketGameCard key={g.id} game={g} />)}
-      </div>
-      {connector}
-      <div style={colStyle}>
-        {roundLabel('Semifinals')}
-        <div style={{ height: '46px' }} />
-        {sortedR2.slice(0, 1).map(g => <BracketGameCard key={g.id} game={g} />)}
-        <div style={{ height: '20px' }} />
-        {sortedR2.slice(1, 2).map(g => <BracketGameCard key={g.id} game={g} />)}
-      </div>
-      {connector}
-      <div style={colStyle}>
-        {roundLabel('Championship')}
-        <div style={{ height: '90px' }} />
-        <BracketGameCard game={championship} />
-      </div>
-    </div>
-  )
-}
 
   const StatCard = ({ label, value, sub, color }) => (
     <div style={{ background: cardBg, padding: '20px 24px', borderTop: `2px solid ${color || border}` }}>
       <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>{label}</div>
-      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '17px', color: text, marginBottom: '5px', lineHeight: 1.3 }}>{value}</div>
+      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '15px' : '17px', color: text, marginBottom: '5px', lineHeight: 1.3 }}>{value}</div>
       {sub && <div style={{ fontSize: '11px', color: muted, lineHeight: 1.5 }}>{sub}</div>}
     </div>
   )
 
-  const hStyle = (align = 'left') => ({
-    padding: '10px 14px', fontSize: '10px', letterSpacing: '0.18em',
-    textTransform: 'uppercase', color: muted, textAlign: align,
-    borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap',
-  })
-  const cStyle = (align = 'left') => ({
-    padding: '14px', fontSize: '13px', textAlign: align,
-    borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap',
-  })
+  const hStyle = (align = 'left') => ({ padding: effectiveMobile ? '8px 10px' : '10px 14px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: align, borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' })
+  const cStyle = (align = 'left') => ({ padding: effectiveMobile ? '10px' : '14px', fontSize: effectiveMobile ? '12px' : '13px', textAlign: align, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
 
   const MatchupRow = ({ m, i }) => {
     const homeWon = m.home_score > m.away_score
     const awayWon = m.away_score > m.home_score
     const isHighlighted = selectedTeam && (m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam)
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '14px', borderBottom: `1px solid ${border}`, background: isHighlighted ? highlight : i % 2 === 0 ? 'transparent' : rowAlt }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: effectiveMobile ? '10px' : '14px', borderBottom: `1px solid ${border}`, background: isHighlighted ? highlight : i % 2 === 0 ? 'transparent' : rowAlt }}>
         <div>
-          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '14px', color: awayWon ? muted : text }}>{getManagerName(m.away_team?.manager_id)}</div>
-          <div style={{ fontSize: '11px', color: muted }}>{m.away_team?.team_name}</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '12px' : '14px', color: awayWon ? muted : text }}>{getManagerName(m.away_team?.manager_id)}</div>
+          {!effectiveMobile && <div style={{ fontSize: '11px', color: muted }}>{m.away_team?.team_name}</div>}
         </div>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', padding: '0 20px' }}>
-          <span style={{ fontSize: '16px', fontWeight: '600', color: awayWon ? text : muted, minWidth: '60px', textAlign: 'right' }}>{m.away_score}</span>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '0 12px' }}>
+          <span style={{ fontSize: effectiveMobile ? '13px' : '16px', fontWeight: '600', color: awayWon ? text : muted, minWidth: '50px', textAlign: 'right' }}>{m.away_score}</span>
           <span style={{ fontSize: '11px', color: muted }}>–</span>
-          <span style={{ fontSize: '16px', fontWeight: '600', color: homeWon ? text : muted, minWidth: '60px' }}>{m.home_score}</span>
+          <span style={{ fontSize: effectiveMobile ? '13px' : '16px', fontWeight: '600', color: homeWon ? text : muted, minWidth: '50px' }}>{m.home_score}</span>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '14px', color: homeWon ? text : muted }}>{getManagerName(m.home_team?.manager_id)}</div>
-          <div style={{ fontSize: '11px', color: muted }}>{m.home_team?.team_name}</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '12px' : '14px', color: homeWon ? text : muted }}>{getManagerName(m.home_team?.manager_id)}</div>
+          {!effectiveMobile && <div style={{ fontSize: '11px', color: muted }}>{m.home_team?.team_name}</div>}
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif", transition: 'background 0.2s, color 0.2s' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500&display=swap'); * { box-sizing: border-box; margin: 0; padding: 0; }`}</style>
+    <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
+      <Nav />
+      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
 
-      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 48px', background: d ? 'rgba(0,0,0,0.88)' : 'rgba(244,241,236,0.95)', borderBottom: `1px solid ${border}`, backdropFilter: 'blur(10px)' }}>
-        <a href="/" style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', fontWeight: '400', color: text, textDecoration: 'none' }}>Fantasy Chatroom</a>
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-          {[['Champions','/champions'],['Standings','/standings'],['H2H','/h2h'],['Season','/season'],['Rivalries','/rivalries'],['Managers','/managers'],['Writeups','/writeups'],['Power Rankings','/power-rankings'],['LJ Index','/lj-index'],['All-Time Teams','/all-time-teams']].map(([label, href]) => (
-            <a key={href} href={href} style={{ color: muted, textDecoration: 'none', fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', fontWeight: '500' }}>{label}</a>
-          ))}
-          <button onClick={toggleTheme} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 14px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>
-            {d ? 'Light' : 'Dark'}
-          </button>
-        </div>
-      </nav>
-
-      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '120px 24px 80px' }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '24px', marginBottom: '48px', flexWrap: 'wrap' }}>
-          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(40px, 6vw, 72px)', fontWeight: '400', letterSpacing: '-0.02em' }}>Season</h1>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '20px', marginBottom: '48px', flexWrap: 'wrap' }}>
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', letterSpacing: '-0.02em' }}>Season</h1>
           <div style={{ paddingBottom: '8px' }}>
             <select value={selectedYear} onChange={e => setSelectedYear(parseInt(e.target.value))} style={{ background: cardBg, color: text, border: `1px solid ${border}`, padding: '10px 16px', fontSize: '14px', fontFamily: "'Playfair Display', serif", cursor: 'pointer', outline: 'none' }}>
               {seasons.map(s => <option key={s.year} value={s.year}>{s.year} — Year {s.season_number}</option>)}
@@ -527,7 +388,7 @@ const render8TeamBracket = () => {
           </div>
         </div>
 
-        {/* BRACKET */}
+        {/* Bracket */}
         {playoffMatchups.length > 0 && (
           <div style={{ marginBottom: '60px' }}>
             <p style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '24px' }}>Playoff Bracket</p>
@@ -537,7 +398,7 @@ const render8TeamBracket = () => {
           </div>
         )}
 
-        {/* STANDINGS */}
+        {/* Standings */}
         {teams.length > 0 && (
           <div style={{ marginBottom: '48px' }}>
             <p style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '16px' }}>Final Standings</p>
@@ -547,11 +408,11 @@ const render8TeamBracket = () => {
                   <tr style={{ background: cardBg }}>
                     <th style={hStyle('center')}>Rk</th>
                     <th style={hStyle()}>Manager</th>
-                    <th style={hStyle()}>Team</th>
+                    {!effectiveMobile && <th style={hStyle()}>Team</th>}
                     <th style={hStyle('center')}>W</th>
                     <th style={hStyle('center')}>L</th>
                     <th style={hStyle('right')}>PF</th>
-                    <th style={hStyle('right')}>PA</th>
+                    {!effectiveMobile && <th style={hStyle('right')}>PA</th>}
                     <th style={hStyle('right')}>Diff</th>
                     <th style={hStyle('center')}>Result</th>
                   </tr>
@@ -561,19 +422,19 @@ const render8TeamBracket = () => {
                     const diff = parseFloat((t.points_for - t.points_against).toFixed(2))
                     const isSelected = selectedTeam === t.id
                     return (
-                      <tr key={t.id} onClick={() => setSelectedTeam(isSelected ? null : t.id)} style={{ background: isSelected ? highlight : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer', outline: isSelected ? `1px solid ${d ? '#4455aa' : '#0d2152'}` : 'none' }}>
+                      <tr key={t.id} onClick={() => setSelectedTeam(isSelected ? null : t.id)} style={{ background: isSelected ? highlight : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}>
                         <td style={{ ...cStyle('center'), color: muted }}>{t.final_standing}</td>
-                        <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{t.manager?.name}</td>
-                        <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{t.team_name}</td>
+                        <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '13px' : '15px' }}>{t.manager?.name}</td>
+                        {!effectiveMobile && <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{t.team_name}</td>}
                         <td style={cStyle('center')}>{t.wins}</td>
                         <td style={cStyle('center')}>{t.losses}</td>
-                        <td style={cStyle('right')}>{t.points_for.toFixed(2)}</td>
-                        <td style={cStyle('right')}>{t.points_against.toFixed(2)}</td>
+                        <td style={cStyle('right')}>{t.points_for.toFixed(effectiveMobile ? 0 : 2)}</td>
+                        {!effectiveMobile && <td style={cStyle('right')}>{t.points_against.toFixed(2)}</td>}
                         <td style={{ ...cStyle('right'), color: diff >= 0 ? green : red, fontWeight: '500' }}>
-                          {diff >= 0 ? '+' : ''}{diff}
+                          {diff >= 0 ? '+' : ''}{diff.toFixed(effectiveMobile ? 0 : 2)}
                         </td>
-                        <td style={{ ...cStyle('center'), fontSize: '12px', color: t.playoff_result === 'Champion' ? gold : t.playoff_result?.includes('Mol Bowl') ? red : muted }}>
-                          {t.playoff_result || '—'}
+                        <td style={{ ...cStyle('center'), fontSize: '11px', color: t.playoff_result === 'Champion' ? gold : t.playoff_result?.includes('Mol Bowl') ? red : muted }}>
+                          {effectiveMobile ? (t.playoff_result === 'Champion' ? '🏆' : t.playoff_result?.includes('Mol Bowl') ? 'Mol' : t.made_playoffs ? '✓' : '—') : (t.playoff_result || '—')}
                         </td>
                       </tr>
                     )
@@ -584,118 +445,37 @@ const render8TeamBracket = () => {
             {selectedTeam && (
               <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={{ fontSize: '12px', color: muted }}>
-                  Showing schedule for <span style={{ color: text, fontFamily: "'Playfair Display', serif" }}>{teams.find(t => t.id === selectedTeam)?.manager?.name}</span>
+                  Showing: <span style={{ color: text, fontFamily: "'Playfair Display', serif" }}>{teams.find(t => t.id === selectedTeam)?.manager?.name}</span>
                 </span>
-                <button onClick={() => setSelectedTeam(null)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 12px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Clear</button>
+                <button onClick={() => setSelectedTeam(null)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 10px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Clear</button>
               </div>
             )}
           </div>
         )}
 
-        {/* SEASON HIGHLIGHTS */}
+        {/* Season Highlights */}
         {stats && (
           <div style={{ marginBottom: '60px' }}>
             <p style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '24px' }}>Season Highlights</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1px', background: border }}>
-
-              <StatCard
-                label="Highest Score"
-                value={`${getManagerName(stats.highGame?.managerId)} — ${stats.highGame?.score}`}
-                sub={`Week ${stats.highGame?.week} · ${stats.highGame?.won ? 'Won' : 'Still lost'} vs ${getManagerName(stats.highGame?.oppManagerId)} (${stats.highGame?.oppScore})`}
-                color={green}
-              />
-
-              <StatCard
-                label="Lowest Score"
-                value={`${getManagerName(stats.lowGame?.managerId)} — ${stats.lowGame?.score}`}
-                sub={`Week ${stats.lowGame?.week} · ${stats.lowGame?.won ? 'Still won' : 'Lost'} vs ${getManagerName(stats.lowGame?.oppManagerId)} (${stats.lowGame?.oppScore})`}
-                color={red}
-              />
-
-              <StatCard
-                label="Biggest Blowout"
-                value={`${getManagerName(stats.bigBlowout?.winnerId)} def. ${getManagerName(stats.bigBlowout?.loserId)}`}
-                sub={`${stats.bigBlowout?.winnerScore} – ${stats.bigBlowout?.loserScore} · Margin: ${stats.bigBlowout?.diff} · Week ${stats.bigBlowout?.week}`}
-                color={gold}
-              />
-
-              <StatCard
-                label="Closest Game"
-                value={`${getManagerName(stats.closestGame?.winnerId)} def. ${getManagerName(stats.closestGame?.loserId)}`}
-                sub={`${stats.closestGame?.winnerScore} – ${stats.closestGame?.loserScore} · Margin: ${stats.closestGame?.diff} · Week ${stats.closestGame?.week}`}
-                color={blue}
-              />
-
-              <StatCard
-                label="Most Consistent"
-                value={stats.mostConsistent?.t?.manager?.name || '—'}
-                sub={`Std dev: ${stats.mostConsistent?.std} · Avg: ${stats.mostConsistent?.mean} PPG`}
-                color={green}
-              />
-
-              <StatCard
-                label="Boom or Bust"
-                value={stats.boomOrBust?.t?.manager?.name || '—'}
-                sub={`Std dev: ${stats.boomOrBust?.std} · Avg: ${stats.boomOrBust?.mean} PPG`}
-                color={red}
-              />
-
-              <StatCard
-                label="Unluckiest Team"
-                value={stats.unluckiest?.t?.manager?.name || '—'}
-                sub={`Actual: ${stats.unluckiest?.actual}W · Expected: ${stats.unluckiest?.expected}W · ${stats.unluckiest?.luck > 0 ? '+' : ''}${stats.unluckiest?.luck} wins`}
-                color={red}
-              />
-
-              <StatCard
-                label="Luckiest Team"
-                value={stats.luckiest?.t?.manager?.name || '—'}
-                sub={`Actual: ${stats.luckiest?.actual}W · Expected: ${stats.luckiest?.expected}W · +${stats.luckiest?.luck} wins`}
-                color={green}
-              />
-
-              <StatCard
-                label="Best Second Half"
-                value={stats.bestSecondHalf?.t?.manager?.name || '—'}
-                sub={`First half: ${stats.bestSecondHalf?.firstW}W · Second half: ${stats.bestSecondHalf?.secondW}W · +${stats.bestSecondHalf?.improvement}`}
-                color={blue}
-              />
-
-              <StatCard
-                label="Most Dominant Season"
-                value={stats.mostDominant?.t?.manager?.name || '—'}
-                sub={`Power score: ${stats.mostDominant?.score} · ${(stats.mostDominant?.winPct * 100).toFixed(1)}% win rate · ${stats.mostDominant?.avgScore?.toFixed(1)} PPG`}
-                color={gold}
-              />
-
-              <StatCard
-                label="Worst Season"
-                value={stats.worstSeason?.t?.manager?.name || '—'}
-                sub={`Power score: ${stats.worstSeason?.score} · ${(stats.worstSeason?.winPct * 100).toFixed(1)}% win rate · ${stats.worstSeason?.avgScore?.toFixed(1)} PPG`}
-                color={red}
-              />
-
-              <StatCard
-                label="Most Close Games"
-                value={`${stats.mostCloseGames?.t?.manager?.name || '—'} — ${stats.mostCloseGames?.count}`}
-                sub="Games decided by under 10 points"
-                color={blue}
-              />
-
-              {stats.choker && (
-                <StatCard
-                  label="The Choker"
-                  value={stats.choker.loserTeam?.manager?.name || '—'}
-                  sub={`Power score ${stats.choker.loserComp?.score} upset by ${stats.choker.winnerTeam?.manager?.name} (${stats.choker.winnerComp?.score}) · Gap: ${stats.choker.gap}`}
-                  color={red}
-                />
-              )}
-
+            <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1px', background: border }}>
+              <StatCard label="Highest Score" value={`${getManagerName(stats.highGame?.managerId)} — ${stats.highGame?.score}`} sub={`Week ${stats.highGame?.week} · ${stats.highGame?.won ? 'Won' : 'Still lost'} vs ${getManagerName(stats.highGame?.oppManagerId)} (${stats.highGame?.oppScore})`} color={green} />
+              <StatCard label="Lowest Score" value={`${getManagerName(stats.lowGame?.managerId)} — ${stats.lowGame?.score}`} sub={`Week ${stats.lowGame?.week} · ${stats.lowGame?.won ? 'Still won' : 'Lost'} vs ${getManagerName(stats.lowGame?.oppManagerId)} (${stats.lowGame?.oppScore})`} color={red} />
+              <StatCard label="Biggest Blowout" value={`${getManagerName(stats.bigBlowout?.winnerId)} def. ${getManagerName(stats.bigBlowout?.loserId)}`} sub={`${stats.bigBlowout?.winnerScore} – ${stats.bigBlowout?.loserScore} · Margin: ${stats.bigBlowout?.diff} · Week ${stats.bigBlowout?.week}`} color={gold} />
+              <StatCard label="Closest Game" value={`${getManagerName(stats.closestGame?.winnerId)} def. ${getManagerName(stats.closestGame?.loserId)}`} sub={`${stats.closestGame?.winnerScore} – ${stats.closestGame?.loserScore} · Margin: ${stats.closestGame?.diff} · Week ${stats.closestGame?.week}`} color={blue} />
+              <StatCard label="Most Consistent" value={stats.mostConsistent?.t?.manager?.name || '—'} sub={`Std dev: ${stats.mostConsistent?.std} · Avg: ${stats.mostConsistent?.mean} PPG`} color={green} />
+              <StatCard label="Boom or Bust" value={stats.boomOrBust?.t?.manager?.name || '—'} sub={`Std dev: ${stats.boomOrBust?.std} · Avg: ${stats.boomOrBust?.mean} PPG`} color={red} />
+              <StatCard label="Unluckiest Team" value={stats.unluckiest?.t?.manager?.name || '—'} sub={`Actual: ${stats.unluckiest?.actual}W · Expected: ${stats.unluckiest?.expected}W · ${stats.unluckiest?.luck > 0 ? '+' : ''}${stats.unluckiest?.luck} wins`} color={red} />
+              <StatCard label="Luckiest Team" value={stats.luckiest?.t?.manager?.name || '—'} sub={`Actual: ${stats.luckiest?.actual}W · Expected: ${stats.luckiest?.expected}W · +${stats.luckiest?.luck} wins`} color={green} />
+              <StatCard label="Best Second Half" value={stats.bestSecondHalf?.t?.manager?.name || '—'} sub={`First half: ${stats.bestSecondHalf?.firstW}W · Second half: ${stats.bestSecondHalf?.secondW}W · +${stats.bestSecondHalf?.improvement}`} color={blue} />
+              <StatCard label="Most Dominant" value={stats.mostDominant?.t?.manager?.name || '—'} sub={`Power score: ${stats.mostDominant?.score} · ${(stats.mostDominant?.winPct * 100).toFixed(1)}% win rate · ${stats.mostDominant?.avgScore?.toFixed(1)} PPG`} color={gold} />
+              <StatCard label="Worst Season" value={stats.worstSeason?.t?.manager?.name || '—'} sub={`Power score: ${stats.worstSeason?.score} · ${(stats.worstSeason?.winPct * 100).toFixed(1)}% win rate · ${stats.worstSeason?.avgScore?.toFixed(1)} PPG`} color={red} />
+              <StatCard label="Most Close Games" value={`${stats.mostCloseGames?.t?.manager?.name || '—'} — ${stats.mostCloseGames?.count}`} sub="Games decided by under 10 points" color={blue} />
+              {stats.choker && <StatCard label="The Choker" value={stats.choker.loserTeam?.manager?.name || '—'} sub={`Power score ${stats.choker.loserComp?.score} upset by ${stats.choker.winnerTeam?.manager?.name} (${stats.choker.winnerComp?.score}) · Gap: ${stats.choker.gap}`} color={red} />}
             </div>
           </div>
         )}
 
-        {/* REGULAR SEASON SCHEDULE */}
+        {/* Regular season schedule */}
         {weeks.length > 0 && (
           <div style={{ marginBottom: '60px' }}>
             <p style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '24px' }}>Regular Season Schedule</p>
@@ -703,8 +483,8 @@ const render8TeamBracket = () => {
               const weekGames = filteredReg.filter(m => m.week === week)
               if (weekGames.length === 0) return null
               return (
-                <div key={week} style={{ marginBottom: '32px' }}>
-                  <p style={{ fontSize: '11px', letterSpacing: '0.18em', textTransform: 'uppercase', color: muted, marginBottom: '10px', paddingLeft: '14px' }}>Week {week}</p>
+                <div key={week} style={{ marginBottom: '28px' }}>
+                  <p style={{ fontSize: '11px', letterSpacing: '0.18em', textTransform: 'uppercase', color: muted, marginBottom: '10px', paddingLeft: '10px' }}>Week {week}</p>
                   <div style={{ borderTop: `1px solid ${border}` }}>
                     {weekGames.map((m, i) => <MatchupRow key={m.id} m={m} i={i} />)}
                   </div>
@@ -714,7 +494,7 @@ const render8TeamBracket = () => {
           </div>
         )}
 
-        {/* PLAYOFF SCHEDULE */}
+        {/* Playoff schedule */}
         {playoffWeeks.length > 0 && filteredPlayoff.length > 0 && (
           <div>
             <p style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '24px' }}>Playoff Schedule</p>
@@ -723,8 +503,8 @@ const render8TeamBracket = () => {
               if (weekGames.length === 0) return null
               const labels = ['Round 1', 'Semifinals', 'Championship']
               return (
-                <div key={week} style={{ marginBottom: '32px' }}>
-                  <p style={{ fontSize: '11px', letterSpacing: '0.18em', textTransform: 'uppercase', color: muted, marginBottom: '10px', paddingLeft: '14px' }}>{labels[idx] || `Round ${idx + 1}`}</p>
+                <div key={week} style={{ marginBottom: '28px' }}>
+                  <p style={{ fontSize: '11px', letterSpacing: '0.18em', textTransform: 'uppercase', color: muted, marginBottom: '10px', paddingLeft: '10px' }}>{labels[idx] || `Round ${idx + 1}`}</p>
                   <div style={{ borderTop: `1px solid ${border}` }}>
                     {weekGames.map((m, i) => <MatchupRow key={m.id} m={m} i={i} />)}
                   </div>
