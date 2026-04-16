@@ -180,8 +180,20 @@ export default function ManagersPage() {
 
   // Career power score rank
   const rankedStats = useMemo(() => {
-    const sorted = [...managerStats].sort((a, b) => b.avgPowerScore - a.avgPowerScore)
-    return managerStats.map(m => ({
+    if (managerStats.length === 0) return []
+    const maxPs = Math.max(...managerStats.map(m => m.avgPowerScore))
+    const minPs = Math.min(...managerStats.map(m => m.avgPowerScore))
+    const maxChamps = Math.max(...managerStats.map(m => m.championships))
+
+    const withScore = managerStats.map(m => {
+      const normPs = maxPs === minPs ? 0.5 : (m.avgPowerScore - minPs) / (maxPs - minPs)
+      const normChamps = maxChamps === 0 ? 0 : m.championships / maxChamps
+      const careerScore = normPs * 0.5 + normChamps * 0.5
+      return { ...m, careerScore }
+    })
+
+    const sorted = [...withScore].sort((a, b) => b.careerScore - a.careerScore)
+    return withScore.map(m => ({
       ...m,
       careerPowerRank: sorted.findIndex(s => s.id === m.id) + 1,
     }))
