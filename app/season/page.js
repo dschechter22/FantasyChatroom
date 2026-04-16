@@ -71,8 +71,18 @@ export default function SeasonPage() {
     ? playoffMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam)
     : playoffMatchups
 
-  const playoffTeams = teams.filter(t => t.made_playoffs).sort((a, b) => a.final_standing - b.final_standing)
-  const getPlayoffSeed = (teamId) => playoffTeams.findIndex(t => t.id === teamId) + 1
+  // Seed playoff teams by regular season record (wins desc, then PF desc)
+const playoffTeams = teams
+  .filter(t => t.made_playoffs)
+  .sort((a, b) => {
+    if (b.wins !== a.wins) return b.wins - a.wins
+    return b.points_for - a.points_for
+  })
+
+const getPlayoffSeed = (teamId) => {
+  const idx = playoffTeams.findIndex(t => t.id === teamId)
+  return idx === -1 ? 99 : idx + 1
+}
   const getTeamByManagerId = (managerId) => teams.find(t => t.manager?.id === managerId)
   const is6Team = selectedYear >= 2021
 
