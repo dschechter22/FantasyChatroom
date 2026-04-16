@@ -333,125 +333,120 @@ export default function SeasonPage() {
   const connector = <div style={{ width: '20px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '20px', height: '1px', background: border }} /></div>
 
   const render6TeamBracket = () => {
-    const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
-    const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
-    const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
-    const byeTeam1 = playoffTeams[0]
-    const byeTeam2 = playoffTeams[1]
+  const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
+  const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
+  const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
+  const byeTeam1 = playoffTeams[0]
+  const byeTeam2 = playoffTeams[1]
 
-    // Sort R1 games: game with seed 3 goes top (pairs with bye seed 1), seed 4 goes bottom (pairs with bye seed 2)
-    const sortedR1 = [...r1Games].sort((a, b) => {
-      const getSeedMin = (g) => {
-        const ht = getTeamByManagerId(g.home_team?.manager_id)
-        const at = getTeamByManagerId(g.away_team?.manager_id)
-        return Math.min(getPlayoffSeed(ht?.id), getPlayoffSeed(at?.id))
-      }
-      return getSeedMin(a) - getSeedMin(b)
-    })
-    const topR1 = sortedR1[0]   // 3v6
-    const botR1 = sortedR1[1]   // 4v5
-
-    // Sort R2: find the game that includes seed 1 or 2 bye team
-    const seed1ManagerId = byeTeam1?.manager?.id
-    const seed2ManagerId = byeTeam2?.manager?.id
-    const topR2 = r2Games.find(g => g.home_team?.manager_id === seed1ManagerId || g.away_team?.manager_id === seed1ManagerId) || r2Games[0]
-    const botR2 = r2Games.find(g => g.home_team?.manager_id === seed2ManagerId || g.away_team?.manager_id === seed2ManagerId) || r2Games[1]
-    const championship = r3Games?.[0]
-
-    return (
-      <div style={{ display: 'flex', gap: '0', minWidth: '680px' }}>
-        {/* R1 */}
-        <div style={colStyle}>
-          {roundLabel('Round 1')}
-          <ByeCard team={byeTeam1} seed={1} />
-          <div style={{ height: '10px' }} />
-          <BracketGameCard game={topR1} />
-          <div style={{ height: '20px' }} />
-          <BracketGameCard game={botR1} />
-          <div style={{ height: '10px' }} />
-          <ByeCard team={byeTeam2} seed={2} />
-        </div>
-        {connector}
-        {/* Semis */}
-        <div style={colStyle}>
-          {roundLabel('Semifinals')}
-          <div style={{ height: '52px' }} />
-          <BracketGameCard game={topR2} />
-          <div style={{ height: '20px' }} />
-          <BracketGameCard game={botR2} />
-        </div>
-        {connector}
-        {/* Championship */}
-        <div style={colStyle}>
-          {roundLabel('Championship')}
-          <div style={{ height: '90px' }} />
-          <BracketGameCard game={championship} />
-        </div>
-      </div>
-    )
+  const getSeedMin = (g) => {
+    const ht = getTeamByManagerId(g.home_team?.manager_id)
+    const at = getTeamByManagerId(g.away_team?.manager_id)
+    return Math.min(getPlayoffSeed(ht?.id), getPlayoffSeed(at?.id))
   }
 
-  const render8TeamBracket = () => {
-    const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
-    const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
-    const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
+  // R1: only take the 2 games with the lowest seeds (3v6 and 4v5), ignore consolation
+  const sortedR1 = [...r1Games].sort((a, b) => getSeedMin(a) - getSeedMin(b)).slice(0, 2)
+  const topR1 = sortedR1[0]
+  const botR1 = sortedR1[1]
 
-    // Sort R1: 1v8 and 4v5 top half, 2v7 and 3v6 bottom half
-    const getSeedMin = (g) => {
-      const ht = getTeamByManagerId(g.home_team?.manager_id)
-      const at = getTeamByManagerId(g.away_team?.manager_id)
-      return Math.min(getPlayoffSeed(ht?.id), getPlayoffSeed(at?.id))
-    }
-    const sortedR1 = [...r1Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))
-    // Seeds 1 and 4 in top half, seeds 2 and 3 in bottom half
-    const topR1 = sortedR1.filter(g => [1, 4].includes(getSeedMin(g)))
-    const botR1 = sortedR1.filter(g => [2, 3].includes(getSeedMin(g)))
+  // R2: only take the 2 games featuring teams seeded 1-4, ignore consolation
+  const playoffSeedIds = new Set(playoffTeams.slice(0, 4).map(t => t.manager?.id))
+  const winnerR2 = r2Games.filter(g =>
+    playoffSeedIds.has(g.home_team?.manager_id) ||
+    playoffSeedIds.has(g.away_team?.manager_id)
+  ).sort((a, b) => getSeedMin(a) - getSeedMin(b))
+  const topR2 = winnerR2[0]
+  const botR2 = winnerR2[1]
 
-    // Sort top R1 so seed 1 game is first
-    const sortedTopR1 = [...topR1].sort((a, b) => getSeedMin(a) - getSeedMin(b))
-    const sortedBotR1 = [...botR1].sort((a, b) => getSeedMin(a) - getSeedMin(b))
+  // R3: only take 1 game -- the one with the highest combined seed (lowest seed numbers = best teams)
+  const championship = [...r3Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))[0]
 
-    // R2: determine which games are top/bottom half by which seed 1/2 teams appear
-    const seed1Team = playoffTeams[0]
-    const seed2Team = playoffTeams[1]
-    const s1Mid = seed1Team?.manager?.id
-    const s2Mid = seed2Team?.manager?.id
-    // After R1, winners advance. Top R2 involves seed 1 side, bottom involves seed 2 side
-    // Sort R2 by whether seed 1 winner likely appears
-    const sortedR2 = [...r2Games].sort((a, b) => {
-      const aHasSeed1Side = [a.home_team?.manager_id, a.away_team?.manager_id].some(id => {
-        const t = getTeamByManagerId(id); return t && getPlayoffSeed(t.id) <= 2
-      })
-      return aHasSeed1Side ? -1 : 1
-    })
+  const seed1ManagerId = byeTeam1?.manager?.id
+  const seed2ManagerId = byeTeam2?.manager?.id
+  const topR2Final = winnerR2.find(g => g.home_team?.manager_id === seed1ManagerId || g.away_team?.manager_id === seed1ManagerId) || winnerR2[0]
+  const botR2Final = winnerR2.find(g => g.home_team?.manager_id === seed2ManagerId || g.away_team?.manager_id === seed2ManagerId) || winnerR2[1]
 
-    const championship = r3Games?.[0]
-
-    return (
-      <div style={{ display: 'flex', gap: '0', minWidth: '680px' }}>
-        <div style={colStyle}>
-          {roundLabel('Round 1')}
-          {sortedTopR1.map(g => <BracketGameCard key={g.id} game={g} />)}
-          <div style={{ height: '16px' }} />
-          {sortedBotR1.map(g => <BracketGameCard key={g.id} game={g} />)}
-        </div>
-        {connector}
-        <div style={colStyle}>
-          {roundLabel('Semifinals')}
-          <div style={{ height: '46px' }} />
-          {sortedR2.slice(0, 1).map(g => <BracketGameCard key={g.id} game={g} />)}
-          <div style={{ height: '20px' }} />
-          {sortedR2.slice(1, 2).map(g => <BracketGameCard key={g.id} game={g} />)}
-        </div>
-        {connector}
-        <div style={colStyle}>
-          {roundLabel('Championship')}
-          <div style={{ height: '90px' }} />
-          <BracketGameCard game={championship} />
-        </div>
+  return (
+    <div style={{ display: 'flex', gap: '0', minWidth: '680px' }}>
+      <div style={colStyle}>
+        {roundLabel('Round 1')}
+        <ByeCard team={byeTeam1} seed={1} />
+        <div style={{ height: '10px' }} />
+        <BracketGameCard game={topR1} />
+        <div style={{ height: '20px' }} />
+        <BracketGameCard game={botR1} />
+        <div style={{ height: '10px' }} />
+        <ByeCard team={byeTeam2} seed={2} />
       </div>
-    )
+      {connector}
+      <div style={colStyle}>
+        {roundLabel('Semifinals')}
+        <div style={{ height: '52px' }} />
+        <BracketGameCard game={topR2Final} />
+        <div style={{ height: '20px' }} />
+        <BracketGameCard game={botR2Final} />
+      </div>
+      {connector}
+      <div style={colStyle}>
+        {roundLabel('Championship')}
+        <div style={{ height: '90px' }} />
+        <BracketGameCard game={championship} />
+      </div>
+    </div>
+  )
+}
+
+const render8TeamBracket = () => {
+  const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
+  const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
+  const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
+
+  const getSeedMin = (g) => {
+    const ht = getTeamByManagerId(g.home_team?.manager_id)
+    const at = getTeamByManagerId(g.away_team?.manager_id)
+    return Math.min(getPlayoffSeed(ht?.id), getPlayoffSeed(at?.id))
   }
+
+  // R1: take only 4 games (all 8 playoff teams), sorted by seed
+  const sortedR1 = [...r1Games].sort((a, b) => getSeedMin(a) - getSeedMin(b)).slice(0, 4)
+  const topR1 = sortedR1.filter(g => [1, 4].includes(getSeedMin(g)))
+  const botR1 = sortedR1.filter(g => [2, 3].includes(getSeedMin(g)))
+
+  // R2: take only 2 winner bracket games
+  const playoffSeedIds = new Set(playoffTeams.slice(0, 8).map(t => t.manager?.id))
+  const sortedR2 = [...r2Games]
+    .sort((a, b) => getSeedMin(a) - getSeedMin(b))
+    .slice(0, 2)
+
+  // R3: championship only -- lowest seed min
+  const championship = [...r3Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))[0]
+
+  return (
+    <div style={{ display: 'flex', gap: '0', minWidth: '680px' }}>
+      <div style={colStyle}>
+        {roundLabel('Round 1')}
+        {topR1.map(g => <BracketGameCard key={g.id} game={g} />)}
+        <div style={{ height: '16px' }} />
+        {botR1.map(g => <BracketGameCard key={g.id} game={g} />)}
+      </div>
+      {connector}
+      <div style={colStyle}>
+        {roundLabel('Semifinals')}
+        <div style={{ height: '46px' }} />
+        {sortedR2.slice(0, 1).map(g => <BracketGameCard key={g.id} game={g} />)}
+        <div style={{ height: '20px' }} />
+        {sortedR2.slice(1, 2).map(g => <BracketGameCard key={g.id} game={g} />)}
+      </div>
+      {connector}
+      <div style={colStyle}>
+        {roundLabel('Championship')}
+        <div style={{ height: '90px' }} />
+        <BracketGameCard game={championship} />
+      </div>
+    </div>
+  )
+}
 
   const StatCard = ({ label, value, sub, color }) => (
     <div style={{ background: cardBg, padding: '20px 24px', borderTop: `2px solid ${color || border}` }}>
