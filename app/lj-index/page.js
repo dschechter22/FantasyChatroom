@@ -32,6 +32,7 @@ export default function LJIndexPage() {
     supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
     supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
+      .limit(10000)
       .then(({ data }) => setAllMatchups(data || []))
     supabase.from('teams')
       .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
@@ -110,9 +111,9 @@ export default function LJIndexPage() {
   const plotData = useMemo(() => computeData(), [matchups, teams])
   // allTimeData declared BEFORE activeData to avoid initialization error
   const allTimeData = useMemo(() => {
-    if (managers.length === 0 || matchups.length === 0) return []
+    if (managers.length === 0 || allMatchups.length === 0) return []
     const activeM = managers.filter(m => m.active)
-    const allSeasons = [...new Set(matchups.map(m => m.season?.year))].filter(Boolean)
+    const allSeasons = [...new Set(allMatchups.map(m => m.season?.year))].filter(Boolean)
     const filteredSeasons = allSeasons.filter(yr => {
       if (allTimeYearFrom !== 'all' && yr < parseInt(allTimeYearFrom)) return false
       if (allTimeYearTo !== 'all' && yr > parseInt(allTimeYearTo)) return false
@@ -121,7 +122,7 @@ export default function LJIndexPage() {
     const result = {}
     activeM.forEach(m => { result[m.id] = { wins: 0, losses: 0, allPlaySum: 0, weekCount: 0, pf: 0, scores: [], managerName: m.name, managerSlug: m.slug } })
     filteredSeasons.forEach(yr => {
-      const yearMatchups = matchups.filter(m => m.season?.year === yr && !m.is_playoff)
+      const yearMatchups = allMatchups.filter(m => m.season?.year === yr && !m.is_playoff)
       const weeks = [...new Set(yearMatchups.map(m => m.week))].sort((a, b) => a - b)
       yearMatchups.forEach(m => {
         if (result[m.home_team?.manager_id]) {
@@ -170,7 +171,7 @@ export default function LJIndexPage() {
       y: parseFloat(((r.luckRaw - avgLuck) / Math.max(r.wins + r.losses, 1) * 100).toFixed(1)),
       powerNorm: maxPf === minPf ? 0.5 : (r.avgScore - minPf) / (maxPf - minPf),
     }))
-  }, [managers, matchups, allTimeYearFrom, allTimeYearTo])
+  }, [managers, allMatchups, allTimeYearFrom, allTimeYearTo])
   // activeData declared AFTER allTimeData
   const activeData = ljView === 'season' ? plotData : allTimeData
   const W = effectiveMobile ? 340 : 680
@@ -293,7 +294,7 @@ export default function LJIndexPage() {
                   <g>
                     <rect x={tx} y={ty} width={tw} height={th} rx={3} fill={d ? '#111' : '#fff'} stroke={border} strokeWidth={1} />
                     <text x={tx + 10} y={ty + 18} fontSize="13" fontFamily="Playfair Display, serif" fill={text}>{r.managerName}</text>
-                    <text x={tx + 10} y={ty + 32} fontSize="10" fontFamily="Inter, sans-serif" fill={muted}>{r.teamName}</text>
+                    {r.teamName && <text x={tx + 10} y={ty + 32} fontSize="10" fontFamily="Inter, sans-serif" fill={muted}>{r.teamName}</text>}
                     <text x={tx + 10} y={ty + 50} fontSize="11" fontFamily="Inter, sans-serif" fill={text}>Record: {r.wins}-{r.losses} ({r.winPct}%)</text>
                     <text x={tx + 10} y={ty + 65} fontSize="11" fontFamily="Inter, sans-serif" fill={text}>All-Play Win%: {r.allPlayWinPct}%</text>
                     <text x={tx + 10} y={ty + 80} fontSize="11" fontFamily="Inter, sans-serif" fill={text}>Luck: {r.luckRaw > 0 ? '+' : ''}{r.luckRaw} wins</text>
