@@ -20,21 +20,15 @@ export default function WriteupsPage() {
 
   const [writeups, setWriteups] = useState([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState('feed') // 'feed' | 'new' | 'edit'
+  const [view, setView] = useState('feed')
   const [editTarget, setEditTarget] = useState(null)
-
-  // Feed filters
   const [filterYear, setFilterYear] = useState('all')
   const [filterType, setFilterType] = useState('all')
   const [filterAuthor, setFilterAuthor] = useState('all')
   const [expandedId, setExpandedId] = useState(null)
-
-  // PIN modal
-  const [pinModal, setPinModal] = useState(null) // { writeupId, action: 'edit'|'delete' }
+  const [pinModal, setPinModal] = useState(null)
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
-
-  // Form state
   const [form, setForm] = useState({
     season_year: 2025, week: '', type: 'power_rankings',
     title: '', content: '', author_name: '', pin: '',
@@ -42,6 +36,9 @@ export default function WriteupsPage() {
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     fetchWriteups()
@@ -117,14 +114,11 @@ export default function WriteupsPage() {
     const { writeupId, action } = pinModal
     const writeup = writeups.find(w => w.id === writeupId)
     if (!writeup) return
-
     const isValid = pinInput === writeup.pin || pinInput === ADMIN_PIN
     if (!isValid) { setPinError('Incorrect PIN.'); return }
-
     setPinError('')
     setPinModal(null)
     setPinInput('')
-
     if (action === 'delete') {
       await supabase.from('writeups').delete().eq('id', writeupId)
       fetchWriteups()
@@ -148,30 +142,16 @@ export default function WriteupsPage() {
     padding: '10px 14px', fontSize: '13px', fontFamily: "'Inter', sans-serif",
     outline: 'none', width: '100%',
   }
-
   const selectStyle = { ...inputStyle, cursor: 'pointer' }
-
   const labelStyle = {
     fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase',
     color: muted, marginBottom: '6px', display: 'block',
   }
-
-  const filterBtn = (active, label, onClick) => (
-    <button onClick={onClick} style={{
-      background: active ? text : 'none', border: `1px solid ${border}`,
-      color: active ? bg : muted, padding: effectiveMobile ? '5px 10px' : '6px 14px',
-      cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase',
-      fontFamily: "'Inter', sans-serif", fontWeight: '500', transition: 'all 0.15s', whiteSpace: 'nowrap',
-    }}>{label}</button>
-  )
-
   const typeColor = (type) => {
     if (type === 'power_rankings') return gold
     if (type === 'weekly_summary') return d ? '#93c5fd' : '#1e3a8a'
     return muted
   }
-
-  // Simple markdown renderer -- bold, italic, line breaks
   const renderContent = (content) => {
     if (!content) return ''
     return content
@@ -179,16 +159,17 @@ export default function WriteupsPage() {
       .map((line, i) => {
         const bold = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         const italic = bold.replace(/\*(.*?)\*/g, '<em>$1</em>')
-        return `<p key="${i}" style="margin-bottom:10px;line-height:1.7">${italic || '&nbsp;'}</p>`
+        return `<p style="margin-bottom:10px;line-height:1.7">${italic || '&nbsp;'}</p>`
       })
       .join('')
   }
+
+  if (!mounted) return null
 
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
 
-      {/* PIN Modal */}
       {pinModal && (
         <>
           <div onClick={() => { setPinModal(null); setPinInput(''); setPinError('') }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
@@ -239,10 +220,8 @@ export default function WriteupsPage() {
           )}
         </div>
 
-        {/* FEED VIEW */}
         {view === 'feed' && (
           <>
-            {/* Filters */}
             <div style={{ display: 'flex', flexDirection: effectiveMobile ? 'column' : 'row', gap: '8px', marginBottom: '32px', flexWrap: 'wrap' }}>
               <select value={filterYear} onChange={e => setFilterYear(e.target.value)} style={{ ...selectStyle, width: effectiveMobile ? '100%' : '140px' }}>
                 <option value="all">All Years</option>
@@ -270,37 +249,27 @@ export default function WriteupsPage() {
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-              {filteredWriteups.map((w, i) => {
+              {filteredWriteups.map((w) => {
                 const isExpanded = expandedId === w.id
                 return (
                   <div key={w.id} style={{ background: cardBg, border: `1px solid ${border}` }}>
-                    {/* Header */}
-                    <div
-                      onClick={() => setExpandedId(isExpanded ? null : w.id)}
-                      style={{ padding: effectiveMobile ? '16px' : '20px 24px', cursor: 'pointer' }}
-                    >
+                    <div onClick={() => setExpandedId(isExpanded ? null : w.id)} style={{ padding: effectiveMobile ? '16px' : '20px 24px', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: typeColor(w.type), border: `1px solid ${typeColor(w.type)}`, padding: '2px 6px', whiteSpace: 'nowrap' }}>
                               {TYPE_LABELS[w.type]}
                             </span>
-                            <span style={{ fontSize: '11px', color: muted }}>
-                              {w.season_year}{w.week ? ` · Week ${w.week}` : ''}
-                            </span>
+                            <span style={{ fontSize: '11px', color: muted }}>{w.season_year}{w.week ? ` · Week ${w.week}` : ''}</span>
                             <span style={{ fontSize: '11px', color: muted }}>· {w.author_name}</span>
                           </div>
                           <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '17px' : '20px', color: text, fontWeight: '400' }}>
                             {w.title}
                           </h3>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                          <span style={{ fontSize: '11px', color: muted }}>{isExpanded ? '▲' : '▼'}</span>
-                        </div>
+                        <span style={{ fontSize: '11px', color: muted, flexShrink: 0 }}>{isExpanded ? '▲' : '▼'}</span>
                       </div>
                     </div>
-
-                    {/* Content */}
                     {isExpanded && (
                       <div style={{ borderTop: `1px solid ${border}`, padding: effectiveMobile ? '16px' : '20px 24px' }}>
                         <div
@@ -308,18 +277,8 @@ export default function WriteupsPage() {
                           dangerouslySetInnerHTML={{ __html: renderContent(w.content) }}
                         />
                         <div style={{ display: 'flex', gap: '8px', borderTop: `1px solid ${border}`, paddingTop: '16px' }}>
-                          <button
-                            onClick={() => { setPinModal({ writeupId: w.id, action: 'edit' }); setPinInput(''); setPinError('') }}
-                            style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => { setPinModal({ writeupId: w.id, action: 'delete' }); setPinInput(''); setPinError('') }}
-                            style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '6px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}
-                          >
-                            Delete
-                          </button>
+                          <button onClick={() => { setPinModal({ writeupId: w.id, action: 'edit' }); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Edit</button>
+                          <button onClick={() => { setPinModal({ writeupId: w.id, action: 'delete' }); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '6px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Delete</button>
                         </div>
                       </div>
                     )}
@@ -330,15 +289,12 @@ export default function WriteupsPage() {
           </>
         )}
 
-        {/* NEW / EDIT FORM */}
         {(view === 'new' || view === 'edit') && (
           <div>
             <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '32px' }}>
               {view === 'edit' ? 'Editing writeup' : 'New writeup'}
             </p>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Row 1: year, week, type */}
               <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={labelStyle}>Season Year</label>
@@ -360,61 +316,27 @@ export default function WriteupsPage() {
                   </select>
                 </div>
               </div>
-
-              {/* Title */}
               <div>
                 <label style={labelStyle}>Title</label>
-                <input
-                  value={form.title}
-                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder="e.g. Week 7 Power Rankings"
-                  style={inputStyle}
-                />
+                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Week 7 Power Rankings" style={inputStyle} />
               </div>
-
-              {/* Content */}
               <div>
                 <label style={labelStyle}>Content · supports **bold** and *italic*</label>
-                <textarea
-                  value={form.content}
-                  onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                  placeholder="Write your writeup here..."
-                  rows={effectiveMobile ? 12 : 18}
-                  style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }}
-                />
+                <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} placeholder="Write your writeup here..." rows={effectiveMobile ? 12 : 18} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }} />
               </div>
-
-              {/* Author + PIN */}
               <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={labelStyle}>Your Name</label>
-                  <input
-                    value={form.author_name}
-                    onChange={e => setForm(f => ({ ...f, author_name: e.target.value }))}
-                    placeholder="e.g. Dan"
-                    style={inputStyle}
-                  />
+                  <input value={form.author_name} onChange={e => setForm(f => ({ ...f, author_name: e.target.value }))} placeholder="e.g. Dan" style={inputStyle} />
                 </div>
                 <div>
                   <label style={labelStyle}>{view === 'edit' ? 'Current PIN (to verify)' : 'Set a PIN (to edit/delete later)'}</label>
-                  <input
-                    type="password"
-                    value={form.pin}
-                    onChange={e => setForm(f => ({ ...f, pin: e.target.value }))}
-                    placeholder="4+ digit PIN"
-                    style={inputStyle}
-                  />
+                  <input type="password" value={form.pin} onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} placeholder="4+ digit PIN" style={inputStyle} />
                 </div>
               </div>
-
               {formError && <p style={{ fontSize: '12px', color: red }}>{formError}</p>}
               {formSuccess && <p style={{ fontSize: '12px', color: green }}>{formSuccess}</p>}
-
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                style={{ background: text, color: bg, border: 'none', padding: '14px 28px', cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '12px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', opacity: submitting ? 0.6 : 1, alignSelf: 'flex-start' }}
-              >
+              <button onClick={handleSubmit} disabled={submitting} style={{ background: text, color: bg, border: 'none', padding: '14px 28px', cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '12px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', opacity: submitting ? 0.6 : 1, alignSelf: 'flex-start' }}>
                 {submitting ? 'Saving...' : view === 'edit' ? 'Save Changes' : 'Post Writeup'}
               </button>
             </div>
