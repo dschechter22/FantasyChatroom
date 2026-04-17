@@ -3,36 +3,30 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
-
 const MANAGER_COLORS = {
   'dan': '#4285F4', 'wally': '#EA4335', 'john': '#FBBC04', 'braden': '#34A853',
   'jm': '#FF6D00', 'big-e': '#46BDC6', 'mamby-tenner': '#7BAAF7', 'reid': '#F07B72',
   'freed': '#FCD04F', 'caden': '#71C287', 'dav': '#aaaaaa', 'bern-tenner': '#cccccc',
 }
-
 export default function LJIndexPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red } = useLayout()
-
   const [seasons, setSeasons] = useState([])
   const [selectedYear, setSelectedYear] = useState(2025)
   const [matchups, setMatchups] = useState([])
   const [teams, setTeams] = useState([])
   const [managers, setManagers] = useState([])
   const [tooltip, setTooltip] = useState(null)
-  const [ljView, setLjView] = useState('season') // 'season' | 'alltime'
+  const [ljView, setLjView] = useState('season')
   const [allTimeYearFrom, setAllTimeYearFrom] = useState('all')
   const [allTimeYearTo, setAllTimeYearTo] = useState('all')
-
   useEffect(() => {
     supabase.from('seasons').select('year, season_number').order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
     supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
   }, [])
-
   useEffect(() => {
     setMatchups([]); setTeams([])
     supabase.from('matchups')
@@ -42,11 +36,9 @@ export default function LJIndexPage() {
       .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
       .then(({ data }) => setTeams((data || []).filter(t => t.season?.year === selectedYear)))
   }, [selectedYear])
-
   const computeData = () => {
     if (matchups.length === 0 || teams.length === 0) return []
     const weeks = [...new Set(matchups.map(m => m.week))].sort((a, b) => a - b)
-
     const allPlaySum = {}
     teams.forEach(t => { allPlaySum[t.id] = 0 })
     weeks.forEach(week => {
@@ -63,21 +55,18 @@ export default function LJIndexPage() {
         allPlaySum[teamId] += allScores.filter(o => o.teamId !== teamId && score > o.score).length / (n - 1)
       })
     })
-
     const median = (arr) => {
       if (!arr.length) return 0
       const s = [...arr].sort((a, b) => a - b)
       const mid = Math.floor(s.length / 2)
       return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2
     }
-
     const teamScores = {}
     teams.forEach(t => { teamScores[t.id] = [] })
     matchups.forEach(m => {
       if (teamScores[m.home_team?.id] !== undefined) teamScores[m.home_team.id].push(m.home_score)
       if (teamScores[m.away_team?.id] !== undefined) teamScores[m.away_team.id].push(m.away_score)
     })
-
     const teamData = teams.map(t => {
       const scores = teamScores[t.id] || []
       const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0
@@ -89,12 +78,10 @@ export default function LJIndexPage() {
       const powerRaw = winPct * 2 + avgScore * 4 + allPlayWinPct * 2 + medianScore * 2
       return { t, winPct, allPlayWinPct, avgScore, medianScore, expectedWins, luck, powerRaw }
     })
-
     const avgAllPlay = teamData.reduce((s, r) => s + r.allPlayWinPct, 0) / teamData.length
     const avgLuck = teamData.reduce((s, r) => s + r.luck, 0) / teamData.length
     const maxPower = Math.max(...teamData.map(r => r.powerRaw))
     const minPower = Math.min(...teamData.map(r => r.powerRaw))
-
     return teamData.map(r => ({
       managerId: r.t.manager?.id,
       managerName: r.t.manager?.name,
@@ -110,29 +97,22 @@ export default function LJIndexPage() {
       avgScore: parseFloat(r.avgScore.toFixed(1)),
     }))
   }
-
   const plotData = computeData()
-  const activeData = ljView === 'season' ? plotData : allTimeData
-
-  // All-time aggregated LJ data
+  // allTimeData declared BEFORE activeData to avoid initialization error
   const allTimeData = useMemo(() => {
     if (managers.length === 0 || matchups.length === 0) return []
     const activeM = managers.filter(m => m.active)
     const allSeasons = [...new Set(matchups.map(m => m.season?.year))].filter(Boolean)
-
     const filteredSeasons = allSeasons.filter(yr => {
       if (allTimeYearFrom !== 'all' && yr < parseInt(allTimeYearFrom)) return false
       if (allTimeYearTo !== 'all' && yr > parseInt(allTimeYearTo)) return false
       return true
     })
-
     const result = {}
     activeM.forEach(m => { result[m.id] = { wins: 0, losses: 0, allPlaySum: 0, weekCount: 0, pf: 0, scores: [], managerName: m.name, managerSlug: m.slug } })
-
     filteredSeasons.forEach(yr => {
       const yearMatchups = matchups.filter(m => m.season?.year === yr && !m.is_playoff)
       const weeks = [...new Set(yearMatchups.map(m => m.week))].sort((a, b) => a - b)
-
       yearMatchups.forEach(m => {
         if (result[m.home_team?.manager_id]) {
           result[m.home_team.manager_id].scores.push(m.home_score)
@@ -147,7 +127,6 @@ export default function LJIndexPage() {
           else if (m.away_score < m.home_score) result[m.away_team.manager_id].losses++
         }
       })
-
       weeks.forEach(week => {
         const weekGames = yearMatchups.filter(m => m.week === week)
         const allScores = []
@@ -164,7 +143,6 @@ export default function LJIndexPage() {
         })
       })
     })
-
     const rows = Object.entries(result).map(([id, r]) => {
       const games = r.wins + r.losses
       const allPlayWinPct = r.weekCount > 0 ? r.allPlaySum / r.weekCount : 0
@@ -172,12 +150,10 @@ export default function LJIndexPage() {
       const avgScore = games > 0 ? parseFloat((r.pf / games).toFixed(1)) : 0
       return { managerId: id, managerName: r.managerName, managerSlug: r.managerSlug, wins: r.wins, losses: r.losses, allPlayWinPct: parseFloat((allPlayWinPct * 100).toFixed(1)), luckRaw: luck, avgScore, winPct: games > 0 ? parseFloat(((r.wins / games) * 100).toFixed(1)) : 0 }
     }).filter(r => r.wins + r.losses > 0)
-
     const avgAp = rows.reduce((s, r) => s + r.allPlayWinPct, 0) / rows.length
     const avgLuck = rows.reduce((s, r) => s + r.luckRaw, 0) / rows.length
     const maxPf = Math.max(...rows.map(r => r.avgScore))
     const minPf = Math.min(...rows.map(r => r.avgScore))
-
     return rows.map(r => ({
       ...r,
       x: parseFloat((r.allPlayWinPct - avgAp).toFixed(1)),
@@ -185,27 +161,23 @@ export default function LJIndexPage() {
       powerNorm: maxPf === minPf ? 0.5 : (r.avgScore - minPf) / (maxPf - minPf),
     }))
   }, [managers, matchups, allTimeYearFrom, allTimeYearTo])
-
+  // activeData declared AFTER allTimeData
+  const activeData = ljView === 'season' ? plotData : allTimeData
   const W = effectiveMobile ? 340 : 680
   const H = effectiveMobile ? 280 : 480
   const PAD = { top: 30, right: 20, bottom: 50, left: effectiveMobile ? 45 : 65 }
   const chartW = W - PAD.left - PAD.right
   const chartH = H - PAD.top - PAD.bottom
-
-  const xVals = plotData.map(r => r.x)
-  const yVals = plotData.map(r => r.y)
-  // Use actual data range + padding so bubbles spread out naturally
+  const xVals = activeData.map(r => r.x)
+  const yVals = activeData.map(r => r.y)
   const xPad = Math.max(5, (Math.max(...xVals.map(Math.abs))) * 0.35)
   const yPad = Math.max(5, (Math.max(...yVals.map(Math.abs))) * 0.35)
-  const xMax = Math.max(...xVals.map(Math.abs)) + xPad
-  const yMax = Math.max(...yVals.map(Math.abs)) + yPad
-
+  const xMax = xVals.length > 0 ? Math.max(...xVals.map(Math.abs)) + xPad : 20
+  const yMax = yVals.length > 0 ? Math.max(...yVals.map(Math.abs)) + yPad : 20
   const toSvgX = (x) => PAD.left + ((x + xMax) / (2 * xMax)) * chartW
   const toSvgY = (y) => PAD.top + ((yMax - y) / (2 * yMax)) * chartH
-
   const minBubble = effectiveMobile ? 7 : 10
   const maxBubble = effectiveMobile ? 16 : 22
-  // Dynamic grid lines based on actual range
   const gridStep = xMax <= 15 ? 5 : xMax <= 30 ? 10 : 25
   const gridLines = []
   for (let v = -Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v <= Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v += gridStep) {
@@ -213,22 +185,18 @@ export default function LJIndexPage() {
   }
   const axisColor = d ? 'rgba(255,255,255,0.2)' : 'rgba(13,33,82,0.25)'
   const gridColor = d ? 'rgba(255,255,255,0.06)' : 'rgba(13,33,82,0.08)'
-
   const quadrants = [
     { x: PAD.left + chartW * 0.75, y: PAD.top + chartH * 0.12, label: 'Good & Lucky', color: d ? 'rgba(110,231,183,0.5)' : 'rgba(13,110,63,0.45)' },
     { x: PAD.left + chartW * 0.2, y: PAD.top + chartH * 0.12, label: 'Lucky, Not Good', color: d ? 'rgba(147,197,253,0.5)' : 'rgba(30,58,138,0.4)' },
     { x: PAD.left + chartW * 0.75, y: PAD.top + chartH * 0.88, label: 'Good, Unlucky', color: d ? 'rgba(252,211,77,0.5)' : 'rgba(146,64,14,0.5)' },
     { x: PAD.left + chartW * 0.2, y: PAD.top + chartH * 0.88, label: 'Bad & Unlucky', color: d ? 'rgba(248,113,113,0.5)' : 'rgba(155,28,28,0.5)' },
   ]
-
   const hStyle = (align = 'left') => ({ padding: '10px 12px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: align, borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' })
   const cStyle = (align = 'left') => ({ padding: '12px', fontSize: '12px', textAlign: align, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
-
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
       <div style={{ maxWidth: '1100px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
-
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '20px', marginBottom: '12px', flexWrap: 'wrap' }}>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', letterSpacing: '-0.02em' }}>LJ Index</h1>
           <div style={{ paddingBottom: '8px' }}>
@@ -240,8 +208,6 @@ export default function LJIndexPage() {
         <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.06em', marginBottom: '20px', maxWidth: '560px' }}>
           All-Play Win% vs Luck · bubble size = power score · axes centered at league average
         </p>
-
-        {/* View toggle */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
           {['season', 'alltime'].map(v => (
             <button key={v} onClick={() => setLjView(v)} style={{
@@ -252,8 +218,6 @@ export default function LJIndexPage() {
             }}>{v === 'season' ? 'Single Season' : 'All-Time'}</button>
           ))}
         </div>
-
-        {/* All-time year range */}
         {ljView === 'alltime' && (
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
             <select value={allTimeYearFrom} onChange={e => setAllTimeYearFrom(e.target.value)} style={{ background: cardBg, border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Playfair Display', serif", cursor: 'pointer', outline: 'none' }}>
@@ -266,17 +230,13 @@ export default function LJIndexPage() {
             </select>
           </div>
         )}
-
         {activeData.length > 0 ? (
           <div style={{ marginBottom: '40px', overflowX: 'auto' }}>
             <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: `${W}px`, height: 'auto', display: 'block', overflow: 'visible' }}>
-              {/* Quadrant backgrounds */}
               <rect x={toSvgX(0)} y={PAD.top} width={chartW - (toSvgX(0) - PAD.left)} height={chartH / 2} fill={d ? 'rgba(110,231,183,0.04)' : 'rgba(13,110,63,0.03)'} />
               <rect x={PAD.left} y={PAD.top} width={toSvgX(0) - PAD.left} height={chartH / 2} fill={d ? 'rgba(147,197,253,0.04)' : 'rgba(30,58,138,0.03)'} />
               <rect x={toSvgX(0)} y={toSvgY(0)} width={chartW - (toSvgX(0) - PAD.left)} height={chartH / 2} fill={d ? 'rgba(252,211,77,0.04)' : 'rgba(146,64,14,0.03)'} />
               <rect x={PAD.left} y={toSvgY(0)} width={toSvgX(0) - PAD.left} height={chartH / 2} fill={d ? 'rgba(248,113,113,0.04)' : 'rgba(155,28,28,0.03)'} />
-
-              {/* Grid */}
               {gridLines.map(v => (
                 <g key={v}>
                   <line x1={toSvgX(v)} y1={PAD.top} x2={toSvgX(v)} y2={PAD.top + chartH} stroke={v === 0 ? axisColor : gridColor} strokeWidth={v === 0 ? 1.5 : 1} />
@@ -285,17 +245,11 @@ export default function LJIndexPage() {
                   <text x={PAD.left - 6} y={toSvgY(v) + 4} textAnchor="end" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif">{v}%</text>
                 </g>
               ))}
-
-              {/* Axis labels */}
               <text x={PAD.left + chartW / 2} y={H - 4} textAnchor="middle" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif" letterSpacing="1.5">ALL-PLAY WIN %</text>
               <text x={10} y={PAD.top + chartH / 2} textAnchor="middle" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif" letterSpacing="1.5" transform={`rotate(-90, 10, ${PAD.top + chartH / 2})`}>LUCK</text>
-
-              {/* Quadrant labels */}
               {!effectiveMobile && quadrants.map((q, i) => (
                 <text key={i} x={q.x} y={q.y} textAnchor="middle" fontSize="9" fill={q.color} fontFamily="Inter, sans-serif" letterSpacing="1.2" fontWeight="500">{q.label.toUpperCase()}</text>
               ))}
-
-              {/* Bubbles */}
               {activeData.map((r, i) => {
                 const cx = toSvgX(r.x)
                 const cy = toSvgY(r.y)
@@ -315,8 +269,6 @@ export default function LJIndexPage() {
                   </g>
                 )
               })}
-
-              {/* Tooltip */}
               {tooltip && (() => {
                 const { r, cx, cy } = tooltip
                 const tw = 175, th = 105
@@ -341,9 +293,7 @@ export default function LJIndexPage() {
         ) : (
           <p style={{ color: muted, fontSize: '14px', marginBottom: '40px' }}>Loading data...</p>
         )}
-
-        {/* Legend */}
-        {plotData.length > 0 && (
+        {activeData.length > 0 && (
           <div style={{ marginBottom: '40px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
               {activeData.map((r, i) => (
@@ -355,9 +305,7 @@ export default function LJIndexPage() {
             </div>
           </div>
         )}
-
-        {/* Table */}
-        {plotData.length > 0 && (
+        {activeData.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
               <thead>
