@@ -106,6 +106,8 @@ export default function PlayersPage() {
 
   if (!mounted) return null
 
+  const displayData = mounted ? filtered : []
+
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
@@ -169,7 +171,7 @@ export default function PlayersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p, i) => (
+                {displayData.map((p, i) => (
                   <tr
                     key={p.id}
                     onClick={() => router.push(`/players/${p.id}`)}
@@ -204,7 +206,7 @@ export default function PlayersPage() {
                 ))}
               </tbody>
             </table>
-            {filtered.length === 0 && (
+            {displayData.length === 0 && (
               <p style={{ color: muted, padding: '24px 0', textAlign: 'center' }}>No players found.</p>
             )}
           </div>
