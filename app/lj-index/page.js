@@ -24,6 +24,9 @@ export default function LJIndexPage() {
   const [teams, setTeams] = useState([])
   const [managers, setManagers] = useState([])
   const [tooltip, setTooltip] = useState(null)
+  const [ljView, setLjView] = useState('season') // 'season' | 'alltime'
+  const [allTimeYearFrom, setAllTimeYearFrom] = useState('all')
+  const [allTimeYearTo, setAllTimeYearTo] = useState('all')
 
   useEffect(() => {
     supabase.from('seasons').select('year, season_number').order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
@@ -109,6 +112,79 @@ export default function LJIndexPage() {
   }
 
   const plotData = computeData()
+  const activeData = ljView === 'season' ? plotData : allTimeData
+
+  // All-time aggregated LJ data
+  const allTimeData = useMemo(() => {
+    if (managers.length === 0 || matchups.length === 0) return []
+    const activeM = managers.filter(m => m.active)
+    const allSeasons = [...new Set(matchups.map(m => m.season?.year))].filter(Boolean)
+
+    const filteredSeasons = allSeasons.filter(yr => {
+      if (allTimeYearFrom !== 'all' && yr < parseInt(allTimeYearFrom)) return false
+      if (allTimeYearTo !== 'all' && yr > parseInt(allTimeYearTo)) return false
+      return true
+    })
+
+    const result = {}
+    activeM.forEach(m => { result[m.id] = { wins: 0, losses: 0, allPlaySum: 0, weekCount: 0, pf: 0, scores: [], managerName: m.name, managerSlug: m.slug } })
+
+    filteredSeasons.forEach(yr => {
+      const yearMatchups = matchups.filter(m => m.season?.year === yr && !m.is_playoff)
+      const weeks = [...new Set(yearMatchups.map(m => m.week))].sort((a, b) => a - b)
+
+      yearMatchups.forEach(m => {
+        if (result[m.home_team?.manager_id]) {
+          result[m.home_team.manager_id].scores.push(m.home_score)
+          result[m.home_team.manager_id].pf += m.home_score
+          if (m.home_score > m.away_score) result[m.home_team.manager_id].wins++
+          else if (m.home_score < m.away_score) result[m.home_team.manager_id].losses++
+        }
+        if (result[m.away_team?.manager_id]) {
+          result[m.away_team.manager_id].scores.push(m.away_score)
+          result[m.away_team.manager_id].pf += m.away_score
+          if (m.away_score > m.home_score) result[m.away_team.manager_id].wins++
+          else if (m.away_score < m.home_score) result[m.away_team.manager_id].losses++
+        }
+      })
+
+      weeks.forEach(week => {
+        const weekGames = yearMatchups.filter(m => m.week === week)
+        const allScores = []
+        weekGames.forEach(m => {
+          allScores.push({ managerId: m.home_team?.manager_id, score: m.home_score })
+          allScores.push({ managerId: m.away_team?.manager_id, score: m.away_score })
+        })
+        const n = allScores.length
+        if (n < 2) return
+        allScores.forEach(({ managerId, score }) => {
+          if (!result[managerId]) return
+          result[managerId].allPlaySum += allScores.filter(o => o.managerId !== managerId && score > o.score).length / (n - 1)
+          result[managerId].weekCount++
+        })
+      })
+    })
+
+    const rows = Object.entries(result).map(([id, r]) => {
+      const games = r.wins + r.losses
+      const allPlayWinPct = r.weekCount > 0 ? r.allPlaySum / r.weekCount : 0
+      const luck = parseFloat((r.wins - r.allPlaySum).toFixed(2))
+      const avgScore = games > 0 ? parseFloat((r.pf / games).toFixed(1)) : 0
+      return { managerId: id, managerName: r.managerName, managerSlug: r.managerSlug, wins: r.wins, losses: r.losses, allPlayWinPct: parseFloat((allPlayWinPct * 100).toFixed(1)), luckRaw: luck, avgScore, winPct: games > 0 ? parseFloat(((r.wins / games) * 100).toFixed(1)) : 0 }
+    }).filter(r => r.wins + r.losses > 0)
+
+    const avgAp = rows.reduce((s, r) => s + r.allPlayWinPct, 0) / rows.length
+    const avgLuck = rows.reduce((s, r) => s + r.luckRaw, 0) / rows.length
+    const maxPf = Math.max(...rows.map(r => r.avgScore))
+    const minPf = Math.min(...rows.map(r => r.avgScore))
+
+    return rows.map(r => ({
+      ...r,
+      x: parseFloat((r.allPlayWinPct - avgAp).toFixed(1)),
+      y: parseFloat(((r.luckRaw - avgLuck) / Math.max(r.wins + r.losses, 1) * 100).toFixed(1)),
+      powerNorm: maxPf === minPf ? 0.5 : (r.avgScore - minPf) / (maxPf - minPf),
+    }))
+  }, [managers, matchups, allTimeYearFrom, allTimeYearTo])
 
   const W = effectiveMobile ? 340 : 680
   const H = effectiveMobile ? 280 : 480
@@ -161,11 +237,37 @@ export default function LJIndexPage() {
             </select>
           </div>
         </div>
-        <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.06em', marginBottom: '32px', maxWidth: '560px' }}>
+        <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.06em', marginBottom: '20px', maxWidth: '560px' }}>
           All-Play Win% vs Luck · bubble size = power score · axes centered at league average
         </p>
 
-        {plotData.length > 0 ? (
+        {/* View toggle */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          {['season', 'alltime'].map(v => (
+            <button key={v} onClick={() => setLjView(v)} style={{
+              background: ljView === v ? text : 'none', border: `1px solid ${border}`,
+              color: ljView === v ? bg : muted, padding: effectiveMobile ? '6px 10px' : '7px 16px',
+              cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase',
+              fontFamily: "'Inter', sans-serif", fontWeight: '500',
+            }}>{v === 'season' ? 'Single Season' : 'All-Time'}</button>
+          ))}
+        </div>
+
+        {/* All-time year range */}
+        {ljView === 'alltime' && (
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            <select value={allTimeYearFrom} onChange={e => setAllTimeYearFrom(e.target.value)} style={{ background: cardBg, border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Playfair Display', serif", cursor: 'pointer', outline: 'none' }}>
+              <option value="all">From Year</option>
+              {seasons.map(s => <option key={s.year} value={s.year}>{s.year}</option>)}
+            </select>
+            <select value={allTimeYearTo} onChange={e => setAllTimeYearTo(e.target.value)} style={{ background: cardBg, border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Playfair Display', serif", cursor: 'pointer', outline: 'none' }}>
+              <option value="all">To Year</option>
+              {seasons.map(s => <option key={s.year} value={s.year}>{s.year}</option>)}
+            </select>
+          </div>
+        )}
+
+        {activeData.length > 0 ? (
           <div style={{ marginBottom: '40px', overflowX: 'auto' }}>
             <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: `${W}px`, height: 'auto', display: 'block', overflow: 'visible' }}>
               {/* Quadrant backgrounds */}
@@ -194,7 +296,7 @@ export default function LJIndexPage() {
               ))}
 
               {/* Bubbles */}
-              {plotData.map((r, i) => {
+              {activeData.map((r, i) => {
                 const cx = toSvgX(r.x)
                 const cy = toSvgY(r.y)
                 const radius = minBubble + r.powerNorm * (maxBubble - minBubble)
@@ -244,7 +346,7 @@ export default function LJIndexPage() {
         {plotData.length > 0 && (
           <div style={{ marginBottom: '40px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              {plotData.map((r, i) => (
+              {activeData.map((r, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: MANAGER_COLORS[r.managerSlug] || '#888', flexShrink: 0 }} />
                   <span style={{ fontSize: '11px', color: muted }}>{r.managerName}</span>
@@ -266,7 +368,7 @@ export default function LJIndexPage() {
                 </tr>
               </thead>
               <tbody>
-                {[...plotData].sort((a, b) => b.allPlayWinPct - a.allPlayWinPct).map((r, i) => (
+                {[...activeData].sort((a, b) => b.allPlayWinPct - a.allPlayWinPct).map((r, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                     <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif" }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
