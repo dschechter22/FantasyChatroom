@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
