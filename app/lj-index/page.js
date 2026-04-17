@@ -97,7 +97,7 @@ export default function LJIndexPage() {
       avgScore: parseFloat(r.avgScore.toFixed(1)),
     }))
   }
-  const plotData = computeData()
+  const plotData = useMemo(() => computeData(), [matchups, teams])
   // allTimeData declared BEFORE activeData to avoid initialization error
   const allTimeData = useMemo(() => {
     if (managers.length === 0 || matchups.length === 0) return []
@@ -170,10 +170,12 @@ export default function LJIndexPage() {
   const chartH = H - PAD.top - PAD.bottom
   const xVals = activeData.map(r => r.x)
   const yVals = activeData.map(r => r.y)
-  const xPad = Math.max(5, (Math.max(...xVals.map(Math.abs))) * 0.35)
-  const yPad = Math.max(5, (Math.max(...yVals.map(Math.abs))) * 0.35)
-  const xMax = xVals.length > 0 ? Math.max(...xVals.map(Math.abs)) + xPad : 20
-  const yMax = yVals.length > 0 ? Math.max(...yVals.map(Math.abs)) + yPad : 20
+  const xAbsMax = xVals.length > 0 ? Math.max(...xVals.map(Math.abs)) : 20
+  const yAbsMax = yVals.length > 0 ? Math.max(...yVals.map(Math.abs)) : 20
+  const xPad = Math.max(5, xAbsMax * 0.35)
+  const yPad = Math.max(5, yAbsMax * 0.35)
+  const xMax = xAbsMax + xPad
+  const yMax = yAbsMax + yPad
   const toSvgX = (x) => PAD.left + ((x + xMax) / (2 * xMax)) * chartW
   const toSvgY = (y) => PAD.top + ((yMax - y) / (2 * yMax)) * chartH
   const minBubble = effectiveMobile ? 7 : 10
