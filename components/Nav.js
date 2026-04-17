@@ -14,6 +14,7 @@ const NAV_LINKS = [
   ['Power Rankings', '/power-rankings'],
   ['LJ Index', '/lj-index'],
   ['All-Time Teams', '/all-time-teams'],
+  ['Stats', '/stats'],
 ]
 
 export default function Nav() {
