@@ -40,12 +40,14 @@ export default function SeasonPage() {
   const getTeamByManagerId = (managerId) => teams.find(t => t.manager?.id === managerId)
 
   const regMatchups = matchups.filter(m => !m.is_playoff)
-  const playoffMatchups = matchups.filter(m => m.is_playoff)
+  const playoffMatchups = matchups.filter(m => m.is_playoff && !m.is_mol_bowl)
+  const molBowlMatchups = matchups.filter(m => m.is_mol_bowl)
   const weeks = [...new Set(regMatchups.map(m => m.week))].sort((a, b) => a - b)
   const playoffWeeks = [...new Set(playoffMatchups.map(m => m.week))].sort((a, b) => a - b)
 
   const filteredReg = selectedTeam ? regMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam) : regMatchups
   const filteredPlayoff = selectedTeam ? playoffMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam) : playoffMatchups
+  const filteredMolBowl = selectedTeam ? molBowlMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam) : molBowlMatchups
 
   const playoffTeams = teams.filter(t => t.made_playoffs).sort((a, b) => {
     if (b.wins !== a.wins) return b.wins - a.wins
