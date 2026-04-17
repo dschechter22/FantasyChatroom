@@ -24,7 +24,8 @@ export default function StandingsPage() {
 
   // Filters
   const [searchText, setSearchText] = useState('')
-  const [filterYear, setFilterYear] = useState('all')
+  const [yearFrom, setYearFrom] = useState('all')
+  const [yearTo, setYearTo] = useState('all')
 
   useEffect(() => {
     supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
@@ -44,27 +45,32 @@ export default function StandingsPage() {
   const filteredTeams = teams.filter(t => {
     const range = eraYears[era]
     if (range && (t.season.year < range[0] || t.season.year > range[1])) return false
-    if (filterYear !== 'all' && t.season.year !== parseInt(filterYear)) return false
+    const yr = t.season.year
+    if (yearFrom !== 'all' && yr < parseInt(yearFrom)) return false
+    if (yearTo !== 'all' && yr > parseInt(yearTo)) return false
     return true
   })
 
   const filteredSeasons = seasons.filter(s => {
     const range = eraYears[era]
     if (range && (s.year < range[0] || s.year > range[1])) return false
-    if (filterYear !== 'all' && s.year !== parseInt(filterYear)) return false
+    if (yearFrom !== 'all' && s.year < parseInt(yearFrom)) return false
+    if (yearTo !== 'all' && s.year > parseInt(yearTo)) return false
     return true
   })
 
   const filteredMatchups = matchups.filter(m => {
     const range = eraYears[era]
     if (range && (m.season?.year < range[0] || m.season?.year > range[1])) return false
-    if (filterYear !== 'all' && m.season?.year !== parseInt(filterYear)) return false
+    if (yearFrom !== 'all' && m.season?.year < parseInt(yearFrom)) return false
+    if (yearTo !== 'all' && m.season?.year > parseInt(yearTo)) return false
     return true
   })
 
   const getPlayoffStats = (managerId, seasonYear) => {
     const games = filteredMatchups.filter(m =>
       m.season?.year === seasonYear &&
+      !m.is_mol_bowl &&
       (m.home_team?.manager_id === managerId || m.away_team?.manager_id === managerId)
     )
     let pf = 0, pa = 0, wins = 0, losses = 0
@@ -265,8 +271,12 @@ export default function StandingsPage() {
             onChange={e => setSearchText(e.target.value)}
             style={inputStyle}
           />
-          <select value={filterYear} onChange={e => setFilterYear(e.target.value)} style={selectStyle}>
-            <option value="all">All Years</option>
+          <select value={yearFrom} onChange={e => setYearFrom(e.target.value)} style={selectStyle}>
+            <option value="all">From Year</option>
+            {allYears.slice().reverse().map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select value={yearTo} onChange={e => setYearTo(e.target.value)} style={selectStyle}>
+            <option value="all">To Year</option>
             {allYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
