@@ -1,25 +1,17 @@
 'use client'
 import { createContext, useContext, useState, useEffect } from 'react'
-
 const LayoutContext = createContext(null)
-
 export function LayoutProvider({ children }) {
-  const [theme, setThemeState] = useState(() => {
-    if (typeof window === 'undefined') return 'light'
-    return localStorage.getItem('fc-theme') || 'light'
-  })
-
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.innerWidth <= 768
-  })
-
-  const [mobileOverride, setMobileOverride] = useState(() => {
-    if (typeof window === 'undefined') return null
-    return localStorage.getItem('fc-layout') || null
-  })
+  const [theme, setThemeState] = useState('light')
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobileOverride, setMobileOverride] = useState(null)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setThemeState(localStorage.getItem('fc-theme') || 'light')
+    setIsMobile(window.innerWidth <= 768)
+    setMobileOverride(localStorage.getItem('fc-layout') || null)
+    setMounted(true)
     const checkSize = () => setIsMobile(window.innerWidth <= 768)
     window.addEventListener('resize', checkSize)
     return () => window.removeEventListener('resize', checkSize)
@@ -29,9 +21,7 @@ export function LayoutProvider({ children }) {
     setThemeState(next)
     localStorage.setItem('fc-theme', next)
   }
-
   const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light')
-
   const toggleLayout = () => {
     const next = effectiveMobile ? 'desktop' : 'mobile'
     setMobileOverride(next)
@@ -39,7 +29,6 @@ export function LayoutProvider({ children }) {
   }
 
   const effectiveMobile = mobileOverride ? mobileOverride === 'mobile' : isMobile
-
   const d = theme === 'dark'
 
   const tokens = {
@@ -57,27 +46,16 @@ export function LayoutProvider({ children }) {
     blue:      d ? '#93c5fd'                : '#1e3a8a',
   }
 
-  const globalCSS = `
-    body {
-      background: ${tokens.bg};
-      color: ${tokens.text};
-      transition: background 0.2s, color 0.2s;
-      font-family: 'Inter', sans-serif;
-    }
-  `
-
   return (
     <LayoutContext.Provider value={{
-      theme, d, effectiveMobile, isMobile, mobileOverride,
+      theme, d, effectiveMobile, isMobile, mobileOverride, mounted,
       toggleTheme, toggleLayout,
       ...tokens,
     }}>
-      <style dangerouslySetInnerHTML={{ __html: globalCSS }} />
       {children}
     </LayoutContext.Provider>
   )
 }
-
 export function useLayout() {
   const ctx = useContext(LayoutContext)
   if (!ctx) throw new Error('useLayout must be used inside LayoutProvider')
