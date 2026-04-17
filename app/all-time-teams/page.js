@@ -203,7 +203,7 @@ export default function AllTimeTeamsPage() {
       const av = val(a), bv = val(b)
       if (typeof av === 'string') return mult * av.localeCompare(bv)
       return mult * (av - bv)
-    }), [enrichedTeams, filterYear, filterManager, filterResult, searchText, sortKey, sortDir])
+    }), [enrichedTeams, yearFrom, yearTo, filterManager, filterResult, searchText, sortKey, sortDir])
 
   const SortIcon = ({ col }) => {
     if (sortKey !== col) return <span style={{ opacity: 0.3, marginLeft: '3px' }}>↕</span>
