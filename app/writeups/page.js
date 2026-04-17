@@ -16,7 +16,7 @@ const WEEKS = Array.from({ length: 17 }, (_, i) => i + 1)
 const YEARS = Array.from({ length: 11 }, (_, i) => 2015 + i)
 
 export default function WriteupsPage() {
-  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold } = useLayout()
+  const { d, effectiveMobile, bg, text, muted, border, cardBg, green, red, gold } = useLayout()
 
   const [writeups, setWriteups] = useState([])
   const [loading, setLoading] = useState(true)
@@ -39,10 +39,7 @@ export default function WriteupsPage() {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
-
-  useEffect(() => {
-    fetchWriteups()
-  }, [])
+  useEffect(() => { fetchWriteups() }, [])
 
   const fetchWriteups = async () => {
     setLoading(true)
@@ -56,15 +53,6 @@ export default function WriteupsPage() {
     setLoading(false)
   }
 
-  const allAuthors = [...new Set(writeups.map(w => w.author_name))].filter(Boolean).sort()
-
-  const filteredWriteups = writeups.filter(w => {
-    if (filterYear !== 'all' && w.season_year !== parseInt(filterYear)) return false
-    if (filterType !== 'all' && w.type !== filterType) return false
-    if (filterAuthor !== 'all' && w.author_name !== filterAuthor) return false
-    return true
-  })
-
   const handleSubmit = async () => {
     if (!form.title.trim()) return setFormError('Title is required.')
     if (!form.content.trim()) return setFormError('Content is required.')
@@ -72,37 +60,21 @@ export default function WriteupsPage() {
     if (!form.pin.trim() || form.pin.length < 4) return setFormError('PIN must be at least 4 digits.')
     setFormError('')
     setSubmitting(true)
-
     if (editTarget) {
-      const { error } = await supabase
-        .from('writeups')
-        .update({
-          season_year: form.season_year,
-          week: form.week || null,
-          type: form.type,
-          title: form.title,
-          content: form.content,
-          author_name: form.author_name,
-        })
-        .eq('id', editTarget.id)
+      const { error } = await supabase.from('writeups').update({
+        season_year: form.season_year, week: form.week || null, type: form.type,
+        title: form.title, content: form.content, author_name: form.author_name,
+      }).eq('id', editTarget.id)
       if (error) { setFormError('Failed to save. Try again.'); setSubmitting(false); return }
       setFormSuccess('Writeup updated.')
     } else {
-      const { error } = await supabase
-        .from('writeups')
-        .insert({
-          season_year: form.season_year,
-          week: form.week || null,
-          type: form.type,
-          title: form.title,
-          content: form.content,
-          author_name: form.author_name,
-          pin: form.pin,
-        })
+      const { error } = await supabase.from('writeups').insert({
+        season_year: form.season_year, week: form.week || null, type: form.type,
+        title: form.title, content: form.content, author_name: form.author_name, pin: form.pin,
+      })
       if (error) { setFormError('Failed to save. Try again.'); setSubmitting(false); return }
       setFormSuccess('Writeup posted!')
     }
-
     setSubmitting(false)
     setForm({ season_year: 2025, week: '', type: 'power_rankings', title: '', content: '', author_name: '', pin: '' })
     setEditTarget(null)
@@ -116,26 +88,27 @@ export default function WriteupsPage() {
     if (!writeup) return
     const isValid = pinInput === writeup.pin || pinInput === ADMIN_PIN
     if (!isValid) { setPinError('Incorrect PIN.'); return }
-    setPinError('')
-    setPinModal(null)
-    setPinInput('')
+    setPinError(''); setPinModal(null); setPinInput('')
     if (action === 'delete') {
       await supabase.from('writeups').delete().eq('id', writeupId)
       fetchWriteups()
     } else if (action === 'edit') {
-      setForm({
-        season_year: writeup.season_year,
-        week: writeup.week || '',
-        type: writeup.type,
-        title: writeup.title,
-        content: writeup.content,
-        author_name: writeup.author_name,
-        pin: writeup.pin,
-      })
+      setForm({ season_year: writeup.season_year, week: writeup.week || '', type: writeup.type, title: writeup.title, content: writeup.content, author_name: writeup.author_name, pin: writeup.pin })
       setEditTarget(writeup)
       setView('edit')
     }
   }
+
+  // Must be after all hooks, before any derived state
+  if (!mounted) return null
+
+  const allAuthors = [...new Set((writeups || []).map(w => w.author_name))].filter(Boolean).sort()
+  const filteredWriteups = (writeups || []).filter(w => {
+    if (filterYear !== 'all' && w.season_year !== parseInt(filterYear)) return false
+    if (filterType !== 'all' && w.type !== filterType) return false
+    if (filterAuthor !== 'all' && w.author_name !== filterAuthor) return false
+    return true
+  })
 
   const inputStyle = {
     background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text,
@@ -143,10 +116,7 @@ export default function WriteupsPage() {
     outline: 'none', width: '100%',
   }
   const selectStyle = { ...inputStyle, cursor: 'pointer' }
-  const labelStyle = {
-    fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase',
-    color: muted, marginBottom: '6px', display: 'block',
-  }
+  const labelStyle = { fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '6px', display: 'block' }
   const typeColor = (type) => {
     if (type === 'power_rankings') return gold
     if (type === 'weekly_summary') return d ? '#93c5fd' : '#1e3a8a'
@@ -154,17 +124,12 @@ export default function WriteupsPage() {
   }
   const renderContent = (content) => {
     if (!content) return ''
-    return content
-      .split('\n')
-      .map((line, i) => {
-        const bold = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        const italic = bold.replace(/\*(.*?)\*/g, '<em>$1</em>')
-        return `<p style="margin-bottom:10px;line-height:1.7">${italic || '&nbsp;'}</p>`
-      })
-      .join('')
+    return content.split('\n').map((line) => {
+      const bold = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      const italic = bold.replace(/\*(.*?)\*/g, '<em>$1</em>')
+      return `<p style="margin-bottom:10px;line-height:1.7">${italic || '&nbsp;'}</p>`
+    }).join('')
   }
-
-  if (!mounted) return null
 
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
@@ -178,45 +143,28 @@ export default function WriteupsPage() {
               {pinModal.action === 'delete' ? 'Delete Writeup' : 'Edit Writeup'}
             </h3>
             <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>Enter your PIN to continue.</p>
-            <input
-              type="password"
-              placeholder="PIN"
-              value={pinInput}
-              onChange={e => { setPinInput(e.target.value); setPinError('') }}
-              onKeyDown={e => e.key === 'Enter' && handlePinSubmit()}
-              style={{ ...inputStyle, marginBottom: '8px' }}
-            />
+            <input type="password" placeholder="PIN" value={pinInput} onChange={e => { setPinInput(e.target.value); setPinError('') }} onKeyDown={e => e.key === 'Enter' && handlePinSubmit()} style={{ ...inputStyle, marginBottom: '8px' }} />
             {pinError && <p style={{ fontSize: '12px', color: red, marginBottom: '8px' }}>{pinError}</p>}
             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
               <button onClick={handlePinSubmit} style={{ background: pinModal.action === 'delete' ? red : text, color: pinModal.action === 'delete' ? '#fff' : bg, border: 'none', padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", fontWeight: '500', flex: 1 }}>
                 {pinModal.action === 'delete' ? 'Delete' : 'Edit'}
               </button>
-              <button onClick={() => { setPinModal(null); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}>
-                Cancel
-              </button>
+              <button onClick={() => { setPinModal(null); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}>Cancel</button>
             </div>
           </div>
         </>
       )}
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
-
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '8px', flexWrap: 'wrap', gap: '12px' }}>
-          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', letterSpacing: '-0.02em' }}>
-            Writeups
-          </h1>
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', letterSpacing: '-0.02em' }}>Writeups</h1>
           {view === 'feed' && (
-            <button
-              onClick={() => { setView('new'); setEditTarget(null); setForm({ season_year: 2025, week: '', type: 'power_rankings', title: '', content: '', author_name: '', pin: '' }); setFormError(''); setFormSuccess('') }}
-              style={{ background: text, color: bg, border: 'none', padding: '10px 20px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', marginBottom: '8px' }}
-            >
+            <button onClick={() => { setView('new'); setEditTarget(null); setForm({ season_year: 2025, week: '', type: 'power_rankings', title: '', content: '', author_name: '', pin: '' }); setFormError(''); setFormSuccess('') }} style={{ background: text, color: bg, border: 'none', padding: '10px 20px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', marginBottom: '8px' }}>
               + New Writeup
             </button>
           )}
           {(view === 'new' || view === 'edit') && (
-            <button onClick={() => { setView('feed'); setEditTarget(null); setFormError(''); setFormSuccess('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 16px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", marginBottom: '8px' }}>
-              ← Back
-            </button>
+            <button onClick={() => { setView('feed'); setEditTarget(null); setFormError(''); setFormSuccess('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 16px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", marginBottom: '8px' }}>← Back</button>
           )}
         </div>
 
@@ -242,9 +190,7 @@ export default function WriteupsPage() {
             {!loading && filteredWriteups.length === 0 && (
               <div style={{ padding: '48px 0', textAlign: 'center' }}>
                 <p style={{ color: muted, fontSize: '14px', marginBottom: '16px' }}>No writeups yet.</p>
-                <button onClick={() => setView('new')} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 20px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>
-                  Be the first to write one
-                </button>
+                <button onClick={() => setView('new')} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 20px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Be the first to write one</button>
               </div>
             )}
 
@@ -257,25 +203,18 @@ export default function WriteupsPage() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: typeColor(w.type), border: `1px solid ${typeColor(w.type)}`, padding: '2px 6px', whiteSpace: 'nowrap' }}>
-                              {TYPE_LABELS[w.type]}
-                            </span>
+                            <span style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: typeColor(w.type), border: `1px solid ${typeColor(w.type)}`, padding: '2px 6px', whiteSpace: 'nowrap' }}>{TYPE_LABELS[w.type]}</span>
                             <span style={{ fontSize: '11px', color: muted }}>{w.season_year}{w.week ? ` · Week ${w.week}` : ''}</span>
                             <span style={{ fontSize: '11px', color: muted }}>· {w.author_name}</span>
                           </div>
-                          <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '17px' : '20px', color: text, fontWeight: '400' }}>
-                            {w.title}
-                          </h3>
+                          <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '17px' : '20px', color: text, fontWeight: '400' }}>{w.title}</h3>
                         </div>
                         <span style={{ fontSize: '11px', color: muted, flexShrink: 0 }}>{isExpanded ? '▲' : '▼'}</span>
                       </div>
                     </div>
                     {isExpanded && (
                       <div style={{ borderTop: `1px solid ${border}`, padding: effectiveMobile ? '16px' : '20px 24px' }}>
-                        <div
-                          style={{ fontSize: '14px', color: text, lineHeight: 1.7, marginBottom: '20px' }}
-                          dangerouslySetInnerHTML={{ __html: renderContent(w.content) }}
-                        />
+                        <div style={{ fontSize: '14px', color: text, lineHeight: 1.7, marginBottom: '20px' }} dangerouslySetInnerHTML={{ __html: renderContent(w.content) }} />
                         <div style={{ display: 'flex', gap: '8px', borderTop: `1px solid ${border}`, paddingTop: '16px' }}>
                           <button onClick={() => { setPinModal({ writeupId: w.id, action: 'edit' }); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Edit</button>
                           <button onClick={() => { setPinModal({ writeupId: w.id, action: 'delete' }); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '6px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Delete</button>
@@ -291,9 +230,7 @@ export default function WriteupsPage() {
 
         {(view === 'new' || view === 'edit') && (
           <div>
-            <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '32px' }}>
-              {view === 'edit' ? 'Editing writeup' : 'New writeup'}
-            </p>
+            <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '32px' }}>{view === 'edit' ? 'Editing writeup' : 'New writeup'}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : '1fr 1fr 1fr', gap: '16px' }}>
                 <div>
