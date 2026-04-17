@@ -9,7 +9,11 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const RESULT_OPTIONS = ['All', 'Champion', 'Runner Up', 'Third Place', 'Mol Bowl Loser', 'Made Playoffs', 'Missed Playoffs']
+const RESULT_OPTIONS = [
+  'All', 'Champion', 'Runner Up', 'Third Place', '4th Place',
+  '5th Place', '6th Place', '7th Place', '8th Place', '9th Place', '10th Place',
+  'Mol Bowl Winner', 'Mol Bowl Loser', 'Made Playoffs', 'Missed Playoffs'
+]
 
 export default function AllTimeTeamsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold } = useLayout()
@@ -19,7 +23,8 @@ export default function AllTimeTeamsPage() {
   const [sortKey, setSortKey] = useState('points_for')
   const [sortDir, setSortDir] = useState('desc')
   const [searchText, setSearchText] = useState('')
-  const [filterYear, setFilterYear] = useState('all')
+  const [yearFrom, setYearFrom] = useState('all')
+  const [yearTo, setYearTo] = useState('all')
   const [filterManager, setFilterManager] = useState('all')
   const [filterResult, setFilterResult] = useState('All')
 
@@ -152,9 +157,13 @@ export default function AllTimeTeamsPage() {
     if (filterResult === 'Champion') return t.playoff_result === 'Champion'
     if (filterResult === 'Runner Up') return t.playoff_result === 'Runner Up'
     if (filterResult === 'Third Place') return t.playoff_result === 'Third Place'
-    if (filterResult === 'Mol Bowl Loser') return t.playoff_result?.includes('Mol Bowl')
+    if (filterResult === 'Mol Bowl Winner') return t.playoff_result === 'Mol Bowl Winner'
+    if (filterResult === 'Mol Bowl Loser') return t.playoff_result === 'Mol Bowl Loser'
     if (filterResult === 'Made Playoffs') return t.made_playoffs
     if (filterResult === 'Missed Playoffs') return !t.made_playoffs
+    // Exact place finishes for non-playoff teams
+    const placeMap = { '4th Place': 4, '5th Place': 5, '6th Place': 6, '7th Place': 7, '8th Place': 8, '9th Place': 9, '10th Place': 10 }
+    if (placeMap[filterResult]) return !t.made_playoffs && t.final_standing === placeMap[filterResult]
     return true
   }
 
@@ -169,7 +178,9 @@ export default function AllTimeTeamsPage() {
 
   const filteredTeams = useMemo(() => enrichedTeams
     .filter(t => {
-      if (filterYear !== 'all' && t.season?.year !== parseInt(filterYear)) return false
+      const yr = t.season?.year
+      if (yearFrom !== 'all' && yr < parseInt(yearFrom)) return false
+      if (yearTo !== 'all' && yr > parseInt(yearTo)) return false
       if (filterManager !== 'all' && t.manager?.slug !== filterManager) return false
       if (!matchesResultFilter(t)) return false
       if (searchText) {
@@ -283,8 +294,12 @@ export default function AllTimeTeamsPage() {
             onChange={e => setSearchText(e.target.value)}
             style={{ ...inputStyle, width: effectiveMobile ? '100%' : '220px' }}
           />
-          <select value={filterYear} onChange={e => setFilterYear(e.target.value)} style={selectStyle}>
-            <option value="all">All Years</option>
+          <select value={yearFrom} onChange={e => setYearFrom(e.target.value)} style={selectStyle}>
+            <option value="all">From Year</option>
+            {allYears.slice().reverse().map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select value={yearTo} onChange={e => setYearTo(e.target.value)} style={selectStyle}>
+            <option value="all">To Year</option>
             {allYears.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <select value={filterManager} onChange={e => setFilterManager(e.target.value)} style={selectStyle}>
