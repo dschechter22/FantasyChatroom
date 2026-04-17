@@ -23,6 +23,8 @@ export default function LJIndexPage() {
   const [ljView, setLjView] = useState('season')
   const [allTimeYearFrom, setAllTimeYearFrom] = useState('all')
   const [allTimeYearTo, setAllTimeYearTo] = useState('all')
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
   useEffect(() => {
     supabase.from('seasons').select('year, season_number').order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
     supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
@@ -195,6 +197,7 @@ export default function LJIndexPage() {
   ]
   const hStyle = (align = 'left') => ({ padding: '10px 12px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: align, borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' })
   const cStyle = (align = 'left') => ({ padding: '12px', fontSize: '12px', textAlign: align, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
+  if (!mounted) return null
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
