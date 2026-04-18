@@ -179,11 +179,12 @@ export default function AllTimeTeamsPage() {
       return mult * (av - bv)
     }), [enrichedTeams, yearFrom, yearTo, filterManager, filterResult, searchText, sortKey, sortDir])
 
-  // Averages row for filtered teams
   const avgRow = useMemo(() => {
     if (filteredTeams.length === 0) return null
     const n = filteredTeams.length
     const sum = (fn) => filteredTeams.reduce((s, t) => s + (fn(t) || 0), 0)
+    const powTeams = filteredTeams.filter(t => t.powerScore !== null)
+    const luckTeams = filteredTeams.filter(t => t.luck !== null)
     return {
       wins: (sum(t => t.wins) / n).toFixed(1),
       losses: (sum(t => t.losses) / n).toFixed(1),
@@ -192,8 +193,8 @@ export default function AllTimeTeamsPage() {
       pa: (sum(t => t.points_against) / n).toFixed(1),
       diff: (sum(t => t.diff) / n).toFixed(1),
       ppgDiff: (sum(t => t.ppgDiff) / n).toFixed(2),
-      power: (filteredTeams.filter(t => t.powerScore !== null).reduce((s, t) => s + t.powerScore, 0) / (filteredTeams.filter(t => t.powerScore !== null).length || 1)).toFixed(1),
-      luck: (filteredTeams.filter(t => t.luck !== null).reduce((s, t) => s + t.luck, 0) / (filteredTeams.filter(t => t.luck !== null).length || 1)).toFixed(2),
+      power: powTeams.length ? (powTeams.reduce((s, t) => s + t.powerScore, 0) / powTeams.length).toFixed(1) : '—',
+      luck: luckTeams.length ? (luckTeams.reduce((s, t) => s + t.luck, 0) / luckTeams.length).toFixed(2) : '—',
     }
   }, [filteredTeams])
 
@@ -216,6 +217,7 @@ export default function AllTimeTeamsPage() {
     textTransform: 'uppercase', color: muted, textAlign: align,
     borderBottom: `1px solid ${border}`, fontWeight: '500',
     whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none',
+    background: cardBg,
   })
   const cStyle = (align = 'right') => ({
     padding: '14px 12px', fontSize: '13px', textAlign: align,
@@ -238,7 +240,7 @@ export default function AllTimeTeamsPage() {
             <div style={{ fontSize: '11px', color: muted, marginTop: '2px' }}>{t.team_name} · {t.season?.year}</div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <div style={{ fontSize: '12px', color: resultColor(t.playoff_result), textAlign: 'right', fontWeight: '500' }}>
+            <div style={{ fontSize: '12px', color: resultColor(t.playoff_result), fontWeight: '500' }}>
               {t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}
             </div>
             <button onClick={() => setRosterTeam(t)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '3px 7px', cursor: 'pointer', fontSize: '11px' }}>📋</button>
@@ -305,7 +307,7 @@ export default function AllTimeTeamsPage() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
               <thead>
-                <tr style={{ background: cardBg }}>
+                <tr>
                   <th style={hStyle('center')} onClick={() => handleSort('final_standing')}>Rk <SortIcon col="final_standing" /></th>
                   <th style={hStyle('left')} onClick={() => handleSort('manager')}>Manager <SortIcon col="manager" /></th>
                   <th style={hStyle('left')} onClick={() => handleSort('team_name')}>Team <SortIcon col="team_name" /></th>
@@ -320,7 +322,7 @@ export default function AllTimeTeamsPage() {
                   <th style={hStyle()} onClick={() => handleSort('powerScore')}>Power <SortIcon col="powerScore" /></th>
                   <th style={hStyle()} onClick={() => handleSort('luck')}>Luck <SortIcon col="luck" /></th>
                   <th style={hStyle('center')} onClick={() => handleSort('playoff_result')}>Result <SortIcon col="playoff_result" /></th>
-                  <th style={hStyle('center')}></th>
+                  <th style={{ ...hStyle('center'), position: 'sticky', right: 0, background: cardBg, zIndex: 2 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -340,12 +342,11 @@ export default function AllTimeTeamsPage() {
                     <td style={{ ...cStyle(), color: t.powerScore !== null ? text : muted }}>{t.powerScore !== null ? t.powerScore.toFixed(1) : '—'}</td>
                     <td style={{ ...cStyle(), color: t.luck !== null ? (t.luck >= 0 ? green : red) : muted, fontWeight: '500' }}>{t.luck !== null ? (t.luck >= 0 ? `+${t.luck}` : `${t.luck}`) : '—'}</td>
                     <td style={{ ...cStyle('center'), color: resultColor(t.playoff_result), fontSize: '12px', fontWeight: '500' }}>{t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}</td>
-                    <td style={cStyle('center')}>
+                    <td style={{ ...cStyle('center'), position: 'sticky', right: 0, background: i % 2 === 0 ? bg : rowAlt }}>
                       <button onClick={() => setRosterTeam(t)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }} title="View Roster">📋</button>
                     </td>
                   </tr>
                 ))}
-                {/* Averages row */}
                 {avgRow && (
                   <tr>
                     <td style={{ ...aStyle('center') }}>AVG</td>
@@ -360,9 +361,9 @@ export default function AllTimeTeamsPage() {
                     <td style={{ ...aStyle(), color: parseFloat(avgRow.diff) >= 0 ? green : red }}>{parseFloat(avgRow.diff) >= 0 ? '+' : ''}{avgRow.diff}</td>
                     <td style={{ ...aStyle(), color: parseFloat(avgRow.ppgDiff) >= 0 ? green : red }}>{parseFloat(avgRow.ppgDiff) >= 0 ? '+' : ''}{avgRow.ppgDiff}</td>
                     <td style={aStyle()}>{avgRow.power}</td>
-                    <td style={{ ...aStyle(), color: parseFloat(avgRow.luck) >= 0 ? green : red }}>{parseFloat(avgRow.luck) >= 0 ? '+' : ''}{avgRow.luck}</td>
+                    <td style={{ ...aStyle(), color: avgRow.luck !== '—' ? (parseFloat(avgRow.luck) >= 0 ? green : red) : muted }}>{avgRow.luck !== '—' && parseFloat(avgRow.luck) >= 0 ? '+' : ''}{avgRow.luck}</td>
                     <td style={aStyle('center')} />
-                    <td style={aStyle('center')} />
+                    <td style={{ ...aStyle('center'), position: 'sticky', right: 0 }} />
                   </tr>
                 )}
                 {filteredTeams.length === 0 && (
