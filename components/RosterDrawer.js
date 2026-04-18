@@ -184,7 +184,7 @@ export default function RosterDrawer({ team, onClose }) {
             </div>
             <button
               onClick={onClose}
-              style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif' }}
+              style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}
             >
               ✕
             </button>
