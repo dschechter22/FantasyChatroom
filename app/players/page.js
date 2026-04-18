@@ -35,19 +35,28 @@ export default function PlayersPage() {
 
       if (!playerData) { setLoading(false); return }
 
-      // Fetch all roster entries with season year via teams table
-      const { data: entries } = await supabase
-        .from('roster_entries')
-        .select('player_id, fpts, avg_pts, team_id')
-        .limit(10000)
+      // Fetch ALL roster entries in batches of 1000
+      let allEntries = []
+      let from = 0
+      while (true) {
+        const { data: batch } = await supabase
+          .from('roster_entries')
+          .select('player_id, fpts, avg_pts, team_id')
+          .range(from, from + 999)
+        if (!batch || batch.length === 0) break
+        allEntries = [...allEntries, ...batch]
+        if (batch.length < 1000) break
+        from += 1000
+      }
+      const entries = allEntries
 
       // Fetch all teams with their season years
       const { data: teams } = await supabase
         .from('teams')
-        .select('id, season_id, season:season_id(year)')
+        .select('id, season:season_id(year)')
         .limit(1000)
 
-      if (!entries || !teams) { setLoading(false); return }
+      if (!entries.length || !teams) { setLoading(false); return }
 
       // Build team -> year lookup
       const teamYearMap = {}
