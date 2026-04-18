@@ -276,7 +276,7 @@ export default function AllTimeTeamsPage() {
           All-Time Teams
         </h1>
         <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '32px' }}>
-          {filteredTeams.length} team seasons · click column to sort
+          {filteredTeams.length} team seasons · click column to sort · click row to view roster
         </p>
 
         <div style={{ display: 'flex', flexDirection: effectiveMobile ? 'column' : 'row', gap: '10px', marginBottom: '32px', flexWrap: 'wrap' }}>
@@ -322,12 +322,14 @@ export default function AllTimeTeamsPage() {
                   <th style={hStyle()} onClick={() => handleSort('powerScore')}>Power <SortIcon col="powerScore" /></th>
                   <th style={hStyle()} onClick={() => handleSort('luck')}>Luck <SortIcon col="luck" /></th>
                   <th style={{ ...hStyle('center'), minWidth: '110px' }} onClick={() => handleSort('playoff_result')}>Result <SortIcon col="playoff_result" /></th>
-                  <th style={{ ...hStyle('center'), minWidth: '70px' }}>Roster</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredTeams.map((t, i) => (
-                  <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                  <tr key={t.id} onClick={() => setRosterTeam(t)} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}
+                    onMouseEnter={e => e.currentTarget.style.background = d ? '#0d0d1a' : '#e8edf5'}
+                    onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : rowAlt}
+                  >
                     <td style={{ ...cStyle('center'), color: muted }}>{t.final_standing}</td>
                     <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{t.manager?.name}</td>
                     <td style={{ ...cStyle('left'), color: muted, fontSize: '12px' }}>{t.team_name}</td>
@@ -342,9 +344,6 @@ export default function AllTimeTeamsPage() {
                     <td style={{ ...cStyle(), color: t.powerScore !== null ? text : muted }}>{t.powerScore !== null ? t.powerScore.toFixed(1) : '—'}</td>
                     <td style={{ ...cStyle(), color: t.luck !== null ? (t.luck >= 0 ? green : red) : muted, fontWeight: '500' }}>{t.luck !== null ? (t.luck >= 0 ? `+${t.luck}` : `${t.luck}`) : '—'}</td>
                     <td style={{ ...cStyle('center'), color: resultColor(t.playoff_result), fontSize: '12px', fontWeight: '500', minWidth: '110px' }}>{t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}</td>
-                    <td style={{ ...cStyle('center') }}>
-                      <button onClick={() => setRosterTeam(t)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }} title="View Roster">📋</button>
-                    </td>
                   </tr>
                 ))}
                 {avgRow && (
@@ -367,7 +366,7 @@ export default function AllTimeTeamsPage() {
                   </tr>
                 )}
                 {filteredTeams.length === 0 && (
-                  <tr><td colSpan={15} style={{ padding: '24px', color: muted, textAlign: 'center', fontSize: '13px' }}>No teams match your filters.</td></tr>
+                  <tr><td colSpan={14} style={{ padding: '24px', color: muted, textAlign: 'center', fontSize: '13px' }}>No teams match your filters.</td></tr>
                 )}
               </tbody>
             </table>
