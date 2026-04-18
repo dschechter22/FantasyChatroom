@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 import Nav from '../../components/Nav'
@@ -13,7 +13,7 @@ const supabase = createClient(
 const POSITIONS = ['All', 'QB', 'RB', 'WR', 'TE', 'K', 'D/ST']
 
 export default function PlayersPage() {
-  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, highlight, green, red, gold } = useLayout()
+  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, highlight, gold } = useLayout()
   const router = useRouter()
   const [players, setPlayers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -27,35 +27,65 @@ export default function PlayersPage() {
 
   useEffect(() => {
     const fetchPlayers = async () => {
+      // Fetch all players
+      const { data: playerData } = await supabase
+        .from('players')
+        .select('id, name, position, sleeper_id')
+        .limit(1000)
+
+      if (!playerData) { setLoading(false); return }
+
+      // Fetch all roster entries with season year via teams table
       const { data: entries } = await supabase
         .from('roster_entries')
-        .select('player_id, fpts, avg_pts, player:player_id(id, name, position, sleeper_id)')
+        .select('player_id, fpts, avg_pts, team_id')
         .limit(10000)
 
-      if (!entries) { setLoading(false); return }
+      // Fetch all teams with their season years
+      const { data: teams } = await supabase
+        .from('teams')
+        .select('id, season_id, season:season_id(year)')
+        .limit(1000)
 
-      const agg = {}
-      for (const e of entries) {
-        const p = e.player
-        if (!p) continue
-        if (!agg[p.id]) {
-          agg[p.id] = {
-            id: p.id, name: p.name, position: p.position,
-            sleeper_id: p.sleeper_id, totalFpts: 0, seasons: 0, entries: [],
-          }
-        }
-        agg[p.id].totalFpts += e.fpts || 0
-        agg[p.id].seasons++
-        agg[p.id].entries.push(e.avg_pts || 0)
+      if (!entries || !teams) { setLoading(false); return }
+
+      // Build team -> year lookup
+      const teamYearMap = {}
+      for (const t of teams) {
+        teamYearMap[t.id] = t.season?.year
       }
 
-      const result = Object.values(agg).map(p => ({
-        ...p,
-        totalFpts: parseFloat(p.totalFpts.toFixed(1)),
-        careerAvg: p.entries.length > 0
-          ? parseFloat((p.entries.reduce((a, b) => a + b, 0) / p.entries.length).toFixed(1))
-          : 0,
-      }))
+      // Aggregate per player
+      const agg = {}
+      for (const e of entries) {
+        const pid = e.player_id
+        if (!pid) continue
+        const year = teamYearMap[e.team_id]
+        if (!agg[pid]) {
+          agg[pid] = { totalFpts: 0, years: new Set(), totalAvg: 0, entryCount: 0 }
+        }
+        agg[pid].totalFpts += e.fpts || 0
+        agg[pid].totalAvg += e.avg_pts || 0
+        agg[pid].entryCount++
+        if (year) agg[pid].years.add(year)
+      }
+
+      const result = playerData
+        .filter(p => agg[p.id])
+        .map(p => {
+          const a = agg[p.id]
+          return {
+            id: p.id,
+            name: p.name,
+            position: p.position,
+            sleeper_id: p.sleeper_id,
+            totalFpts: parseFloat(a.totalFpts.toFixed(1)),
+            seasons: a.years.size,
+            careerAvg: a.entryCount > 0
+              ? parseFloat((a.totalAvg / a.entryCount).toFixed(1))
+              : 0,
+          }
+        })
 
       setPlayers(result)
       setLoading(false)
@@ -137,7 +167,6 @@ export default function PlayersPage() {
           </p>
         </div>
 
-        {/* Filters */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             value={search}
