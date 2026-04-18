@@ -87,7 +87,6 @@ export default function PlayerProfilePage() {
           )
         `)
         .eq('player_id', params.id)
-        .order('team(season(year))', { ascending: false })
         .limit(1000)
 
       if (entriesData) {
