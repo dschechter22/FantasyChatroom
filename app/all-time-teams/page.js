@@ -322,7 +322,7 @@ export default function AllTimeTeamsPage() {
                   <th style={hStyle()} onClick={() => handleSort('powerScore')}>Power <SortIcon col="powerScore" /></th>
                   <th style={hStyle()} onClick={() => handleSort('luck')}>Luck <SortIcon col="luck" /></th>
                   <th style={{ ...hStyle('center'), minWidth: '110px' }} onClick={() => handleSort('playoff_result')}>Result <SortIcon col="playoff_result" /></th>
-                  <th style={{ ...hStyle('center'), position: 'sticky', right: 0, background: cardBg, zIndex: 2 }}></th>
+                  <th style={{ ...hStyle('center'), minWidth: '70px' }}>Roster</th>
                 </tr>
               </thead>
               <tbody>
@@ -342,7 +342,7 @@ export default function AllTimeTeamsPage() {
                     <td style={{ ...cStyle(), color: t.powerScore !== null ? text : muted }}>{t.powerScore !== null ? t.powerScore.toFixed(1) : '—'}</td>
                     <td style={{ ...cStyle(), color: t.luck !== null ? (t.luck >= 0 ? green : red) : muted, fontWeight: '500' }}>{t.luck !== null ? (t.luck >= 0 ? `+${t.luck}` : `${t.luck}`) : '—'}</td>
                     <td style={{ ...cStyle('center'), color: resultColor(t.playoff_result), fontSize: '12px', fontWeight: '500', minWidth: '110px' }}>{t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}</td>
-                    <td style={{ ...cStyle('center'), position: 'sticky', right: 0, background: i % 2 === 0 ? bg : rowAlt }}>
+                    <td style={{ ...cStyle('center') }}>
                       <button onClick={() => setRosterTeam(t)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }} title="View Roster">📋</button>
                     </td>
                   </tr>
@@ -363,7 +363,7 @@ export default function AllTimeTeamsPage() {
                     <td style={aStyle()}>{avgRow.power}</td>
                     <td style={{ ...aStyle(), color: avgRow.luck !== '—' ? (parseFloat(avgRow.luck) >= 0 ? green : red) : muted }}>{avgRow.luck !== '—' && parseFloat(avgRow.luck) >= 0 ? '+' : ''}{avgRow.luck}</td>
                     <td style={aStyle('center')} />
-                    <td style={{ ...aStyle('center'), position: 'sticky', right: 0 }} />
+                    <td style={aStyle('center')} />
                   </tr>
                 )}
                 {filteredTeams.length === 0 && (
