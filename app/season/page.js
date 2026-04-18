@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import RosterDrawer from '../../components/RosterDrawer'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -18,6 +19,10 @@ export default function SeasonPage() {
   const [teams, setTeams] = useState([])
   const [managers, setManagers] = useState([])
   const [selectedTeam, setSelectedTeam] = useState(null)
+  const [rosterTeam, setRosterTeam] = useState(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     supabase.from('seasons').select('year, season_number').order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
@@ -36,6 +41,8 @@ export default function SeasonPage() {
       .then(({ data }) => setTeams((data || []).filter(t => t.season?.year === selectedYear).sort((a, b) => a.final_standing - b.final_standing)))
   }, [selectedYear])
 
+  if (!mounted) return null
+
   const getManagerName = (managerId) => managers.find(m => m.id === managerId)?.name || '—'
   const getTeamByManagerId = (managerId) => teams.find(t => t.manager?.id === managerId)
 
@@ -47,9 +54,7 @@ export default function SeasonPage() {
 
   const filteredReg = selectedTeam ? regMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam) : regMatchups
   const filteredPlayoff = selectedTeam ? playoffMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam) : playoffMatchups
-  const filteredMolBowl = selectedTeam ? molBowlMatchups.filter(m => m.home_team?.id === selectedTeam || m.away_team?.id === selectedTeam) : molBowlMatchups
 
-  // Use playoff_seed from DB directly
   const getPlayoffSeed = (teamId) => {
     const team = teams.find(t => t.id === teamId)
     return team?.playoff_seed ?? 99
@@ -58,19 +63,28 @@ export default function SeasonPage() {
   const playoffTeams = teams.filter(t => t.made_playoffs).sort((a, b) => (a.playoff_seed ?? 99) - (b.playoff_seed ?? 99))
   const is6Team = selectedYear >= 2021
 
+  // Standings totals
+  const standingsTotals = teams.length > 0 ? {
+    wins: teams.reduce((s, t) => s + (t.wins || 0), 0),
+    losses: teams.reduce((s, t) => s + (t.losses || 0), 0),
+    pf: teams.reduce((s, t) => s + (t.points_for || 0), 0),
+    pa: teams.reduce((s, t) => s + (t.points_against || 0), 0),
+    diff: teams.reduce((s, t) => s + (t.points_for - t.points_against), 0),
+    ppgDiff: teams.reduce((s, t) => {
+      const g = t.wins + t.losses
+      return s + (g > 0 ? (t.points_for - t.points_against) / g : 0)
+    }, 0) / teams.length,
+  } : null
+
   // ---- STATS ----
   const calcStats = () => {
     if (regMatchups.length === 0 || teams.length === 0) return null
-
     const teamScores = {}
     teams.forEach(t => { teamScores[t.id] = [] })
     regMatchups.forEach(m => {
-      if (teamScores[m.home_team?.id] !== undefined)
-        teamScores[m.home_team.id].push({ score: m.home_score, week: m.week, oppScore: m.away_score, oppManagerId: m.away_team?.manager_id, won: m.home_score > m.away_score })
-      if (teamScores[m.away_team?.id] !== undefined)
-        teamScores[m.away_team.id].push({ score: m.away_score, week: m.week, oppScore: m.home_score, oppManagerId: m.home_team?.manager_id, won: m.away_score > m.home_score })
+      if (teamScores[m.home_team?.id] !== undefined) teamScores[m.home_team.id].push({ score: m.home_score, week: m.week, oppScore: m.away_score, oppManagerId: m.away_team?.manager_id, won: m.home_score > m.away_score })
+      if (teamScores[m.away_team?.id] !== undefined) teamScores[m.away_team.id].push({ score: m.away_score, week: m.week, oppScore: m.home_score, oppManagerId: m.home_team?.manager_id, won: m.away_score > m.home_score })
     })
-
     const allPlaySum = {}
     teams.forEach(t => { allPlaySum[t.id] = 0 })
     weeks.forEach(week => {
@@ -87,14 +101,12 @@ export default function SeasonPage() {
         allPlaySum[teamId] += allScores.filter(o => o.teamId !== teamId && score > o.score).length / (n - 1)
       })
     })
-
     const median = (arr) => {
       if (!arr.length) return 0
       const s = [...arr].sort((a, b) => a - b)
       const mid = Math.floor(s.length / 2)
       return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2
     }
-
     const teamMetrics = teams.map(t => {
       const scores = teamScores[t.id]?.map(g => g.score) || []
       const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0
@@ -103,43 +115,35 @@ export default function SeasonPage() {
       const allPlayWinPct = weeks.length > 0 ? allPlaySum[t.id] / weeks.length : 0
       return { t, winPct, avgScore, medianScore, allPlayWinPct }
     })
-
     const maxWin = Math.max(...teamMetrics.map(r => r.winPct))
     const maxAvg = Math.max(...teamMetrics.map(r => r.avgScore))
     const maxMed = Math.max(...teamMetrics.map(r => r.medianScore))
     const maxAp = Math.max(...teamMetrics.map(r => r.allPlayWinPct))
-
     const composites = teamMetrics.map(r => {
       const score = ((r.winPct / (maxWin || 1) * 100 * 2) + (r.avgScore / (maxAvg || 1) * 100 * 4) + (r.allPlayWinPct / (maxAp || 1) * 100 * 2) + (r.medianScore / (maxMed || 1) * 100 * 2)) / 10
       return { t: r.t, score: parseFloat(score.toFixed(2)), winPct: r.winPct, avgScore: r.avgScore }
     })
-
     const getLuck = (t) => parseFloat((t.wins - (allPlaySum[t.id] || 0)).toFixed(2))
-
     let highGame = null
     regMatchups.forEach(m => {
       if (!highGame || m.home_score > highGame.score) highGame = { score: m.home_score, managerId: m.home_team?.manager_id, week: m.week, oppScore: m.away_score, oppManagerId: m.away_team?.manager_id, won: m.home_score > m.away_score }
       if (m.away_score > (highGame?.score || 0)) highGame = { score: m.away_score, managerId: m.away_team?.manager_id, week: m.week, oppScore: m.home_score, oppManagerId: m.home_team?.manager_id, won: m.away_score > m.home_score }
     })
-
     let lowGame = null
     regMatchups.forEach(m => {
       if (!lowGame || m.home_score < lowGame.score) lowGame = { score: m.home_score, managerId: m.home_team?.manager_id, week: m.week, oppScore: m.away_score, oppManagerId: m.away_team?.manager_id, won: m.home_score > m.away_score }
       if (m.away_score < (lowGame?.score ?? Infinity)) lowGame = { score: m.away_score, managerId: m.away_team?.manager_id, week: m.week, oppScore: m.home_score, oppManagerId: m.home_team?.manager_id, won: m.away_score > m.home_score }
     })
-
     let bigBlowout = null
     regMatchups.forEach(m => {
       const diff = parseFloat(Math.abs(m.home_score - m.away_score).toFixed(2))
       if (!bigBlowout || diff > bigBlowout.diff) bigBlowout = { diff, winnerId: m.home_score > m.away_score ? m.home_team?.manager_id : m.away_team?.manager_id, loserId: m.home_score > m.away_score ? m.away_team?.manager_id : m.home_team?.manager_id, winnerScore: Math.max(m.home_score, m.away_score), loserScore: Math.min(m.home_score, m.away_score), week: m.week }
     })
-
     let closestGame = null
     regMatchups.forEach(m => {
       const diff = parseFloat(Math.abs(m.home_score - m.away_score).toFixed(2))
       if (!closestGame || diff < closestGame.diff) closestGame = { diff, winnerId: m.home_score > m.away_score ? m.home_team?.manager_id : m.away_team?.manager_id, loserId: m.home_score > m.away_score ? m.away_team?.manager_id : m.home_team?.manager_id, winnerScore: Math.max(m.home_score, m.away_score), loserScore: Math.min(m.home_score, m.away_score), week: m.week }
     })
-
     const stdDevs = teams.map(t => {
       const scores = teamScores[t.id]?.map(g => g.score) || []
       if (scores.length < 2) return { t, std: 0, mean: 0 }
@@ -149,7 +153,6 @@ export default function SeasonPage() {
     })
     const mostConsistent = [...stdDevs].sort((a, b) => a.std - b.std)[0]
     const boomOrBust = [...stdDevs].sort((a, b) => b.std - a.std)[0]
-
     let unluckiest = null, luckiest = null
     teams.forEach(t => {
       const luck = getLuck(t)
@@ -157,7 +160,6 @@ export default function SeasonPage() {
       if (!unluckiest || luck < unluckiest.luck) unluckiest = { t, luck, actual: t.wins, expected }
       if (!luckiest || luck > luckiest.luck) luckiest = { t, luck, actual: t.wins, expected }
     })
-
     const halfPoint = Math.floor(weeks.length / 2)
     let bestSecondHalf = null
     teams.forEach(t => {
@@ -166,10 +168,8 @@ export default function SeasonPage() {
       const secondW = getWins(weeks.slice(halfPoint))
       if (!bestSecondHalf || (secondW - firstW) > bestSecondHalf.improvement) bestSecondHalf = { t, improvement: secondW - firstW, firstW, secondW }
     })
-
     const mostDominant = [...composites].sort((a, b) => b.score - a.score)[0]
     const worstSeason = [...composites].sort((a, b) => a.score - b.score)[0]
-
     const closeCount = {}
     teams.forEach(t => { closeCount[t.id] = 0 })
     regMatchups.forEach(m => {
@@ -183,7 +183,6 @@ export default function SeasonPage() {
       const count = closeCount[t.id] || 0
       if (!mostCloseGames || count > mostCloseGames.count) mostCloseGames = { t, count }
     })
-
     let choker = null
     if (playoffMatchups.length > 0 && playoffWeeks.length > 1) {
       const finalWeek = playoffWeeks[playoffWeeks.length - 1]
@@ -202,13 +201,11 @@ export default function SeasonPage() {
       })
       if (upsets.length > 0) choker = upsets.sort((a, b) => b.gap - a.gap)[0]
     }
-
     return { highGame, lowGame, bigBlowout, closestGame, mostConsistent, boomOrBust, unluckiest, luckiest, bestSecondHalf, mostDominant, worstSeason, mostCloseGames, choker }
   }
 
   const stats = calcStats()
 
-  // ---- BRACKET ----
   const BracketGameCard = ({ game }) => {
     if (!game) return null
     const homeTeam = getTeamByManagerId(game.home_team?.manager_id)
@@ -254,7 +251,6 @@ export default function SeasonPage() {
   const colStyle = { flex: 1, minWidth: effectiveMobile ? '150px' : '190px', maxWidth: effectiveMobile ? '170px' : '230px' }
   const roundLabel = (label) => <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '14px', textAlign: 'center' }}>{label}</div>
   const connector = <div style={{ width: '16px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '16px', height: '1px', background: border }} /></div>
-
   const getSeedMin = (g) => {
     const ht = getTeamByManagerId(g.home_team?.manager_id)
     const at = getTeamByManagerId(g.away_team?.manager_id)
@@ -265,32 +261,20 @@ export default function SeasonPage() {
     const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
     const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
     const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
-
-    // Bye teams are seeds 1 and 2
     const byeTeam1 = playoffTeams.find(t => t.playoff_seed === 1)
     const byeTeam2 = playoffTeams.find(t => t.playoff_seed === 2)
-
-    // Sort R1 games by lowest seed involved
     const sortedR1 = [...r1Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))
-    const topR1 = sortedR1[0]
-    const botR1 = sortedR1[1]
-
-    // R2: top half is the game involving seed 1's side, bottom is seed 2's side
     const sortedR2 = [...r2Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))
-    const topR2 = sortedR2[0]
-    const botR2 = sortedR2[1]
-
     const championship = r3Games[0]
-
     return (
       <div style={{ display: 'flex', gap: '0', minWidth: effectiveMobile ? '500px' : '640px' }}>
         <div style={colStyle}>
           {roundLabel('Round 1')}
           <ByeCard team={byeTeam1} />
           <div style={{ height: '10px' }} />
-          <BracketGameCard game={topR1} />
+          <BracketGameCard game={sortedR1[0]} />
           <div style={{ height: '20px' }} />
-          <BracketGameCard game={botR1} />
+          <BracketGameCard game={sortedR1[1]} />
           <div style={{ height: '10px' }} />
           <ByeCard team={byeTeam2} />
         </div>
@@ -298,9 +282,9 @@ export default function SeasonPage() {
         <div style={colStyle}>
           {roundLabel('Semifinals')}
           <div style={{ height: '52px' }} />
-          <BracketGameCard game={topR2} />
+          <BracketGameCard game={sortedR2[0]} />
           <div style={{ height: '20px' }} />
-          <BracketGameCard game={botR2} />
+          <BracketGameCard game={sortedR2[1]} />
         </div>
         {connector}
         <div style={colStyle}>
@@ -316,14 +300,11 @@ export default function SeasonPage() {
     const r1Games = playoffMatchups.filter(m => m.week === playoffWeeks[0])
     const r2Games = playoffMatchups.filter(m => m.week === playoffWeeks[1])
     const r3Games = playoffMatchups.filter(m => m.week === playoffWeeks[2])
-
     const sortedR1 = [...r1Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))
     const topHalf = sortedR1.filter(g => getSeedMin(g) <= 2)
     const botHalf = sortedR1.filter(g => getSeedMin(g) > 2)
-
     const sortedR2 = [...r2Games].sort((a, b) => getSeedMin(a) - getSeedMin(b))
     const championship = r3Games[0]
-
     return (
       <div style={{ display: 'flex', gap: '0', minWidth: effectiveMobile ? '500px' : '640px' }}>
         <div style={colStyle}>
@@ -411,7 +392,9 @@ export default function SeasonPage() {
         {/* Standings */}
         {teams.length > 0 && (
           <div style={{ marginBottom: '48px' }}>
-            <p style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '16px' }}>Final Standings</p>
+            <p style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '16px' }}>
+              Final Standings · <span style={{ fontWeight: '400' }}>click row to filter matchups · click jersey icon to view roster</span>
+            </p>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                 <thead>
@@ -425,6 +408,7 @@ export default function SeasonPage() {
                     {!effectiveMobile && <th style={hStyle('right')}>PA</th>}
                     <th style={hStyle('right')}>Diff</th>
                     <th style={hStyle('center')}>Result</th>
+                    <th style={hStyle('center')}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -432,23 +416,54 @@ export default function SeasonPage() {
                     const diff = parseFloat((t.points_for - t.points_against).toFixed(2))
                     const isSelected = selectedTeam === t.id
                     return (
-                      <tr key={t.id} onClick={() => setSelectedTeam(isSelected ? null : t.id)} style={{ background: isSelected ? highlight : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}>
+                      <tr key={t.id} style={{ background: isSelected ? highlight : i % 2 === 0 ? 'transparent' : rowAlt }}>
                         <td style={{ ...cStyle('center'), color: muted }}>{t.final_standing}</td>
-                        <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '13px' : '15px' }}>{t.manager?.name}</td>
-                        {!effectiveMobile && <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{t.team_name}</td>}
-                        <td style={cStyle('center')}>{t.wins}</td>
-                        <td style={cStyle('center')}>{t.losses}</td>
-                        <td style={cStyle('right')}>{t.points_for.toFixed(effectiveMobile ? 0 : 2)}</td>
-                        {!effectiveMobile && <td style={cStyle('right')}>{t.points_against.toFixed(2)}</td>}
-                        <td style={{ ...cStyle('right'), color: diff >= 0 ? green : red, fontWeight: '500' }}>
+                        <td
+                          style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '13px' : '15px', cursor: 'pointer' }}
+                          onClick={() => setSelectedTeam(isSelected ? null : t.id)}
+                        >
+                          {t.manager?.name}
+                        </td>
+                        {!effectiveMobile && <td style={{ ...cStyle(), color: muted, fontSize: '12px', cursor: 'pointer' }} onClick={() => setSelectedTeam(isSelected ? null : t.id)}>{t.team_name}</td>}
+                        <td style={{ ...cStyle('center'), cursor: 'pointer' }} onClick={() => setSelectedTeam(isSelected ? null : t.id)}>{t.wins}</td>
+                        <td style={{ ...cStyle('center'), cursor: 'pointer' }} onClick={() => setSelectedTeam(isSelected ? null : t.id)}>{t.losses}</td>
+                        <td style={{ ...cStyle('right'), cursor: 'pointer' }} onClick={() => setSelectedTeam(isSelected ? null : t.id)}>{t.points_for.toFixed(effectiveMobile ? 0 : 2)}</td>
+                        {!effectiveMobile && <td style={{ ...cStyle('right'), cursor: 'pointer' }} onClick={() => setSelectedTeam(isSelected ? null : t.id)}>{t.points_against.toFixed(2)}</td>}
+                        <td style={{ ...cStyle('right'), color: diff >= 0 ? green : red, fontWeight: '500', cursor: 'pointer' }} onClick={() => setSelectedTeam(isSelected ? null : t.id)}>
                           {diff >= 0 ? '+' : ''}{diff.toFixed(effectiveMobile ? 0 : 2)}
                         </td>
-                        <td style={{ ...cStyle('center'), fontSize: '11px', color: t.playoff_result === 'Champion' ? gold : t.playoff_result?.includes('Mol Bowl') ? red : muted }}>
+                        <td style={{ ...cStyle('center'), fontSize: '11px', color: t.playoff_result === 'Champion' ? gold : t.playoff_result?.includes('Mol Bowl') ? red : muted, cursor: 'pointer' }} onClick={() => setSelectedTeam(isSelected ? null : t.id)}>
                           {effectiveMobile ? (t.playoff_result === 'Champion' ? '🏆' : t.playoff_result?.includes('Mol Bowl') ? 'Mol' : t.made_playoffs ? '✓' : '—') : (t.playoff_result || '—')}
+                        </td>
+                        <td style={{ ...cStyle('center') }}>
+                          <button
+                            onClick={() => setRosterTeam(t)}
+                            style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }}
+                            title="View Roster"
+                          >
+                            📋
+                          </button>
                         </td>
                       </tr>
                     )
                   })}
+                  {/* Totals row */}
+                  {standingsTotals && (
+                    <tr style={{ background: d ? 'rgba(255,255,255,0.03)' : 'rgba(13,33,82,0.04)', fontWeight: '600' }}>
+                      <td style={{ ...cStyle('center'), color: muted, fontSize: '10px', letterSpacing: '0.1em' }}>TOT</td>
+                      <td style={{ ...cStyle(), fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted }}>League Totals</td>
+                      {!effectiveMobile && <td style={cStyle()} />}
+                      <td style={cStyle('center')}>{standingsTotals.wins}</td>
+                      <td style={cStyle('center')}>{standingsTotals.losses}</td>
+                      <td style={cStyle('right')}>{standingsTotals.pf.toFixed(effectiveMobile ? 0 : 2)}</td>
+                      {!effectiveMobile && <td style={cStyle('right')}>{standingsTotals.pa.toFixed(2)}</td>}
+                      <td style={{ ...cStyle('right'), color: standingsTotals.diff >= 0 ? green : red }}>
+                        {standingsTotals.diff >= 0 ? '+' : ''}{standingsTotals.diff.toFixed(effectiveMobile ? 0 : 2)}
+                      </td>
+                      <td style={cStyle('center')} />
+                      <td style={cStyle('center')} />
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -528,6 +543,9 @@ export default function SeasonPage() {
           <p style={{ color: muted, fontSize: '14px' }}>No data available for this season yet.</p>
         )}
       </div>
+
+      {/* Roster Drawer */}
+      {rosterTeam && <RosterDrawer team={rosterTeam} onClose={() => setRosterTeam(null)} />}
     </div>
   )
 }
