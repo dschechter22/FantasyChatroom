@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import RosterDrawer from '../../components/RosterDrawer'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -27,6 +28,10 @@ export default function AllTimeTeamsPage() {
   const [yearTo, setYearTo] = useState('all')
   const [filterManager, setFilterManager] = useState('all')
   const [filterResult, setFilterResult] = useState('All')
+  const [rosterTeam, setRosterTeam] = useState(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     supabase.from('teams')
@@ -47,13 +52,9 @@ export default function AllTimeTeamsPage() {
   const allManagers = [...new Map(teams.map(t => [t.manager?.slug, t.manager?.name])).entries()]
     .filter(([slug]) => slug).sort((a, b) => a[1].localeCompare(b[1]))
 
-  // Compute power score and luck per team using all reg season matchup data
   const teamStats = useMemo(() => {
     if (teams.length === 0 || matchups.length === 0) return {}
-
     const result = {}
-
-    // Group matchups by season year
     const matchupsByYear = {}
     matchups.forEach(m => {
       const yr = m.season?.year
@@ -61,27 +62,16 @@ export default function AllTimeTeamsPage() {
       if (!matchupsByYear[yr]) matchupsByYear[yr] = []
       matchupsByYear[yr].push(m)
     })
-
     teams.forEach(t => {
       const yr = t.season?.year
       const seasonMatchups = matchupsByYear[yr] || []
       const weeks = [...new Set(seasonMatchups.map(m => m.week))].sort((a, b) => a - b)
-
-      // Weekly scores for this team
       const myScores = []
       seasonMatchups.forEach(m => {
-        if (m.home_team?.manager_id === t.manager_id)
-          myScores.push({ week: m.week, score: m.home_score })
-        else if (m.away_team?.manager_id === t.manager_id)
-          myScores.push({ week: m.week, score: m.away_score })
+        if (m.home_team?.manager_id === t.manager_id) myScores.push({ week: m.week, score: m.home_score })
+        else if (m.away_team?.manager_id === t.manager_id) myScores.push({ week: m.week, score: m.away_score })
       })
-
-      if (myScores.length === 0) {
-        result[t.id] = { powerScore: 0, luck: 0 }
-        return
-      }
-
-      // All-play win% per week for luck calculation
+      if (myScores.length === 0) { result[t.id] = { powerScore: 0, luck: 0 }; return }
       let allPlayTotal = 0
       weeks.forEach(week => {
         const weekGames = seasonMatchups.filter(m => m.week === week)
@@ -95,11 +85,7 @@ export default function AllTimeTeamsPage() {
         const wins = allScores.filter(o => o.managerId !== t.manager_id && myWeekScore > o.score).length
         allPlayTotal += wins / (allScores.length - 1)
       })
-
       const luck = parseFloat((t.wins - allPlayTotal).toFixed(2))
-
-      // Power score: ((win%/max*100*2) + (avg/max*100*4) + (allPlayWin%/max*100*2) + (median/max*100*2)) / 10
-      // We'll store raw inputs and normalize per-season later
       const scores = myScores.map(s => s.score)
       const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length
       const sorted = [...scores].sort((a, b) => a - b)
@@ -107,18 +93,14 @@ export default function AllTimeTeamsPage() {
       const medianScore = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
       const winPct = (t.wins + t.losses) > 0 ? t.wins / (t.wins + t.losses) : 0
       const allPlayWinPct = weeks.length > 0 ? allPlayTotal / weeks.length : 0
-
       result[t.id] = { luck, winPct, avgScore, medianScore, allPlayWinPct, _needsNorm: true }
     })
-
-    // Normalize power score per season (max within season = 100)
     const yearGroups = {}
     teams.forEach(t => {
       const yr = t.season?.year
       if (!yearGroups[yr]) yearGroups[yr] = []
       yearGroups[yr].push(t)
     })
-
     Object.entries(yearGroups).forEach(([yr, seasonTeams]) => {
       const stats = seasonTeams.map(t => result[t.id]).filter(s => s?._needsNorm)
       if (stats.length === 0) return
@@ -126,20 +108,13 @@ export default function AllTimeTeamsPage() {
       const maxAvg = Math.max(...stats.map(s => s.avgScore))
       const maxMed = Math.max(...stats.map(s => s.medianScore))
       const maxAp = Math.max(...stats.map(s => s.allPlayWinPct))
-
       seasonTeams.forEach(t => {
         const s = result[t.id]
         if (!s?._needsNorm) return
-        const powerScore = (
-          (s.winPct / (maxWin || 1) * 100 * 2) +
-          (s.avgScore / (maxAvg || 1) * 100 * 4) +
-          (s.allPlayWinPct / (maxAp || 1) * 100 * 2) +
-          (s.medianScore / (maxMed || 1) * 100 * 2)
-        ) / 10
+        const powerScore = ((s.winPct / (maxWin || 1) * 100 * 2) + (s.avgScore / (maxAvg || 1) * 100 * 4) + (s.allPlayWinPct / (maxAp || 1) * 100 * 2) + (s.medianScore / (maxMed || 1) * 100 * 2)) / 10
         result[t.id] = { luck: s.luck, powerScore: parseFloat(powerScore.toFixed(2)) }
       })
     })
-
     return result
   }, [teams, matchups])
 
@@ -161,7 +136,6 @@ export default function AllTimeTeamsPage() {
     if (filterResult === 'Mol Bowl Loser') return t.playoff_result === 'Mol Bowl Loser'
     if (filterResult === 'Made Playoffs') return t.made_playoffs
     if (filterResult === 'Missed Playoffs') return !t.made_playoffs
-    // Exact place finishes for non-playoff teams
     const placeMap = { '4th Place': 4, '5th Place': 5, '6th Place': 6, '7th Place': 7, '8th Place': 8, '9th Place': 9, '10th Place': 10 }
     if (placeMap[filterResult]) return !t.made_playoffs && t.final_standing === placeMap[filterResult]
     return true
@@ -205,26 +179,36 @@ export default function AllTimeTeamsPage() {
       return mult * (av - bv)
     }), [enrichedTeams, yearFrom, yearTo, filterManager, filterResult, searchText, sortKey, sortDir])
 
+  // Averages row for filtered teams
+  const avgRow = useMemo(() => {
+    if (filteredTeams.length === 0) return null
+    const n = filteredTeams.length
+    const sum = (fn) => filteredTeams.reduce((s, t) => s + (fn(t) || 0), 0)
+    return {
+      wins: (sum(t => t.wins) / n).toFixed(1),
+      losses: (sum(t => t.losses) / n).toFixed(1),
+      winPct: (sum(t => t.winPct) / n).toFixed(1),
+      pf: (sum(t => t.points_for) / n).toFixed(1),
+      pa: (sum(t => t.points_against) / n).toFixed(1),
+      diff: (sum(t => t.diff) / n).toFixed(1),
+      ppgDiff: (sum(t => t.ppgDiff) / n).toFixed(2),
+      power: (filteredTeams.filter(t => t.powerScore !== null).reduce((s, t) => s + t.powerScore, 0) / (filteredTeams.filter(t => t.powerScore !== null).length || 1)).toFixed(1),
+      luck: (filteredTeams.filter(t => t.luck !== null).reduce((s, t) => s + t.luck, 0) / (filteredTeams.filter(t => t.luck !== null).length || 1)).toFixed(2),
+    }
+  }, [filteredTeams])
+
+  if (!mounted) return null
+
   const SortIcon = ({ col }) => {
     if (sortKey !== col) return <span style={{ opacity: 0.3, marginLeft: '3px' }}>↕</span>
     return <span style={{ marginLeft: '3px' }}>{sortDir === 'desc' ? '↓' : '↑'}</span>
   }
-
-  const filterBtn = (active, label, onClick) => (
-    <button onClick={onClick} style={{
-      background: active ? text : 'none', border: `1px solid ${border}`,
-      color: active ? bg : muted, padding: effectiveMobile ? '6px 10px' : '7px 16px',
-      cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase',
-      fontFamily: "'Inter', sans-serif", fontWeight: '500', transition: 'all 0.15s', whiteSpace: 'nowrap',
-    }}>{label}</button>
-  )
 
   const inputStyle = {
     background: cardBg, border: `1px solid ${border}`, color: text,
     padding: '7px 12px', fontSize: '12px', fontFamily: "'Inter', sans-serif",
     outline: 'none', width: effectiveMobile ? '100%' : '200px',
   }
-
   const selectStyle = { ...inputStyle, cursor: 'pointer', width: effectiveMobile ? '100%' : '180px' }
 
   const hStyle = (align = 'right') => ({
@@ -233,10 +217,14 @@ export default function AllTimeTeamsPage() {
     borderBottom: `1px solid ${border}`, fontWeight: '500',
     whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none',
   })
-
   const cStyle = (align = 'right') => ({
     padding: '14px 12px', fontSize: '13px', textAlign: align,
     borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap',
+  })
+  const aStyle = (align = 'right') => ({
+    padding: '10px 12px', fontSize: '12px', textAlign: align,
+    borderBottom: `1px solid ${border}`, color: muted, whiteSpace: 'nowrap',
+    fontWeight: '600', background: d ? 'rgba(255,255,255,0.03)' : 'rgba(13,33,82,0.04)',
   })
 
   const MobileCard = ({ t, i }) => {
@@ -249,8 +237,11 @@ export default function AllTimeTeamsPage() {
             <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', color: text }}>{t.manager?.name}</div>
             <div style={{ fontSize: '11px', color: muted, marginTop: '2px' }}>{t.team_name} · {t.season?.year}</div>
           </div>
-          <div style={{ fontSize: '12px', color: resultColor(t.playoff_result), textAlign: 'right', fontWeight: '500' }}>
-            {t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div style={{ fontSize: '12px', color: resultColor(t.playoff_result), textAlign: 'right', fontWeight: '500' }}>
+              {t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}
+            </div>
+            <button onClick={() => setRosterTeam(t)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '3px 7px', cursor: 'pointer', fontSize: '11px' }}>📋</button>
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
@@ -286,14 +277,8 @@ export default function AllTimeTeamsPage() {
           {filteredTeams.length} team seasons · click column to sort
         </p>
 
-        {/* Filters */}
         <div style={{ display: 'flex', flexDirection: effectiveMobile ? 'column' : 'row', gap: '10px', marginBottom: '32px', flexWrap: 'wrap' }}>
-          <input
-            placeholder="Search manager or team..."
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            style={{ ...inputStyle, width: effectiveMobile ? '100%' : '220px' }}
-          />
+          <input placeholder="Search manager or team..." value={searchText} onChange={e => setSearchText(e.target.value)} style={{ ...inputStyle, width: effectiveMobile ? '100%' : '220px' }} />
           <select value={yearFrom} onChange={e => setYearFrom(e.target.value)} style={selectStyle}>
             <option value="all">From Year</option>
             {allYears.slice().reverse().map(y => <option key={y} value={y}>{y}</option>)}
@@ -311,13 +296,10 @@ export default function AllTimeTeamsPage() {
           </select>
         </div>
 
-        {/* Mobile */}
         {effectiveMobile ? (
           <div style={{ borderTop: `1px solid ${border}` }}>
             {filteredTeams.map((t, i) => <MobileCard key={t.id} t={t} i={i} />)}
-            {filteredTeams.length === 0 && (
-              <p style={{ color: muted, padding: '24px 0', fontSize: '13px' }}>No teams match your filters.</p>
-            )}
+            {filteredTeams.length === 0 && <p style={{ color: muted, padding: '24px 0', fontSize: '13px' }}>No teams match your filters.</p>}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -338,6 +320,7 @@ export default function AllTimeTeamsPage() {
                   <th style={hStyle()} onClick={() => handleSort('powerScore')}>Power <SortIcon col="powerScore" /></th>
                   <th style={hStyle()} onClick={() => handleSort('luck')}>Luck <SortIcon col="luck" /></th>
                   <th style={hStyle('center')} onClick={() => handleSort('playoff_result')}>Result <SortIcon col="playoff_result" /></th>
+                  <th style={hStyle('center')}></th>
                 </tr>
               </thead>
               <tbody>
@@ -352,35 +335,46 @@ export default function AllTimeTeamsPage() {
                     <td style={cStyle()}>{t.winPct}%</td>
                     <td style={cStyle()}>{t.points_for.toFixed(2)}</td>
                     <td style={cStyle()}>{t.points_against.toFixed(2)}</td>
-                    <td style={{ ...cStyle(), color: t.diff >= 0 ? green : red, fontWeight: '500' }}>
-                      {t.diff >= 0 ? '+' : ''}{t.diff}
-                    </td>
-                    <td style={{ ...cStyle(), color: t.ppgDiff >= 0 ? green : red, fontWeight: '500' }}>
-                      {t.ppgDiff >= 0 ? '+' : ''}{t.ppgDiff}
-                    </td>
-                    <td style={{ ...cStyle(), color: t.powerScore !== null ? text : muted }}>
-                      {t.powerScore !== null ? t.powerScore.toFixed(1) : '—'}
-                    </td>
-                    <td style={{ ...cStyle(), color: t.luck !== null ? (t.luck >= 0 ? green : red) : muted, fontWeight: '500' }}>
-                      {t.luck !== null ? (t.luck >= 0 ? `+${t.luck}` : `${t.luck}`) : '—'}
-                    </td>
-                    <td style={{ ...cStyle('center'), color: resultColor(t.playoff_result), fontSize: '12px', fontWeight: '500' }}>
-                      {t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}
+                    <td style={{ ...cStyle(), color: t.diff >= 0 ? green : red, fontWeight: '500' }}>{t.diff >= 0 ? '+' : ''}{t.diff}</td>
+                    <td style={{ ...cStyle(), color: t.ppgDiff >= 0 ? green : red, fontWeight: '500' }}>{t.ppgDiff >= 0 ? '+' : ''}{t.ppgDiff}</td>
+                    <td style={{ ...cStyle(), color: t.powerScore !== null ? text : muted }}>{t.powerScore !== null ? t.powerScore.toFixed(1) : '—'}</td>
+                    <td style={{ ...cStyle(), color: t.luck !== null ? (t.luck >= 0 ? green : red) : muted, fontWeight: '500' }}>{t.luck !== null ? (t.luck >= 0 ? `+${t.luck}` : `${t.luck}`) : '—'}</td>
+                    <td style={{ ...cStyle('center'), color: resultColor(t.playoff_result), fontSize: '12px', fontWeight: '500' }}>{t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}</td>
+                    <td style={cStyle('center')}>
+                      <button onClick={() => setRosterTeam(t)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }} title="View Roster">📋</button>
                     </td>
                   </tr>
                 ))}
-                {filteredTeams.length === 0 && (
+                {/* Averages row */}
+                {avgRow && (
                   <tr>
-                    <td colSpan={14} style={{ padding: '24px', color: muted, textAlign: 'center', fontSize: '13px' }}>
-                      No teams match your filters.
-                    </td>
+                    <td style={{ ...aStyle('center') }}>AVG</td>
+                    <td style={{ ...aStyle('left'), fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Selection Avg ({filteredTeams.length})</td>
+                    <td style={aStyle('left')} />
+                    <td style={aStyle('center')} />
+                    <td style={aStyle()}>{avgRow.wins}</td>
+                    <td style={aStyle()}>{avgRow.losses}</td>
+                    <td style={aStyle()}>{avgRow.winPct}%</td>
+                    <td style={aStyle()}>{avgRow.pf}</td>
+                    <td style={aStyle()}>{avgRow.pa}</td>
+                    <td style={{ ...aStyle(), color: parseFloat(avgRow.diff) >= 0 ? green : red }}>{parseFloat(avgRow.diff) >= 0 ? '+' : ''}{avgRow.diff}</td>
+                    <td style={{ ...aStyle(), color: parseFloat(avgRow.ppgDiff) >= 0 ? green : red }}>{parseFloat(avgRow.ppgDiff) >= 0 ? '+' : ''}{avgRow.ppgDiff}</td>
+                    <td style={aStyle()}>{avgRow.power}</td>
+                    <td style={{ ...aStyle(), color: parseFloat(avgRow.luck) >= 0 ? green : red }}>{parseFloat(avgRow.luck) >= 0 ? '+' : ''}{avgRow.luck}</td>
+                    <td style={aStyle('center')} />
+                    <td style={aStyle('center')} />
                   </tr>
+                )}
+                {filteredTeams.length === 0 && (
+                  <tr><td colSpan={15} style={{ padding: '24px', color: muted, textAlign: 'center', fontSize: '13px' }}>No teams match your filters.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {rosterTeam && <RosterDrawer team={rosterTeam} onClose={() => setRosterTeam(null)} />}
     </div>
   )
 }
