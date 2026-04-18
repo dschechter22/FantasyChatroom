@@ -13,19 +13,20 @@ const supabase = createClient(
 const POSITIONS = ['All', 'QB', 'RB', 'WR', 'TE', 'K', 'D/ST']
 
 export default function PlayersPage() {
-  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, highlight, green, red, gold, blue } = useLayout()
+  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, highlight, green, red, gold } = useLayout()
   const router = useRouter()
   const [players, setPlayers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [posFilter, setPosFilter] = useState('All')
+  const [sortCol, setSortCol] = useState('careerAvg')
+  const [sortDir, setSortDir] = useState('desc')
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     const fetchPlayers = async () => {
-      // Get all roster entries joined to players, aggregate stats
       const { data: entries } = await supabase
         .from('roster_entries')
         .select('player_id, fpts, avg_pts, player:player_id(id, name, position, sleeper_id)')
@@ -33,21 +34,14 @@ export default function PlayersPage() {
 
       if (!entries) { setLoading(false); return }
 
-      // Aggregate per player
       const agg = {}
       for (const e of entries) {
         const p = e.player
         if (!p) continue
         if (!agg[p.id]) {
           agg[p.id] = {
-            id: p.id,
-            name: p.name,
-            position: p.position,
-            sleeper_id: p.sleeper_id,
-            totalFpts: 0,
-            seasons: 0,
-            avgPts: 0,
-            entries: [],
+            id: p.id, name: p.name, position: p.position,
+            sleeper_id: p.sleeper_id, totalFpts: 0, seasons: 0, entries: [],
           }
         }
         agg[p.id].totalFpts += e.fpts || 0
@@ -55,14 +49,13 @@ export default function PlayersPage() {
         agg[p.id].entries.push(e.avg_pts || 0)
       }
 
-      // Compute career avg PPG
       const result = Object.values(agg).map(p => ({
         ...p,
         totalFpts: parseFloat(p.totalFpts.toFixed(1)),
         careerAvg: p.entries.length > 0
           ? parseFloat((p.entries.reduce((a, b) => a + b, 0) / p.entries.length).toFixed(1))
           : 0,
-      })).sort((a, b) => b.careerAvg - a.careerAvg)
+      }))
 
       setPlayers(result)
       setLoading(false)
@@ -70,25 +63,36 @@ export default function PlayersPage() {
     fetchPlayers()
   }, [])
 
-  const filtered = useMemo(() => {
-    return players.filter(p => {
-      const matchPos = posFilter === 'All' || p.position === posFilter
-      const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
-      return matchPos && matchSearch
-    })
-  }, [players, search, posFilter])
+  const handleSort = (col) => {
+    if (sortCol === col) {
+      setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+    } else {
+      setSortCol(col)
+      setSortDir('desc')
+    }
+  }
 
-  const hStyle = (align = 'left') => ({
-    padding: effectiveMobile ? '8px 10px' : '10px 14px',
-    fontSize: '10px',
-    letterSpacing: '0.15em',
-    textTransform: 'uppercase',
-    color: muted,
-    textAlign: align,
-    borderBottom: `1px solid ${border}`,
-    fontWeight: '500',
-    whiteSpace: 'nowrap',
+  if (!mounted) return null
+
+  const filtered = players.filter(p => {
+    const matchPos = posFilter === 'All' || p.position === posFilter
+    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase())
+    return matchPos && matchSearch
   })
+
+  const displayData = [...filtered].sort((a, b) => {
+    let av = a[sortCol], bv = b[sortCol]
+    if (typeof av === 'string') av = av.toLowerCase()
+    if (typeof bv === 'string') bv = bv.toLowerCase()
+    if (av < bv) return sortDir === 'asc' ? -1 : 1
+    if (av > bv) return sortDir === 'asc' ? 1 : -1
+    return 0
+  })
+
+  const posColor = pos => {
+    const map = { QB: '#4285F4', RB: '#34A853', WR: '#FBBC04', TE: '#EA4335', K: '#46BDC6', 'D/ST': '#7BAAF7' }
+    return map[pos] || muted
+  }
 
   const cStyle = (align = 'left') => ({
     padding: effectiveMobile ? '10px' : '13px 14px',
@@ -99,14 +103,25 @@ export default function PlayersPage() {
     whiteSpace: 'nowrap',
   })
 
-  const posColor = pos => {
-    const map = { QB: '#4285F4', RB: '#34A853', WR: '#FBBC04', TE: '#EA4335', K: '#46BDC6', 'D/ST': '#7BAAF7' }
-    return map[pos] || muted
+  const SortHeader = ({ col, label, align = 'right' }) => {
+    const active = sortCol === col
+    const arrow = active ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''
+    return (
+      <th
+        onClick={() => handleSort(col)}
+        style={{
+          padding: effectiveMobile ? '8px 10px' : '10px 14px',
+          fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase',
+          color: active ? text : muted, textAlign: align,
+          borderBottom: `1px solid ${border}`, fontWeight: active ? '700' : '500',
+          whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none',
+          background: active ? (d ? 'rgba(255,255,255,0.04)' : 'rgba(13,33,82,0.04)') : 'transparent',
+        }}
+      >
+        {label}{arrow}
+      </th>
+    )
   }
-
-  if (!mounted) return null
-
-  const displayData = mounted ? filtered : []
 
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
@@ -118,7 +133,7 @@ export default function PlayersPage() {
             Players
           </h1>
           <p style={{ color: muted, fontSize: '13px' }}>
-            {players.length} players across all seasons · sorted by career avg PPG
+            {players.length} players across all seasons · click column headers to sort
           </p>
         </div>
 
@@ -154,7 +169,6 @@ export default function PlayersPage() {
           </div>
         </div>
 
-        {/* Table */}
         {loading ? (
           <p style={{ color: muted }}>Loading players...</p>
         ) : (
@@ -162,12 +176,12 @@ export default function PlayersPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
               <thead>
                 <tr style={{ background: cardBg }}>
-                  <th style={hStyle('center')}>#</th>
-                  <th style={hStyle()}>Player</th>
-                  <th style={hStyle('center')}>Pos</th>
-                  {!effectiveMobile && <th style={hStyle('right')}>Seasons</th>}
-                  <th style={hStyle('right')}>Career FPTS</th>
-                  <th style={hStyle('right')}>Avg PPG</th>
+                  <th style={{ padding: effectiveMobile ? '8px 10px' : '10px 14px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: 'center', borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' }}>#</th>
+                  <SortHeader col="name" label="Player" align="left" />
+                  <SortHeader col="position" label="Pos" align="center" />
+                  {!effectiveMobile && <SortHeader col="seasons" label="Seasons" />}
+                  <SortHeader col="totalFpts" label="Career FPTS" />
+                  <SortHeader col="careerAvg" label="Avg PPG" />
                 </tr>
               </thead>
               <tbody>
@@ -175,25 +189,14 @@ export default function PlayersPage() {
                   <tr
                     key={p.id}
                     onClick={() => router.push(`/players/${p.id}`)}
-                    style={{
-                      background: i % 2 === 0 ? 'transparent' : rowAlt,
-                      cursor: 'pointer',
-                      transition: 'background 0.1s',
-                    }}
+                    style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer', transition: 'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = highlight}
                     onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : rowAlt}
                   >
                     <td style={{ ...cStyle('center'), color: muted, fontSize: '11px' }}>{i + 1}</td>
-                    <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '13px' : '15px' }}>
-                      {p.name}
-                    </td>
-                    <td style={{ ...cStyle('center') }}>
-                      <span style={{
-                        fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em',
-                        color: posColor(p.position),
-                        background: posColor(p.position) + '18',
-                        padding: '2px 7px',
-                      }}>
+                    <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '13px' : '15px' }}>{p.name}</td>
+                    <td style={cStyle('center')}>
+                      <span style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '0.08em', color: posColor(p.position), background: posColor(p.position) + '18', padding: '2px 7px' }}>
                         {p.position}
                       </span>
                     </td>
