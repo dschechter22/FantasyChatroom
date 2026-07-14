@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import { useLayout } from '../hooks/LayoutContext'
 
 const NAV_LINKS = [
+  ['2026-27', '/draft'],
   ['Champions', '/champions'],
   ['Standings', '/standings'],
   ['Graphs', '/graphs'],
