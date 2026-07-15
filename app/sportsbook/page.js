@@ -27,6 +27,11 @@ export default function SportsbookPage() {
 
   const [playerName, setPlayerName] = useState('')
   const [nameInput, setNameInput] = useState('')
+  const [nameStep, setNameStep] = useState('name') // 'name' | 'pin'
+  const [pendingName, setPendingName] = useState('')
+  const [isNewAccount, setIsNewAccount] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState('')
 
   const [slip, setSlip] = useState([])
   const [slipAmounts, setSlipAmounts] = useState({})
@@ -85,22 +90,34 @@ export default function SportsbookPage() {
     setMyParlays((parlays || []).map(p => ({ ...p, legs: betList.filter(b => b.parlay_id === p.id) })))
   }
 
-  const getOrCreate = async (name) => {
-    let acc = accounts.find(a => a.manager_name === name)
-    if (!acc) {
-      const { data } = await db.from('gb_accounts').insert({ manager_name: name, season: SEASON, balance: 1000 }).select().single()
-      acc = data
-      await fetchAccounts()
-    }
-    return acc
-  }
-
   const myAccount = accounts.find(a => a.manager_name === playerName)
 
-  const setPlayer = async (name) => {
-    setPlayerName(name)
-    const acc = accounts.find(a => a.manager_name === name)
-    if (acc) fetchMyBets(acc.id)
+  const handleNameNext = () => {
+    const name = nameInput.trim()
+    if (!name) return
+    const existing = accounts.find(a => a.manager_name === name)
+    setPendingName(name)
+    setIsNewAccount(!existing)
+    setPinInput(''); setPinError('')
+    setNameStep('pin')
+  }
+
+  const handlePinSubmit = async () => {
+    if (!pinInput || pinInput.length < 4) return setPinError('PIN must be 4+ digits')
+    if (isNewAccount) {
+      const { data, error } = await db.from('gb_accounts').insert({ manager_name: pendingName, season: SEASON, balance: 1000, pin: pinInput }).select().single()
+      if (error) return setPinError('Name already taken — try logging in')
+      setPlayerName(pendingName)
+      setNameStep('name'); setNameInput(''); setPinInput('')
+      await fetchAccounts()
+      fetchMyBets(data.id)
+    } else {
+      const { data } = await db.from('gb_accounts').select('*').eq('manager_name', pendingName).eq('season', SEASON).single()
+      if (!data || data.pin !== pinInput) return setPinError('Incorrect PIN')
+      setPlayerName(pendingName)
+      setNameStep('name'); setNameInput(''); setPinInput('')
+      fetchMyBets(data.id)
+    }
   }
 
   // Bet slip helpers
@@ -119,50 +136,47 @@ export default function SportsbookPage() {
   }
 
   const placeSingles = async () => {
-    if (!playerName) return showFlash('Enter your name first', false)
+    if (!myAccount) return showFlash('Log in first', false)
     const amounts = slip.map((_, i) => parseInt(slipAmounts[i]) || 0)
     if (amounts.some(a => a <= 0)) return showFlash('Enter amounts for all bets', false)
     const total = amounts.reduce((a, b) => a + b, 0)
-    if (myAccount && total > myAccount.balance) return showFlash('Insufficient Gimre Bucks', false)
+    if (total > myAccount.balance) return showFlash('Insufficient Gimre Bucks', false)
     setSubmitting(true)
-    const acc = await getOrCreate(playerName)
-    await db.from('sb_bets').insert(slip.map((s, i) => ({ account_id: acc.id, game_id: s.gameId, bet_type: s.betType, pick: s.pick, amount: amounts[i], odds: s.odds, status: 'pending' })))
-    const { data: fresh } = await db.from('gb_accounts').select('balance').eq('id', acc.id).single()
-    await db.from('gb_accounts').update({ balance: fresh.balance - total }).eq('id', acc.id)
+    await db.from('sb_bets').insert(slip.map((s, i) => ({ account_id: myAccount.id, game_id: s.gameId, bet_type: s.betType, pick: s.pick, amount: amounts[i], odds: s.odds, status: 'pending' })))
+    const { data: fresh } = await db.from('gb_accounts').select('balance').eq('id', myAccount.id).single()
+    await db.from('gb_accounts').update({ balance: fresh.balance - total }).eq('id', myAccount.id)
     setSlip([]); setSlipAmounts({})
     showFlash(`${slip.length} bet${slip.length > 1 ? 's' : ''} placed!`)
-    fetchAccounts(); fetchMyBets(acc.id)
+    fetchAccounts(); fetchMyBets(myAccount.id)
     setSubmitting(false)
   }
 
   const placeParlay = async () => {
-    if (!playerName) return showFlash('Enter your name first', false)
+    if (!myAccount) return showFlash('Log in first', false)
     if (slip.length < 2) return showFlash('Parlays need 2+ legs', false)
     const amt = parseInt(parlayAmt)
     if (!amt || amt <= 0) return showFlash('Enter parlay amount', false)
-    if (myAccount && amt > myAccount.balance) return showFlash('Insufficient Gimre Bucks', false)
+    if (amt > myAccount.balance) return showFlash('Insufficient Gimre Bucks', false)
     setSubmitting(true)
-    const acc = await getOrCreate(playerName)
     const combinedOdds = toAmerican(slip.reduce((a, s) => a * toDecimal(s.odds), 1))
-    const { data: parlay } = await db.from('sb_parlays').insert({ account_id: acc.id, amount: amt, legs: slip.length, combined_odds: combinedOdds, status: 'pending' }).select().single()
-    await db.from('sb_bets').insert(slip.map(s => ({ account_id: acc.id, game_id: s.gameId, bet_type: s.betType, pick: s.pick, amount: 0, odds: s.odds, status: 'pending', parlay_id: parlay.id })))
-    const { data: fresh } = await db.from('gb_accounts').select('balance').eq('id', acc.id).single()
-    await db.from('gb_accounts').update({ balance: fresh.balance - amt }).eq('id', acc.id)
+    const { data: parlay } = await db.from('sb_parlays').insert({ account_id: myAccount.id, amount: amt, legs: slip.length, combined_odds: combinedOdds, status: 'pending' }).select().single()
+    await db.from('sb_bets').insert(slip.map(s => ({ account_id: myAccount.id, game_id: s.gameId, bet_type: s.betType, pick: s.pick, amount: 0, odds: s.odds, status: 'pending', parlay_id: parlay.id })))
+    const { data: fresh } = await db.from('gb_accounts').select('balance').eq('id', myAccount.id).single()
+    await db.from('gb_accounts').update({ balance: fresh.balance - amt }).eq('id', myAccount.id)
     setSlip([]); setParlayAmt(''); setIsParlay(false)
     showFlash(`Parlay placed! ${fmtOdds(combinedOdds)}`)
-    fetchAccounts(); fetchMyBets(acc.id)
+    fetchAccounts(); fetchMyBets(myAccount.id)
     setSubmitting(false)
   }
 
   const submitPickem = async () => {
-    if (!playerName) return showFlash('Enter your name first', false)
+    if (!myAccount) return showFlash('Log in first', false)
     const newPicks = Object.entries(pickemPicks).filter(([gameId]) => !myBets.some(b => b.bet_type === 'pickem' && b.game_id === gameId))
     if (!newPicks.length) return showFlash('No new picks to submit', false)
     setSubmitting(true)
-    const acc = await getOrCreate(playerName)
-    await db.from('sb_bets').insert(newPicks.map(([gameId, pick]) => ({ account_id: acc.id, game_id: gameId, bet_type: 'pickem', pick, amount: 0, odds: 0, status: 'pending' })))
+    await db.from('sb_bets').insert(newPicks.map(([gameId, pick]) => ({ account_id: myAccount.id, game_id: gameId, bet_type: 'pickem', pick, amount: 0, odds: 0, status: 'pending' })))
     showFlash('Picks submitted!')
-    fetchMyBets(acc.id)
+    fetchMyBets(myAccount.id)
     setSubmitting(false)
   }
 
@@ -293,14 +307,30 @@ export default function SportsbookPage() {
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             {!playerName ? (
-              <>
-                <input value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && nameInput.trim() && setPlayer(nameInput.trim())} placeholder="Your name..." style={{ ...inp, width: '140px' }} />
-                <button onClick={() => nameInput.trim() && setPlayer(nameInput.trim())} style={{ background: text, color: bg, border: 'none', padding: '8px 16px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>Enter</button>
-              </>
+              nameStep === 'name' ? (
+                <>
+                  <input value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleNameNext()} placeholder="Your name..." style={{ ...inp, width: '140px' }} />
+                  <button onClick={handleNameNext} style={{ background: text, color: bg, border: 'none', padding: '8px 16px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>Next</button>
+                </>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '11px', color: muted }}>{isNewAccount ? `Create account for ${pendingName}` : `Welcome back, ${pendingName}`}</span>
+                    <button onClick={() => { setNameStep('name'); setPinError('') }} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", textDecoration: 'underline', padding: 0 }}>change</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input type="password" value={pinInput} onChange={e => { setPinInput(e.target.value); setPinError('') }} onKeyDown={e => e.key === 'Enter' && handlePinSubmit()} placeholder={isNewAccount ? 'Set a PIN (4+ digits)' : 'PIN'} style={{ ...inp, width: '180px' }} />
+                    <button onClick={handlePinSubmit} style={{ background: text, color: bg, border: 'none', padding: '8px 16px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", fontWeight: '500', whiteSpace: 'nowrap' }}>
+                      {isNewAccount ? 'Create' : 'Login'}
+                    </button>
+                  </div>
+                  {pinError && <p style={{ fontSize: '11px', color: red, margin: 0 }}>{pinError}</p>}
+                </div>
+              )
             ) : (
               <>
                 <span style={{ fontSize: '12px', color: muted }}>Playing as <strong style={{ color: text }}>{playerName}</strong></span>
-                <button onClick={() => { setPlayerName(''); setNameInput('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 10px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Switch</button>
+                <button onClick={() => { setPlayerName(''); setNameInput(''); setNameStep('name') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 10px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Switch</button>
               </>
             )}
             {!adminUnlocked
