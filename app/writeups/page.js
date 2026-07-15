@@ -71,11 +71,24 @@ export default function WriteupsPage() {
   const [commentPinInput, setCommentPinInput] = useState('')
   const [commentPinError, setCommentPinError] = useState('')
 
+  const [copiedId, setCopiedId] = useState(null)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => { fetchWriteups() }, [])
   useEffect(() => { if (expandedId) fetchComments(expandedId) }, [expandedId])
+
+  // On load, auto-expand writeup from URL hash
+  useEffect(() => {
+    if (!mounted || !writeups.length) return
+    const hash = window.location.hash.replace('#', '')
+    if (hash && writeups.some(w => w.id === hash)) {
+      setExpandedId(hash)
+      setTimeout(() => {
+        document.getElementById(`writeup-${hash}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    }
+  }, [mounted, writeups])
 
   const fetchWriteups = async () => {
     setLoading(true)
@@ -346,7 +359,7 @@ export default function WriteupsPage() {
                 const wComments = comments[w.id] || []
                 const cf = commentForms[w.id] || { author_name: '', content: '', pin: '' }
                 return (
-                  <div key={w.id} style={{ background: cardBg, border: `1px solid ${border}` }}>
+                  <div key={w.id} id={`writeup-${w.id}`} style={{ background: cardBg, border: `1px solid ${border}` }}>
                     <div onClick={() => setExpandedId(isExpanded ? null : w.id)} style={{ padding: effectiveMobile ? '16px' : '20px 24px', cursor: 'pointer' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                         <div style={{ minWidth: 0 }}>
@@ -359,6 +372,19 @@ export default function WriteupsPage() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                           {wComments.length > 0 && <span style={{ fontSize: '11px', color: muted }}>{wComments.length} 💬</span>}
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              const url = `${window.location.origin}/writeups#${w.id}`
+                              navigator.clipboard.writeText(url)
+                              setCopiedId(w.id)
+                              setTimeout(() => setCopiedId(null), 2000)
+                            }}
+                            style={{ background: 'none', border: 'none', color: copiedId === w.id ? green : muted, cursor: 'pointer', fontSize: '12px', padding: '2px 4px', lineHeight: 1 }}
+                            title="Copy link"
+                          >
+                            {copiedId === w.id ? '✓' : '🔗'}
+                          </button>
                           <span style={{ fontSize: '11px', color: muted }}>{isExpanded ? '▲' : '▼'}</span>
                         </div>
                       </div>
