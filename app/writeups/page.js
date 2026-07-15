@@ -168,9 +168,16 @@ export default function WriteupsPage() {
     e.preventDefault()
     const temp = document.createElement('div')
     temp.innerHTML = html
+    // Strip style/script/head — Word includes huge CSS blocks as text nodes
+    temp.querySelectorAll('style, script, head').forEach(el => el.remove())
+    // Use body content if present, otherwise the whole fragment
+    const root = temp.querySelector('body') || temp
     const convert = (node) => {
       if (node.nodeType === Node.TEXT_NODE) return node.textContent
       const tag = node.tagName?.toLowerCase()
+      if (!tag || tag === 'style' || tag === 'script') return ''
+      // Word uses <o:p> as empty paragraph markers — skip
+      if (tag.includes(':')) return ''
       const style = node.style || {}
       const children = Array.from(node.childNodes).map(convert).join('')
       const isBold = tag === 'b' || tag === 'strong' || style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 700
@@ -183,7 +190,7 @@ export default function WriteupsPage() {
       if (tag === 'li') result = result + '\n'
       return result
     }
-    const converted = convert(temp).replace(/\n{3,}/g, '\n\n').trim()
+    const converted = convert(root).replace(/\n{3,}/g, '\n\n').trim()
     const ta = contentRef.current
     const start = ta.selectionStart
     const end = ta.selectionEnd
