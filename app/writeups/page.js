@@ -395,10 +395,11 @@ export default function WriteupsPage() {
                         {/* Content */}
                         <div style={{ fontSize: '14px', color: text, lineHeight: 1.7, marginBottom: '20px' }} dangerouslySetInnerHTML={{ __html: renderContent(w.content) }} />
 
-                        {/* Edit / Delete */}
+                        {/* Edit / Delete / Share */}
                         <div style={{ display: 'flex', gap: '8px', borderTop: `1px solid ${border}`, paddingTop: '16px', marginBottom: '28px' }}>
                           <button onClick={() => { setPinModal({ writeupId: w.id, action: 'edit' }); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Edit</button>
                           <button onClick={() => { setPinModal({ writeupId: w.id, action: 'delete' }); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '6px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Delete</button>
+                          <button onClick={() => { const url = `${window.location.origin}/writeups#${w.id}`; navigator.clipboard.writeText(url); setCopiedId(w.id); setTimeout(() => setCopiedId(null), 2000) }} style={{ background: 'none', border: `1px solid ${border}`, color: copiedId === w.id ? green : muted, padding: '6px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>{copiedId === w.id ? '✓ Copied' : '🔗 Share'}</button>
                         </div>
 
                         {/* Comments */}
