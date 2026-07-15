@@ -162,6 +162,36 @@ export default function WriteupsPage() {
     fetchComments(writeupId)
   }
 
+  const handlePaste = (e) => {
+    const html = e.clipboardData.getData('text/html')
+    if (!html) return
+    e.preventDefault()
+    const temp = document.createElement('div')
+    temp.innerHTML = html
+    const convert = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) return node.textContent
+      const tag = node.tagName?.toLowerCase()
+      const style = node.style || {}
+      const children = Array.from(node.childNodes).map(convert).join('')
+      const isBold = tag === 'b' || tag === 'strong' || style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 700
+      const isItalic = tag === 'i' || tag === 'em' || style.fontStyle === 'italic'
+      let result = children
+      if (isItalic) result = `*${result}*`
+      if (isBold) result = `**${result}**`
+      if (tag === 'p' || tag === 'div') result = result + '\n'
+      if (tag === 'br') result = '\n'
+      if (tag === 'li') result = result + '\n'
+      return result
+    }
+    const converted = convert(temp).replace(/\n{3,}/g, '\n\n').trim()
+    const ta = contentRef.current
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const newVal = ta.value.substring(0, start) + converted + ta.value.substring(end)
+    setForm(f => ({ ...f, content: newVal }))
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(start + converted.length, start + converted.length) }, 0)
+  }
+
   const applyFormat = (tag) => {
     const ta = contentRef.current
     if (!ta) return
@@ -449,6 +479,7 @@ export default function WriteupsPage() {
                   ref={contentRef}
                   value={form.content}
                   onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+                  onPaste={handlePaste}
                   placeholder="Write your writeup here..."
                   rows={effectiveMobile ? 12 : 18}
                   style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.6 }}
