@@ -192,14 +192,19 @@ export default function DraftsPage() {
     const slowestQB = trendData.filter(m => m.avgRound['QB'] != null).sort((a, b) => b.avgRound['QB'] - a.avgRound['QB'])[0]
     const earlyTEManager = trendData.filter(m => m.avgRound['TE'] != null).sort((a, b) => a.avgRound['TE'] - b.avgRound['TE'])[0]
 
-    // Re-draft favorites
+    // Re-draft favorites — per manager
     const reDraftCount = {}
     allPicks.forEach(p => {
       const key = `${p.manager_name}|||${p.player_name}`
       reDraftCount[key] = (reDraftCount[key] || 0) + 1
     })
-    const top = Object.entries(reDraftCount).filter(([, c]) => c > 1).sort((a, b) => b[1] - a[1])[0]
-    const reDraftFavorite = top ? (() => { const [k, c] = top; const [mgr, pl] = k.split('|||'); return { manager: mgr, player: pl, count: c } })() : null
+    const mgrsAll = [...new Set(allPicks.map(p => p.manager_name))].sort()
+    const reDraftByManager = mgrsAll.map(mgr => {
+      const picks = Object.entries(reDraftCount).filter(([k]) => k.startsWith(`${mgr}|||`)).sort((a, b) => b[1] - a[1])
+      const top = picks[0]
+      if (!top || top[1] < 2) return { manager: mgr, player: null, count: 0 }
+      return { manager: mgr, player: top[0].split('|||')[1], count: top[1] }
+    })
 
     // Performance-based (needs enrichedWithValue)
     let bestValue = null, biggestBust = null, bestDraftManager = null, worstDraftManager = null, draftSuccessRates = []
@@ -220,7 +225,7 @@ export default function DraftsPage() {
       worstDraftManager = draftSuccessRates[draftSuccessRates.length - 1] || null
     }
 
-    return { earlyQB, earlyTE, latestK, earlyDST, latestFirstQB, mostRBsEarly, mostWRsEarly, zeroRBSeasons, mostDrafted, fastestDST, slowestDST, fastestQB, slowestQB, earlyTEManager, reDraftFavorite, bestValue, biggestBust, bestDraftManager, worstDraftManager, draftSuccessRates }
+    return { earlyQB, earlyTE, latestK, earlyDST, latestFirstQB, mostRBsEarly, mostWRsEarly, zeroRBSeasons, mostDrafted, fastestDST, slowestDST, fastestQB, slowestQB, earlyTEManager, reDraftByManager, bestValue, biggestBust, bestDraftManager, worstDraftManager, draftSuccessRates }
   }, [allPicks, trendData, enrichedWithValue])
 
   if (!mounted) return null
@@ -444,7 +449,19 @@ export default function DraftsPage() {
                   <StatCard label="💀 Biggest Bust (Rds 1–3)" value={superlatives.biggestBust?.player_name} sub={superlatives.biggestBust ? `Rd ${superlatives.biggestBust.round}, Pick #${superlatives.biggestBust.overall_pick} · ${superlatives.biggestBust.manager_name} · ${superlatives.biggestBust.season} · ${superlatives.biggestBust.fpts?.toFixed(1)} pts scored` : 'Loading performance data…'} color={red} />
                   <StatCard label="🏆 Best Drafter All-Time" value={superlatives.bestDraftManager?.name} sub={superlatives.bestDraftManager ? `${(superlatives.bestDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg +${(superlatives.bestDraftManager.avgValue * 100).toFixed(1)}% value per pick` : 'Loading performance data…'} color={gold} />
                   <StatCard label="📉 Worst Drafter All-Time" value={superlatives.worstDraftManager?.name} sub={superlatives.worstDraftManager ? `${(superlatives.worstDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg ${(superlatives.worstDraftManager.avgValue * 100).toFixed(1)}% value per pick` : 'Loading performance data…'} color={red} />
-                  <StatCard label="🔁 Most Re-Drafted Player" value={superlatives.reDraftFavorite ? `${superlatives.reDraftFavorite.player} (${superlatives.reDraftFavorite.count}×)` : '—'} sub={superlatives.reDraftFavorite ? `${superlatives.reDraftFavorite.manager}'s go-to pick` : ''} color={blue} />
+                  <div style={{ background: cardBg, padding: '18px 20px', borderTop: `2px solid ${blue}`, gridColumn: effectiveMobile ? 'span 2' : 'span 2' }}>
+                    <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '12px' }}>🔁 Favorite Re-Draft Target — By Manager</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {(superlatives.reDraftByManager || []).map(r => (
+                        <div key={r.manager} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                          <span style={{ color: muted, minWidth: '80px' }}>{r.manager}</span>
+                          {r.player
+                            ? <><span style={{ color: text, fontFamily: "'Playfair Display', serif", flex: 1, paddingLeft: '12px' }}>{r.player}</span><span style={{ color: blue, fontWeight: '600', fontSize: '11px', marginLeft: '8px' }}>{r.count}×</span></>
+                            : <span style={{ color: muted, fontSize: '11px', paddingLeft: '12px' }}>No repeat picks</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
                   {/* Draft-data only */}
                   <StatCard label="🏈 First QB Off the Board" value={superlatives.earlyQB?.player_name} sub={superlatives.earlyQB ? `Pick #${superlatives.earlyQB.overall_pick} (Rd ${superlatives.earlyQB.round}) · ${superlatives.earlyQB.manager_name} · ${superlatives.earlyQB.season}` : ''} color={POS_COLORS.QB} />
