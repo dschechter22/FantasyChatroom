@@ -94,12 +94,19 @@ export default function DraftsPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: players }, { data: teams }] = await Promise.all([
-        supabase.from('players').select('id, name').limit(2000),
-        supabase.from('teams').select('id, season:season_id(year)').eq('league_id', LEAGUE_ID).limit(200),
-      ])
-      if (!players || !teams) return
-      setPlayerList(players)
+      const { data: teams } = await supabase.from('teams').select('id, season:season_id(year)').eq('league_id', LEAGUE_ID).limit(200)
+      if (!teams) return
+
+      // Paginate players — Sleeper DB has thousands of rows, limit(2000) misses many
+      let allPlayers = [], pFrom = 0
+      while (true) {
+        const { data: batch } = await supabase.from('players').select('id, name').range(pFrom, pFrom + 999)
+        if (!batch?.length) break
+        allPlayers = [...allPlayers, ...batch]
+        if (batch.length < 1000) break
+        pFrom += 1000
+      }
+      setPlayerList(allPlayers)
 
       const teamYearMap = {}
       teams.forEach(t => { teamYearMap[t.id] = t.season?.year })
