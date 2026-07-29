@@ -210,9 +210,10 @@ export default function DraftsPage() {
       const draftPosRank = draftRankMap[`${p.overall_pick}_${p.season}`]
       if (!draftPosRank || !pool.length) return { ...p, valueScore: null, rawValue: null, fptsRank: null, draftPosRank: draftPosRank ?? null }
       const expectedFpts = pool[Math.min(draftPosRank, pool.length) - 1]
-      const actualFpts = p.fpts ?? 0
       const fptsRank = p.playerId ? (fptsRankById[`${p.season}_${p.position}`]?.[p.playerId] ?? (p.fpts != null ? pool.length + 1 : null)) : null
-      return { ...p, rawValue: actualFpts - expectedFpts, expectedFpts, fptsRank, draftPosRank }
+      // No fpts = can't compute value — don't substitute 0 or it creates fake negatives
+      if (p.fpts == null) return { ...p, rawValue: null, expectedFpts, fptsRank, draftPosRank }
+      return { ...p, rawValue: p.fpts - expectedFpts, expectedFpts, fptsRank, draftPosRank }
     })
 
     const allRaw = withRaw.filter(p => p.rawValue != null).map(p => p.rawValue)
