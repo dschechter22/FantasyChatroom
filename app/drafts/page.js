@@ -328,14 +328,14 @@ export default function DraftsPage() {
   const hStyle = (a = 'left') => ({ padding: '8px 12px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: a, borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' })
   const cStyle = (a = 'left') => ({ padding: '10px 12px', fontSize: '12px', textAlign: a, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
 
-  // Both use z-scores (standard deviations from mean across all picks)
+  // z-score thresholds — flattened so more seasons land at A/F extremes
   const gradeLabel = (v) => {
     if (v == null) return { label: '—', color: muted }
-    if (v > 0.7) return { label: 'A', color: green }
-    if (v > 0.3) return { label: 'B', color: green }
+    if (v > 0.4) return { label: 'A', color: green }
+    if (v > 0.2) return { label: 'B', color: green }
     if (v > 0) return { label: 'C+', color: text }
-    if (v > -0.3) return { label: 'C-', color: text }
-    if (v > -0.7) return { label: 'D', color: red }
+    if (v > -0.2) return { label: 'C-', color: text }
+    if (v > -0.4) return { label: 'D', color: red }
     return { label: 'F', color: red }
   }
 
