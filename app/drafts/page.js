@@ -208,10 +208,14 @@ export default function DraftsPage() {
 
     // Performance-based (needs enrichedWithValue)
     let bestValue = null, biggestBust = null, bestDraftManager = null, worstDraftManager = null, draftSuccessRates = []
+    let mostFptsManager = null, bestEarly = null, bestMid = null, bestLate = null, gradeData = null
     if (enrichedWithValue.length) {
       const ws = enrichedWithValue.filter(p => p.valueScore != null)
       bestValue = [...ws].sort((a, b) => b.valueScore - a.valueScore)[0] || null
       biggestBust = [...ws].filter(p => p.round <= 3).sort((a, b) => a.valueScore - b.valueScore)[0] || null
+      bestEarly = [...ws].filter(p => p.round <= 4).sort((a, b) => b.valueScore - a.valueScore)[0] || null
+      bestMid = [...ws].filter(p => p.round >= 5 && p.round <= 9).sort((a, b) => b.valueScore - a.valueScore)[0] || null
+      bestLate = [...ws].filter(p => p.round >= 10).sort((a, b) => b.valueScore - a.valueScore)[0] || null
 
       const mgrs = [...new Set(ws.map(p => p.manager_name))]
       draftSuccessRates = mgrs.map(mgr => {
@@ -223,15 +227,45 @@ export default function DraftsPage() {
       }).filter(Boolean).sort((a, b) => b.avgValue - a.avgValue)
       bestDraftManager = draftSuccessRates[0] || null
       worstDraftManager = draftSuccessRates[draftSuccessRates.length - 1] || null
+
+      // Most total fpts from drafted players
+      const totals = {}
+      enrichedWithValue.filter(p => p.fpts != null).forEach(p => { totals[p.manager_name] = (totals[p.manager_name] || 0) + p.fpts })
+      const topFpts = Object.entries(totals).sort((a, b) => b[1] - a[1])[0]
+      if (topFpts) mostFptsManager = { name: topFpts[0], total: Math.round(topFpts[1]) }
+
+      // Draft grades per manager per season
+      const gradeMgrs = [...new Set(ws.map(p => p.manager_name))].sort()
+      const gradeSeasons = [...new Set(ws.map(p => p.season))].sort()
+      const grades = {}
+      gradeSeasons.forEach(yr => {
+        grades[yr] = {}
+        gradeMgrs.forEach(mgr => {
+          const mp = ws.filter(p => p.manager_name === mgr && p.season === yr)
+          if (!mp.length) return
+          grades[yr][mgr] = mp.reduce((s, p) => s + p.valueScore, 0) / mp.length
+        })
+      })
+      gradeData = { seasons: gradeSeasons, managers: gradeMgrs, grades }
     }
 
-    return { earlyQB, earlyTE, latestK, earlyDST, latestFirstQB, mostRBsEarly, mostWRsEarly, zeroRBSeasons, mostDrafted, fastestDST, slowestDST, fastestQB, slowestQB, earlyTEManager, reDraftByManager, bestValue, biggestBust, bestDraftManager, worstDraftManager, draftSuccessRates }
+    return { earlyQB, earlyTE, latestK, earlyDST, latestFirstQB, mostRBsEarly, mostWRsEarly, zeroRBSeasons, mostDrafted, fastestDST, slowestDST, fastestQB, slowestQB, earlyTEManager, reDraftByManager, bestValue, biggestBust, bestDraftManager, worstDraftManager, draftSuccessRates, mostFptsManager, bestEarly, bestMid, bestLate, gradeData }
   }, [allPicks, trendData, enrichedWithValue])
 
   if (!mounted) return null
 
   const hStyle = (a = 'left') => ({ padding: '8px 12px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: a, borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' })
   const cStyle = (a = 'left') => ({ padding: '10px 12px', fontSize: '12px', textAlign: a, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
+
+  const gradeLabel = (v) => {
+    if (v == null) return { label: '—', color: muted }
+    if (v > 0.07) return { label: 'A', color: green }
+    if (v > 0.03) return { label: 'B', color: green }
+    if (v > 0) return { label: 'C+', color: text }
+    if (v > -0.03) return { label: 'C-', color: text }
+    if (v > -0.07) return { label: 'D', color: red }
+    return { label: 'F', color: red }
+  }
 
   const StatCard = ({ label, value, sub, color }) => (
     <div style={{ background: cardBg, padding: '18px 20px', borderTop: `2px solid ${color || border}` }}>
@@ -445,10 +479,14 @@ export default function DraftsPage() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1px', background: border }}>
                   {/* Performance-based */}
-                  <StatCard label="💎 Best Value Pick Ever" value={superlatives.bestValue?.player_name} sub={superlatives.bestValue ? `Rd ${superlatives.bestValue.round}, Pick #${superlatives.bestValue.overall_pick} · ${superlatives.bestValue.manager_name} · ${superlatives.bestValue.season} · ${superlatives.bestValue.fpts?.toFixed(1)} pts scored` : 'Loading performance data…'} color={green} />
-                  <StatCard label="💀 Biggest Bust (Rds 1–3)" value={superlatives.biggestBust?.player_name} sub={superlatives.biggestBust ? `Rd ${superlatives.biggestBust.round}, Pick #${superlatives.biggestBust.overall_pick} · ${superlatives.biggestBust.manager_name} · ${superlatives.biggestBust.season} · ${superlatives.biggestBust.fpts?.toFixed(1)} pts scored` : 'Loading performance data…'} color={red} />
-                  <StatCard label="🏆 Best Drafter All-Time" value={superlatives.bestDraftManager?.name} sub={superlatives.bestDraftManager ? `${(superlatives.bestDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg +${(superlatives.bestDraftManager.avgValue * 100).toFixed(1)}% value per pick` : 'Loading performance data…'} color={gold} />
-                  <StatCard label="📉 Worst Drafter All-Time" value={superlatives.worstDraftManager?.name} sub={superlatives.worstDraftManager ? `${(superlatives.worstDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg ${(superlatives.worstDraftManager.avgValue * 100).toFixed(1)}% value per pick` : 'Loading performance data…'} color={red} />
+                  <StatCard label="📦 Most Fpts from Drafted Players" value={superlatives.mostFptsManager?.name} sub={superlatives.mostFptsManager ? `${superlatives.mostFptsManager.total.toLocaleString()} total pts from own draft picks (all seasons)` : 'Loading…'} color={gold} />
+                  <StatCard label="💎 Best Value Pick Ever" value={superlatives.bestValue?.player_name} sub={superlatives.bestValue ? `Rd ${superlatives.bestValue.round}, Pick #${superlatives.bestValue.overall_pick} · ${superlatives.bestValue.manager_name} · ${superlatives.bestValue.season} · ${superlatives.bestValue.fpts?.toFixed(1)} pts` : 'Loading…'} color={green} />
+                  <StatCard label="💀 Biggest Bust (Rds 1–3)" value={superlatives.biggestBust?.player_name} sub={superlatives.biggestBust ? `Rd ${superlatives.biggestBust.round}, Pick #${superlatives.biggestBust.overall_pick} · ${superlatives.biggestBust.manager_name} · ${superlatives.biggestBust.season} · ${superlatives.biggestBust.fpts?.toFixed(1)} pts` : 'Loading…'} color={red} />
+                  <StatCard label="🏆 Best Drafter All-Time" value={superlatives.bestDraftManager?.name} sub={superlatives.bestDraftManager ? `${(superlatives.bestDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg +${(superlatives.bestDraftManager.avgValue * 100).toFixed(1)}% value per pick` : 'Loading…'} color={gold} />
+                  <StatCard label="📉 Worst Drafter All-Time" value={superlatives.worstDraftManager?.name} sub={superlatives.worstDraftManager ? `${(superlatives.worstDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg ${(superlatives.worstDraftManager.avgValue * 100).toFixed(1)}% value per pick` : 'Loading…'} color={red} />
+                  <StatCard label="🎯 Best Early Pick (Rds 1–4)" value={superlatives.bestEarly?.player_name} sub={superlatives.bestEarly ? `Rd ${superlatives.bestEarly.round}, #${superlatives.bestEarly.overall_pick} · ${superlatives.bestEarly.manager_name} · ${superlatives.bestEarly.season} · ${superlatives.bestEarly.fpts?.toFixed(1)} pts` : 'Loading…'} color={POS_COLORS[superlatives.bestEarly?.position] || green} />
+                  <StatCard label="🔍 Best Mid Pick (Rds 5–9)" value={superlatives.bestMid?.player_name} sub={superlatives.bestMid ? `Rd ${superlatives.bestMid.round}, #${superlatives.bestMid.overall_pick} · ${superlatives.bestMid.manager_name} · ${superlatives.bestMid.season} · ${superlatives.bestMid.fpts?.toFixed(1)} pts` : 'Loading…'} color={POS_COLORS[superlatives.bestMid?.position] || gold} />
+                  <StatCard label="💡 Best Late Pick (Rd 10+)" value={superlatives.bestLate?.player_name} sub={superlatives.bestLate ? `Rd ${superlatives.bestLate.round}, #${superlatives.bestLate.overall_pick} · ${superlatives.bestLate.manager_name} · ${superlatives.bestLate.season} · ${superlatives.bestLate.fpts?.toFixed(1)} pts` : 'Loading…'} color={POS_COLORS[superlatives.bestLate?.position] || blue} />
                   <div style={{ background: cardBg, padding: '18px 20px', borderTop: `2px solid ${blue}`, gridColumn: effectiveMobile ? 'span 2' : 'span 2' }}>
                     <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '12px' }}>🔁 Favorite Re-Draft Target — By Manager</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -479,6 +517,42 @@ export default function DraftsPage() {
                   <StatCard label="🤡 Zero RB Drafter(s)" value={superlatives.zeroRBSeasons.length ? superlatives.zeroRBSeasons.map(z => `${z.manager} (${z.season})`).join(', ') : 'None'} sub="0 RBs taken in rounds 1–3" color={red} />
                   <StatCard label="🔄 Most Drafted Player" value={superlatives.mostDrafted?.[0]} sub={superlatives.mostDrafted ? `Drafted ${superlatives.mostDrafted[1]}× across all seasons` : ''} color={gold} />
                 </div>
+
+                {/* Draft grade grid */}
+                {superlatives.gradeData && (
+                  <div style={{ marginTop: '48px' }}>
+                    <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '20px' }}>Draft Grade by Season — Skill Positions</p>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                        <thead>
+                          <tr style={{ background: cardBg }}>
+                            <th style={{ padding: '8px 14px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: 'left', borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' }}>Season</th>
+                            {superlatives.gradeData.managers.map(mgr => (
+                              <th key={mgr} style={{ padding: '8px 14px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: 'center', borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' }}>{mgr}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {superlatives.gradeData.seasons.map((yr, i) => (
+                            <tr key={yr} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                              <td style={{ padding: '10px 14px', fontSize: '12px', color: muted, borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap', fontFamily: "'Playfair Display', serif" }}>{yr}</td>
+                              {superlatives.gradeData.managers.map(mgr => {
+                                const val = superlatives.gradeData.grades[yr]?.[mgr]
+                                const { label, color } = gradeLabel(val)
+                                return (
+                                  <td key={mgr} style={{ padding: '10px 14px', textAlign: 'center', borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: '700', color, fontFamily: "'Playfair Display', serif" }} title={val != null ? `${(val * 100).toFixed(1)}% avg value` : ''}>{label}</span>
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p style={{ fontSize: '10px', color: muted, marginTop: '8px' }}>A = great value picks, F = busted picks · hover grade for exact score</p>
+                  </div>
+                )}
               </>
             )}
           </div>

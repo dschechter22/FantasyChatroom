@@ -1,17 +1,12 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer
+  Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const MANAGER_COLORS = [
   '#4285F4', '#34A853', '#FBBC04', '#EA4335', '#46BDC6',
@@ -33,6 +28,7 @@ export default function GraphsPage() {
   const [matchups, setMatchups] = useState([])
   const [rosterEntries, setRosterEntries] = useState([])
   const [teamsMap, setTeamsMap] = useState({})
+  const [draftPicks, setDraftPicks] = useState([])
 
   // Filters
   const [selectedManagers, setSelectedManagers] = useState([])
@@ -44,10 +40,12 @@ export default function GraphsPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: teamsData }, { data: matchupsData }] = await Promise.all([
-        supabase.from('teams').select('*, manager:manager_id(name, slug), season:season_id(year)'),
-        supabase.from('matchups').select('*, season:season_id(year), home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id)').eq('is_playoff', false),
+      const [{ data: teamsData }, { data: matchupsData }, { data: draftPicksData }] = await Promise.all([
+        supabase.from('teams').select('*, manager:manager_id(name, slug), season:season_id(year)').eq('league_id', LEAGUE_ID),
+        supabase.from('matchups').select('*, season:season_id(year), home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id)').eq('league_id', LEAGUE_ID).eq('is_playoff', false),
+        supabase.from('draft_picks').select('season, manager_name, pick_in_round, round').eq('league_id', LEAGUE_ID).eq('round', 1).limit(500),
       ])
+      setDraftPicks((draftPicksData || []).map(p => ({ ...p, season: parseInt(p.season), pick_in_round: parseInt(p.pick_in_round) })))
 
       const teams = teamsData || []
       const matchups = matchupsData || []
@@ -70,6 +68,7 @@ export default function GraphsPage() {
         const { data: batch } = await supabase
           .from('roster_entries')
           .select('player_id, fpts, avg_pts, team_id, player:player_id(position)')
+          .eq('league_id', LEAGUE_ID)
           .range(from, from + 999)
         if (!batch || batch.length === 0) break
         allEntries = [...allEntries, ...batch]
@@ -322,6 +321,44 @@ export default function GraphsPage() {
     return allYears.map(yr => byYear[yr] || { year: yr })
   }, [teams, matchups, allYears])
 
+  // Chart 7: Draft slot → avg final standing
+  const slotStandingData = useMemo(() => {
+    if (!draftPicks.length || !matchups.length) return []
+    const winMap = {}
+    matchups.forEach(m => {
+      const yr = m.season?.year
+      if (!yr) return
+      const add = (teamId, won) => {
+        const mgr = teamsMap[teamId]?.manager?.name
+        if (!mgr) return
+        const k = `${yr}|||${mgr}`
+        if (!winMap[k]) winMap[k] = 0
+        if (won) winMap[k]++
+      }
+      add(m.home_team?.id, m.home_score > m.away_score)
+      add(m.away_team?.id, m.away_score > m.home_score)
+    })
+    const standingMap = {}
+    const seasons = [...new Set(Object.keys(winMap).map(k => k.split('|||')[0]))]
+    seasons.forEach(yr => {
+      const entries = Object.entries(winMap).filter(([k]) => k.startsWith(`${yr}|||`)).sort((a, b) => b[1] - a[1])
+      entries.forEach(([k], i) => { standingMap[k] = i + 1 })
+    })
+    const slotAccum = {}
+    draftPicks.forEach(p => {
+      const slot = p.pick_in_round
+      const standing = standingMap[`${p.season}|||${p.manager_name}`]
+      if (!slot || !standing) return
+      if (!slotAccum[slot]) slotAccum[slot] = []
+      slotAccum[slot].push(standing)
+    })
+    return Object.entries(slotAccum).sort((a, b) => Number(a[0]) - Number(b[0])).map(([slot, arr]) => ({
+      slot: `#${slot}`,
+      avgPlace: parseFloat((arr.reduce((s, v) => s + v, 0) / arr.length).toFixed(2)),
+      n: arr.length,
+    }))
+  }, [draftPicks, matchups, teamsMap])
+
   if (!mounted || teams.length === 0) return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
@@ -523,6 +560,26 @@ export default function GraphsPage() {
             </LineChart>
           </ResponsiveContainer>
         </ChartCard>
+
+        {/* Chart 7: Draft slot vs final standing */}
+        {slotStandingData.length > 0 && (
+          <ChartCard title="Draft Slot → Final Standing" subtitle="Avg final place per pick slot across all seasons · lower = finished higher (1st = best)">
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <BarChart data={slotStandingData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis dataKey="slot" tick={{ fill: muted, fontSize: 11 }} axisLine={{ stroke: border }} tickLine={false} />
+                <YAxis tick={{ fill: muted, fontSize: 11 }} axisLine={false} tickLine={false} domain={[1, 'dataMax']} label={{ value: 'Avg place', angle: -90, position: 'insideLeft', fill: muted, fontSize: 10 }} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(val, name, props) => [`${val} (${props.payload.n} seasons)`, 'Avg final place']} />
+                <Bar dataKey="avgPlace" name="Avg final place" radius={[2, 2, 0, 0]}>
+                  {slotStandingData.map((entry, i) => {
+                    const median = slotStandingData.reduce((s, d) => s + d.avgPlace, 0) / slotStandingData.length
+                    return <Cell key={i} fill={entry.avgPlace < median ? '#34A853' : '#EA4335'} />
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
 
       </div>
     </div>
