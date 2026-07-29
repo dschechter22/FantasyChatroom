@@ -45,6 +45,7 @@ const normName = (s) => (s || '')
 export default function DraftsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold, blue } = useLayout()
   const [tab, setTab] = useState('by-year')
+  const [expanded, setExpanded] = useState(null) // { manager, year }
   const [allPicks, setAllPicks] = useState([])
   const [dbSeasons, setDbSeasons] = useState([])
   const [selectedYear, setSelectedYear] = useState(2025)
@@ -295,6 +296,16 @@ export default function DraftsPage() {
     return { label: 'F', color: red }
   }
 
+  const pickGrade = (v) => {
+    if (v == null) return { label: '—', color: muted }
+    if (v > 0.20) return { label: 'A', color: green }
+    if (v > 0.10) return { label: 'B', color: green }
+    if (v > 0) return { label: 'C+', color: text }
+    if (v > -0.10) return { label: 'C-', color: text }
+    if (v > -0.20) return { label: 'D', color: red }
+    return { label: 'F', color: red }
+  }
+
   const StatCard = ({ label, value, sub, color }) => (
     <div style={{ background: cardBg, padding: '18px 20px', borderTop: `2px solid ${color || border}` }}>
       <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '8px' }}>{label}</div>
@@ -480,54 +491,168 @@ export default function DraftsPage() {
                   })}
                 </div>
 
-                {/* Per-manager strategy history */}
+                {/* Per-manager draft history with expandable drawers */}
                 <div style={{ marginTop: '56px' }}>
-                  <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '24px' }}>Draft Strategy History — By Manager</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+                  <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '24px' }}>Draft History — By Manager</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '48px' }}>
                     {trendData.map(m => {
-                      // Cross-reference with grade data to find best strategy
-                      const gradesByStrategy = {}
+                      const stratSummary = {}
                       m.years.forEach(yr => {
                         const tags = m.strategyByYear[yr] || []
                         const grade = superlatives?.gradeData?.grades?.[yr]?.[m.name]
                         tags.forEach(tag => {
-                          if (!gradesByStrategy[tag]) gradesByStrategy[tag] = []
-                          if (grade != null) gradesByStrategy[tag].push(grade)
+                          if (!stratSummary[tag]) stratSummary[tag] = { count: 0, grades: [] }
+                          stratSummary[tag].count++
+                          if (grade != null) stratSummary[tag].grades.push(grade)
                         })
                       })
-                      const stratWithGrades = Object.entries(gradesByStrategy).filter(([, g]) => g.length > 0).map(([tag, grades]) => ({ tag, avg: grades.reduce((s, v) => s + v, 0) / grades.length, n: grades.length })).sort((a, b) => b.avg - a.avg)
-                      const bestStrategy = stratWithGrades[0]
+                      const stratRows = Object.entries(stratSummary).map(([tag, { count, grades }]) => ({
+                        tag, count, avg: grades.length ? grades.reduce((s, v) => s + v, 0) / grades.length : null,
+                      })).sort((a, b) => b.count - a.count)
 
                       return (
                         <div key={m.name}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                            <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: text }}>{m.name}</span>
-                            {bestStrategy && (
-                              <span style={{ fontSize: '11px', color: green }}>
-                                Best strategy: <strong>{bestStrategy.tag}</strong> (avg grade {bestStrategy.avg > 0 ? '+' : ''}{(bestStrategy.avg * 100).toFixed(1)}%)
-                              </span>
-                            )}
+                          <div style={{ marginBottom: '12px' }}>
+                            <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', color: text }}>{m.name}</span>
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            {m.years.map(yr => {
-                              const tags = m.strategyByYear[yr] || []
-                              const grade = superlatives?.gradeData?.grades?.[yr]?.[m.name]
-                              const { label: gradeStr, color: gradeColor } = gradeLabel(grade)
-                              return (
-                                <div key={yr} style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '11px', color: muted, minWidth: '36px' }}>{yr}</span>
-                                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', flex: 1 }}>
-                                    {tags.map(tag => (
-                                      <span key={tag} style={{ fontSize: '10px', padding: '2px 7px', background: tag === 'Balanced' ? (d ? '#1a1a1a' : '#e0ddd6') : (d ? '#1a1a2a' : '#e8eaf6'), color: tag === 'Balanced' ? muted : blue, border: `1px solid ${tag === 'Balanced' ? border : blue + '44'}`, letterSpacing: '0.05em' }}>{tag}</span>
-                                    ))}
-                                  </div>
-                                  {grade != null && (
-                                    <span style={{ fontSize: '12px', fontWeight: '700', color: gradeColor, fontFamily: "'Playfair Display', serif", minWidth: '24px', textAlign: 'right' }}>{gradeStr}</span>
-                                  )}
-                                </div>
-                              )
-                            })}
+
+                          <div style={{ overflowX: 'auto', marginBottom: '12px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                              <thead>
+                                <tr style={{ background: cardBg }}>
+                                  <th style={hStyle()}>Year</th>
+                                  <th style={hStyle('center')}>Grade</th>
+                                  <th style={hStyle()}>Strategies</th>
+                                  <th style={{ ...hStyle('center'), width: '28px' }}></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {m.years.flatMap(yr => {
+                                  const isOpen = expanded?.manager === m.name && expanded?.year === yr
+                                  const grade = superlatives?.gradeData?.grades?.[yr]?.[m.name]
+                                  const { label: gradeStr, color: gradeColor } = gradeLabel(grade)
+                                  const tags = m.strategyByYear[yr] || []
+
+                                  let drawerPicks = []
+                                  if (isOpen && enrichedWithValue.length) {
+                                    const mgrPicks = enrichedWithValue.filter(p => p.manager_name === m.name && p.season === yr)
+                                    const allSeason = enrichedWithValue.filter(p => p.season === yr)
+                                    const fptsByPos = {}
+                                    const draftPosByPick = {}
+                                    SKILL_POS.forEach(pos => {
+                                      ;[...allSeason].filter(p => p.position === pos && p.fpts != null).sort((a, b) => b.fpts - a.fpts).forEach((p, i) => { fptsByPos[`${p.playerId}_${pos}`] = i + 1 })
+                                      ;[...allSeason].filter(p => p.position === pos).sort((a, b) => a.overall_pick - b.overall_pick).forEach((p, i) => { draftPosByPick[`${p.overall_pick}_${pos}`] = i + 1 })
+                                    })
+                                    drawerPicks = [...mgrPicks].sort((a, b) => a.overall_pick - b.overall_pick).map(p => {
+                                      const eoyPosRank = SKILL_POS.includes(p.position) ? (fptsByPos[`${p.playerId}_${p.position}`] ?? null) : null
+                                      const draftPosRank = SKILL_POS.includes(p.position) ? (draftPosByPick[`${p.overall_pick}_${p.position}`] ?? null) : null
+                                      const delta = eoyPosRank != null && draftPosRank != null ? eoyPosRank - draftPosRank : null
+                                      return { ...p, eoyPosRank, draftPosRank, delta }
+                                    })
+                                  }
+
+                                  const tagChip = (tag) => (
+                                    <span key={tag} style={{ fontSize: '10px', padding: '2px 7px', background: tag === 'Balanced' ? (d ? '#1a1a1a' : '#e0ddd6') : (d ? '#1a1a2a' : '#e8eaf6'), color: tag === 'Balanced' ? muted : blue, border: `1px solid ${tag === 'Balanced' ? border : blue + '44'}`, letterSpacing: '0.05em' }}>{tag}</span>
+                                  )
+
+                                  const yearRow = (
+                                    <tr key={`yr-${yr}`} onClick={() => setExpanded(isOpen ? null : { manager: m.name, year: yr })} style={{ cursor: 'pointer', background: isOpen ? (d ? '#0d0d0d' : '#f0ede6') : 'transparent' }}>
+                                      <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif" }}>{yr}</td>
+                                      <td style={{ ...cStyle('center'), color: gradeColor, fontWeight: '700', fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{gradeStr}</td>
+                                      <td style={{ ...cStyle(), paddingTop: '8px', paddingBottom: '8px' }}>
+                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{tags.map(tagChip)}</div>
+                                      </td>
+                                      <td style={{ ...cStyle('center'), color: muted, fontSize: '10px' }}>{isOpen ? '▲' : '▼'}</td>
+                                    </tr>
+                                  )
+
+                                  if (!isOpen) return [yearRow]
+
+                                  const drawerRow = (
+                                    <tr key={`drawer-${yr}`}>
+                                      <td colSpan={4} style={{ padding: 0, borderBottom: `1px solid ${border}` }}>
+                                        <div style={{ background: d ? '#080808' : '#f8f5ee' }}>
+                                          <div style={{ overflowX: 'auto' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                              <thead>
+                                                <tr style={{ background: d ? '#111' : '#edeae3' }}>
+                                                  <th style={{ ...hStyle('center'), fontSize: '9px' }}>Pick</th>
+                                                  <th style={{ ...hStyle(), fontSize: '9px' }}>Player</th>
+                                                  <th style={{ ...hStyle('center'), fontSize: '9px' }}>Pos</th>
+                                                  <th style={{ ...hStyle('right'), fontSize: '9px' }}>EOY Pts</th>
+                                                  <th style={{ ...hStyle('center'), fontSize: '9px' }}>EOY Rank</th>
+                                                  <th style={{ ...hStyle('center'), fontSize: '9px' }}>Draft Rank</th>
+                                                  <th style={{ ...hStyle('center'), fontSize: '9px' }}>Δ</th>
+                                                  <th style={{ ...hStyle('center'), fontSize: '9px' }}>Grade</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {drawerPicks.map(p => {
+                                                  const pg = pickGrade(p.valueScore)
+                                                  const pc = POS_COLORS[p.position] || muted
+                                                  const posLabel = (rank, pos) => rank != null ? `${pos}${rank}` : '—'
+                                                  return (
+                                                    <tr key={p.overall_pick}>
+                                                      <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>#{p.overall_pick}</td>
+                                                      <td style={{ ...cStyle(), fontSize: '11px' }}>{p.player_name}</td>
+                                                      <td style={{ ...cStyle('center'), fontSize: '10px', color: pc, fontWeight: '600', letterSpacing: '0.06em' }}>{p.position}</td>
+                                                      <td style={{ ...cStyle('right'), fontSize: '11px', color: p.fpts != null ? text : muted }}>{p.fpts != null ? p.fpts.toFixed(1) : '—'}</td>
+                                                      <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>{posLabel(p.eoyPosRank, p.position)}</td>
+                                                      <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>{posLabel(p.draftPosRank, p.position)}</td>
+                                                      <td style={{ ...cStyle('center'), fontSize: '11px', fontWeight: p.delta != null && p.delta !== 0 ? '600' : '400', color: p.delta != null ? (p.delta < 0 ? green : p.delta > 0 ? red : text) : muted }}>
+                                                        {p.delta != null ? (p.delta > 0 ? `+${p.delta}` : `${p.delta}`) : '—'}
+                                                      </td>
+                                                      <td style={{ ...cStyle('center'), fontSize: '12px', fontWeight: '700', color: pg.color, fontFamily: "'Playfair Display', serif" }}>{pg.label}</td>
+                                                    </tr>
+                                                  )
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                          <div style={{ padding: '10px 16px', borderTop: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                            <span style={{ fontSize: '11px', color: muted }}>Overall Grade:</span>
+                                            <span style={{ fontSize: '14px', fontWeight: '700', color: gradeColor, fontFamily: "'Playfair Display', serif" }}>{gradeStr}</span>
+                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{tags.map(tagChip)}</div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )
+
+                                  return [yearRow, drawerRow]
+                                })}
+                              </tbody>
+                            </table>
                           </div>
+
+                          {stratRows.length > 0 && (
+                            <div style={{ marginTop: '4px' }}>
+                              <p style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '8px' }}>Strategy Summary</p>
+                              <div style={{ overflowX: 'auto' }}>
+                                <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                                  <thead>
+                                    <tr style={{ background: cardBg }}>
+                                      <th style={{ ...hStyle(), fontSize: '9px' }}>Strategy</th>
+                                      <th style={{ ...hStyle('center'), fontSize: '9px' }}>Used</th>
+                                      <th style={{ ...hStyle('center'), fontSize: '9px' }}>Avg Grade</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {stratRows.map((s, i) => {
+                                      const { label: gl, color: gc } = gradeLabel(s.avg)
+                                      return (
+                                        <tr key={s.tag} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                                          <td style={{ ...cStyle(), fontSize: '11px', color: s.tag === 'Balanced' ? muted : blue }}>{s.tag}</td>
+                                          <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>{s.count}×</td>
+                                          <td style={{ ...cStyle('center'), fontSize: '12px', fontWeight: '700', color: gc, fontFamily: "'Playfair Display', serif" }}>{gl}</td>
+                                        </tr>
+                                      )
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })}
