@@ -21,12 +21,15 @@ const classifyStrategy = (picks) => {
   const firstQB = sorted.find(p => p.position === 'QB')
   const firstTE = sorted.find(p => p.position === 'TE')
   const tags = []
-  if (rd1?.position === 'RB') tags.push('Hero RB')
-  if (rd1?.position === 'WR') tags.push('Hero WR')
-  if (rbIn3 >= 2 || rbIn5 >= 3) tags.push('Early RBs')
-  if (wrIn3 >= 2 || wrIn5 >= 3) tags.push('Early WRs')
-  if (rbIn5 <= 1) tags.push('Zero RB')
-  if (wrIn5 <= 1) tags.push('Zero WR')
+  const heroRB = rd1?.position === 'RB'
+  const heroWR = rd1?.position === 'WR'
+  // Hero RB/WR are mutually exclusive with Early RBs/WRs and Zero RB/WR
+  if (heroRB) tags.push('Hero RB')
+  else if (rbIn3 >= 2 || rbIn5 >= 3) tags.push('Early RBs')
+  else if (rbIn5 <= 1) tags.push('Zero RB')
+  if (heroWR) tags.push('Hero WR')
+  else if (wrIn3 >= 2 || wrIn5 >= 3) tags.push('Early WRs')
+  else if (wrIn5 <= 1) tags.push('Zero WR')
   if (firstQB?.round <= 4) tags.push('Early QB')
   if (firstTE?.round <= 4) tags.push('Early TE')
   if (firstQB?.round >= 10) tags.push('Late QB')
