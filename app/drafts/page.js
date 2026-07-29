@@ -94,10 +94,7 @@ export default function DraftsPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: teams } = await supabase.from('teams').select('id, season:season_id(year)').eq('league_id', LEAGUE_ID).limit(200)
-      if (!teams) return
-
-      // Paginate players — Sleeper DB has thousands of rows, limit(2000) misses many
+      // Paginate players — Sleeper DB has thousands of rows
       let allPlayers = [], pFrom = 0
       while (true) {
         const { data: batch } = await supabase.from('players').select('id, name').range(pFrom, pFrom + 999)
@@ -108,12 +105,14 @@ export default function DraftsPage() {
       }
       setPlayerList(allPlayers)
 
-      const teamYearMap = {}
-      teams.forEach(t => { teamYearMap[t.id] = t.season?.year })
-
+      // Embed year via join — same pattern the player page uses — avoids teamYearMap FK gaps
       let allEntries = [], from = 0
       while (true) {
-        const { data: batch } = await supabase.from('roster_entries').select('player_id, fpts, team_id').eq('league_id', LEAGUE_ID).range(from, from + 999)
+        const { data: batch } = await supabase
+          .from('roster_entries')
+          .select('player_id, fpts, team:team_id(season:season_id(year))')
+          .eq('league_id', LEAGUE_ID)
+          .range(from, from + 999)
         if (!batch?.length) break
         allEntries = [...allEntries, ...batch]
         if (batch.length < 1000) break
@@ -121,7 +120,7 @@ export default function DraftsPage() {
       }
       const fm = {}
       allEntries.forEach(e => {
-        const yr = teamYearMap[e.team_id]
+        const yr = e.team?.season?.year
         if (yr && e.player_id) fm[`${e.player_id}_${yr}`] = e.fpts || 0
       })
       setFptsMap(fm)
