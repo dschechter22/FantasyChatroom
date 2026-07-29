@@ -150,21 +150,31 @@ export default function DraftsPage() {
     setUnmatchedPicks(enrichedPicks.filter(p => !p.matched && SKILL_POS.includes(p.position)))
   }, [enrichedPicks])
 
-  // Value scores: compare fpts rank vs draft slot rank within season (skill pos only)
+  // Value scores: draft position rank vs EOY fpts rank, both within same position
   const enrichedWithValue = useMemo(() => {
     if (!enrichedPicks.length) return []
     const seasons = [...new Set(enrichedPicks.map(p => p.season))]
     const rankMap = {}
     seasons.forEach(yr => {
-      const sp = enrichedPicks.filter(p => p.season === yr && p.fpts != null && SKILL_POS.includes(p.position))
-      const byFpts = [...sp].sort((a, b) => b.fpts - a.fpts)
-      const n = byFpts.length
-      byFpts.forEach((p, i) => { rankMap[`${p.overall_pick}_${yr}`] = { fptsRank: i + 1, n } })
+      SKILL_POS.forEach(pos => {
+        const sp = enrichedPicks.filter(p => p.season === yr && p.position === pos)
+        // Draft rank within position (QB1, QB2, ... / RB1, RB2, ...)
+        const byDraft = [...sp].sort((a, b) => a.overall_pick - b.overall_pick)
+        const draftPosRankMap = {}
+        byDraft.forEach((p, i) => { draftPosRankMap[p.overall_pick] = i + 1 })
+        // EOY fpts rank within position
+        const withFpts = sp.filter(p => p.fpts != null)
+        const byFpts = [...withFpts].sort((a, b) => b.fpts - a.fpts)
+        const n = byFpts.length
+        byFpts.forEach((p, i) => {
+          rankMap[`${p.overall_pick}_${yr}`] = { fptsRank: i + 1, n, draftPosRank: draftPosRankMap[p.overall_pick] }
+        })
+      })
     })
     return enrichedPicks.map(p => {
       const v = rankMap[`${p.overall_pick}_${p.season}`]
-      if (!v || !SKILL_POS.includes(p.position)) return { ...p, valueScore: null, fptsRank: v?.fptsRank ?? null }
-      return { ...p, valueScore: (p.overall_pick - v.fptsRank) / v.n, fptsRank: v.fptsRank, fptsN: v.n }
+      if (!v || !SKILL_POS.includes(p.position)) return { ...p, valueScore: null, fptsRank: null }
+      return { ...p, valueScore: (v.draftPosRank - v.fptsRank) / v.n, fptsRank: v.fptsRank, fptsN: v.n, draftPosRank: v.draftPosRank }
     })
   }, [enrichedPicks])
 
