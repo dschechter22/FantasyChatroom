@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { FPTS_STATIC } from '../../lib/fptsStatic'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 export const dynamic = 'force-dynamic'
@@ -166,14 +167,18 @@ export default function DraftsPage() {
 
     return allPicks.map(p => {
       const pl = match(p.player_name)
-      const fpts = pl ? (fptsMap[`${pl.id}_${p.season}`] ?? null) : null
+      // Skill positions: static XLS data is the primary source
+      // K/D/ST: fall back to DB roster_entries
+      const fpts = SKILL_POS.includes(p.position)
+        ? (FPTS_STATIC[`${normName(p.player_name)}_${p.season}`] ?? null)
+        : (pl ? (fptsMap[`${pl.id}_${p.season}`] ?? null) : null)
       return { ...p, playerId: pl?.id || null, fpts, matched: !!pl }
     })
   }, [allPicks, playerList, fptsMap, enrichmentReady])
 
   useEffect(() => {
     if (!enrichedPicks.length) return
-    // Include both unmatched picks AND matched picks with no fpts data (IR, cut, etc.)
+    // Only flag skill-pos picks with no static fpts data (very rare — missing from PFR)
     setUnmatchedPicks(enrichedPicks.filter(p => SKILL_POS.includes(p.position) && p.fpts == null))
   }, [enrichedPicks])
 
@@ -195,10 +200,10 @@ export default function DraftsPage() {
         ;[...sp].sort((a, b) => a.overall_pick - b.overall_pick).forEach((p, i) => {
           draftRankMap[`${p.overall_pick}_${yr}`] = i + 1
         })
-        const pool = sp.filter(p => p.fpts != null && p.playerId).sort((a, b) => b.fpts - a.fpts).slice(0, CAP[pos])
+        const pool = sp.filter(p => p.fpts != null).sort((a, b) => b.fpts - a.fpts).slice(0, CAP[pos])
         fptsByRankArr[`${yr}_${pos}`] = pool.map(p => p.fpts)
         const rankById = {}
-        pool.forEach((p, i) => { rankById[p.playerId] = i + 1 })
+        pool.forEach((p, i) => { rankById[p.playerId ?? `_n_${normName(p.player_name)}`] = i + 1 })
         fptsRankById[`${yr}_${pos}`] = rankById
       })
     })
@@ -209,7 +214,8 @@ export default function DraftsPage() {
       const draftPosRank = draftRankMap[`${p.overall_pick}_${p.season}`]
       if (!draftPosRank || !pool.length) return { ...p, valueScore: null, rawValue: null, fptsRank: null, draftPosRank: draftPosRank ?? null }
       const expectedFpts = pool[Math.min(draftPosRank, pool.length) - 1]
-      const fptsRank = p.playerId ? (fptsRankById[`${p.season}_${p.position}`]?.[p.playerId] ?? (p.fpts != null ? pool.length + 1 : null)) : null
+      const pKey = p.playerId ?? `_n_${normName(p.player_name)}`
+      const fptsRank = fptsRankById[`${p.season}_${p.position}`]?.[pKey] ?? (p.fpts != null ? pool.length + 1 : null)
       // No fpts = can't compute value — don't substitute 0 or it creates fake negatives
       if (p.fpts == null) return { ...p, rawValue: null, expectedFpts, fptsRank, draftPosRank }
       return { ...p, rawValue: p.fpts - expectedFpts, expectedFpts, fptsRank, draftPosRank }
@@ -726,11 +732,12 @@ export default function DraftsPage() {
                                 const allSeason = enrichedWithValue.filter(p => p.season === yr)
                                 const fptsByPos = {}, draftPosByPick = {}
                                 SKILL_POS.forEach(pos => {
-                                  ;[...allSeason].filter(p => p.position === pos && p.fpts != null).sort((a, b) => b.fpts - a.fpts).forEach((p, i) => { fptsByPos[`${p.playerId}_${pos}`] = i + 1 })
+                                  ;[...allSeason].filter(p => p.position === pos && p.fpts != null).sort((a, b) => b.fpts - a.fpts).forEach((p, i) => { fptsByPos[`${p.playerId ?? '_n_' + normName(p.player_name)}_${pos}`] = i + 1 })
                                   ;[...allSeason].filter(p => p.position === pos).sort((a, b) => a.overall_pick - b.overall_pick).forEach((p, i) => { draftPosByPick[`${p.overall_pick}_${pos}`] = i + 1 })
                                 })
                                 drawerPicks = [...mgrPicks].sort((a, b) => a.overall_pick - b.overall_pick).map(p => {
-                                  const eoyPosRank = SKILL_POS.includes(p.position) ? (fptsByPos[`${p.playerId}_${p.position}`] ?? null) : null
+                                  const pKey = p.playerId ?? `_n_${normName(p.player_name)}`
+                                  const eoyPosRank = SKILL_POS.includes(p.position) ? (fptsByPos[`${pKey}_${p.position}`] ?? null) : null
                                   const draftPosRank = SKILL_POS.includes(p.position) ? (draftPosByPick[`${p.overall_pick}_${p.position}`] ?? null) : null
                                   const delta = eoyPosRank != null && draftPosRank != null ? eoyPosRank - draftPosRank : null
                                   return { ...p, eoyPosRank, draftPosRank, delta }
