@@ -319,7 +319,7 @@ export default function DraftsPage() {
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px,6vw,72px)', fontWeight: '400', letterSpacing: '-0.02em', marginBottom: '4px' }}>Draft History</h1>
         <p style={{ color: muted, fontSize: '13px', marginBottom: '36px' }}>All-time draft archive · 2017–present</p>
 
@@ -346,11 +346,11 @@ export default function DraftsPage() {
             ) : (
               <>
                 <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
-                  <table style={{ borderCollapse: 'collapse', minWidth: `${boardManagers.length * 130 + 60}px` }}>
+                  <table style={{ borderCollapse: 'collapse', minWidth: `${boardManagers.length * 105 + 56}px` }}>
                     <thead>
                       <tr style={{ background: cardBg }}>
-                        <th style={{ ...hStyle('center'), minWidth: '48px', position: 'sticky', left: 0, background: cardBg, zIndex: 1 }}>Rd</th>
-                        {boardManagers.map(mgr => <th key={mgr} style={{ ...hStyle('center'), minWidth: '120px' }}>{mgr}</th>)}
+                        <th style={{ ...hStyle('center'), minWidth: '44px', position: 'sticky', left: 0, background: cardBg, zIndex: 1 }}>Rd</th>
+                        {boardManagers.map(mgr => <th key={mgr} style={{ ...hStyle('center'), minWidth: '105px' }}>{mgr}</th>)}
                       </tr>
                     </thead>
                     <tbody>
@@ -363,11 +363,11 @@ export default function DraftsPage() {
                             const pick = picks.find(p => p.manager_name === mgr && p.round === round)
                             const pc = pick ? (POS_COLORS[pick.position] || '#888') : 'transparent'
                             return (
-                              <td key={mgr} style={{ padding: '5px 6px', borderBottom: `1px solid ${border}`, verticalAlign: 'top' }}>
+                              <td key={mgr} style={{ padding: '4px 5px', borderBottom: `1px solid ${border}`, verticalAlign: 'top' }}>
                                 {pick ? (
-                                  <div style={{ borderLeft: `3px solid ${pc}`, paddingLeft: '7px', paddingTop: '4px', paddingBottom: '4px' }}>
-                                    <div style={{ fontSize: '11px', color: text, lineHeight: 1.3, fontWeight: '500' }}>{pick.player_name}</div>
-                                    <div style={{ fontSize: '9px', color: pc, letterSpacing: '0.06em', marginTop: '2px' }}>{pick.position} · {pick.nfl_team}</div>
+                                  <div style={{ borderLeft: `3px solid ${pc}`, paddingLeft: '6px', paddingTop: '3px', paddingBottom: '3px' }}>
+                                    <div style={{ fontSize: '12px', color: text, lineHeight: 1.3, fontWeight: '700' }}>{pick.player_name}</div>
+                                    <div style={{ fontSize: '10px', color: pc, letterSpacing: '0.04em', marginTop: '2px' }}>{pick.position} · {pick.nfl_team}</div>
                                     <div style={{ fontSize: '9px', color: muted, marginTop: '1px' }}>#{pick.overall_pick}</div>
                                   </div>
                                 ) : <span style={{ color: muted, fontSize: '11px', padding: '4px 0', display: 'block' }}>—</span>}
