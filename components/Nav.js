@@ -5,6 +5,7 @@ import { useLayout } from '../hooks/LayoutContext'
 
 const NAV_LINKS = [
   ['2026-27', '/current-season'],
+  ['Drafts', '/drafts'],
   ['Sportsbook', '/sportsbook'],
   ['Champions', '/champions'],
   ['Standings', '/standings'],
