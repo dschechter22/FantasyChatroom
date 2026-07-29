@@ -151,32 +151,51 @@ export default function DraftsPage() {
     setUnmatchedPicks(enrichedPicks.filter(p => !p.matched && SKILL_POS.includes(p.position)))
   }, [enrichedPicks])
 
-  // Value scores: draft position rank vs EOY fpts rank, both within same position
+  // Value: actualFpts - expectedFpts, where expected = fpts of whoever finished at draft rank
+  // Pool capped at top 70 (WR/RB) and top 32 (QB/TE) to exclude fantasy-irrelevant players
+  // valueScore = z-score of rawValue across all picks (bell curve)
   const enrichedWithValue = useMemo(() => {
     if (!enrichedPicks.length) return []
+    const CAP = { QB: 32, RB: 70, WR: 70, TE: 32 }
     const seasons = [...new Set(enrichedPicks.map(p => p.season))]
-    const rankMap = {}
+
+    const fptsByRankArr = {}   // `${yr}_${pos}` → [fpts sorted desc, capped]
+    const fptsRankById = {}    // `${yr}_${pos}` → { playerId → rank }
+    const draftRankMap = {}    // `${overall_pick}_${yr}` → draftPosRank
+
     seasons.forEach(yr => {
       SKILL_POS.forEach(pos => {
         const sp = enrichedPicks.filter(p => p.season === yr && p.position === pos)
-        // Draft rank within position (QB1, QB2, ... / RB1, RB2, ...)
-        const byDraft = [...sp].sort((a, b) => a.overall_pick - b.overall_pick)
-        const draftPosRankMap = {}
-        byDraft.forEach((p, i) => { draftPosRankMap[p.overall_pick] = i + 1 })
-        // EOY fpts rank within position
-        const withFpts = sp.filter(p => p.fpts != null)
-        const byFpts = [...withFpts].sort((a, b) => b.fpts - a.fpts)
-        const n = byFpts.length
-        byFpts.forEach((p, i) => {
-          rankMap[`${p.overall_pick}_${yr}`] = { fptsRank: i + 1, n, draftPosRank: draftPosRankMap[p.overall_pick] }
+        ;[...sp].sort((a, b) => a.overall_pick - b.overall_pick).forEach((p, i) => {
+          draftRankMap[`${p.overall_pick}_${yr}`] = i + 1
         })
+        const pool = sp.filter(p => p.fpts != null && p.playerId).sort((a, b) => b.fpts - a.fpts).slice(0, CAP[pos])
+        fptsByRankArr[`${yr}_${pos}`] = pool.map(p => p.fpts)
+        const rankById = {}
+        pool.forEach((p, i) => { rankById[p.playerId] = i + 1 })
+        fptsRankById[`${yr}_${pos}`] = rankById
       })
     })
-    return enrichedPicks.map(p => {
-      const v = rankMap[`${p.overall_pick}_${p.season}`]
-      if (!v || !SKILL_POS.includes(p.position)) return { ...p, valueScore: null, fptsRank: null }
-      return { ...p, valueScore: (v.draftPosRank - v.fptsRank) / v.n, fptsRank: v.fptsRank, fptsN: v.n, draftPosRank: v.draftPosRank }
+
+    const withRaw = enrichedPicks.map(p => {
+      if (!SKILL_POS.includes(p.position)) return { ...p, valueScore: null, rawValue: null, fptsRank: null, draftPosRank: null }
+      const pool = fptsByRankArr[`${p.season}_${p.position}`] || []
+      const draftPosRank = draftRankMap[`${p.overall_pick}_${p.season}`]
+      if (!draftPosRank || !pool.length) return { ...p, valueScore: null, rawValue: null, fptsRank: null, draftPosRank: draftPosRank ?? null }
+      const expectedFpts = pool[Math.min(draftPosRank, pool.length) - 1]
+      const actualFpts = p.fpts ?? 0
+      const fptsRank = p.playerId ? (fptsRankById[`${p.season}_${p.position}`]?.[p.playerId] ?? (p.fpts != null ? pool.length + 1 : null)) : null
+      return { ...p, rawValue: actualFpts - expectedFpts, expectedFpts, fptsRank, draftPosRank }
     })
+
+    const allRaw = withRaw.filter(p => p.rawValue != null).map(p => p.rawValue)
+    if (!allRaw.length) return withRaw
+    const mean = allRaw.reduce((s, v) => s + v, 0) / allRaw.length
+    const stddev = Math.sqrt(allRaw.reduce((s, v) => s + (v - mean) ** 2, 0) / allRaw.length)
+
+    return withRaw.map(p =>
+      p.rawValue != null ? { ...p, valueScore: stddev > 0 ? (p.rawValue - mean) / stddev : 0 } : p
+    )
   }, [enrichedPicks])
 
   // Board data for selected year
@@ -271,7 +290,8 @@ export default function DraftsPage() {
         if (!mp.length) return null
         const hits = mp.filter(p => p.valueScore > 0).length
         const avgValue = mp.reduce((s, p) => s + p.valueScore, 0) / mp.length
-        return { name: mgr, hitRate: hits / mp.length, avgValue, count: mp.length, hits }
+        const avgRaw = mp.reduce((s, p) => s + (p.rawValue ?? 0), 0) / mp.length
+        return { name: mgr, hitRate: hits / mp.length, avgValue, avgRaw, count: mp.length, hits }
       }).filter(Boolean).sort((a, b) => b.avgValue - a.avgValue)
       bestDraftManager = draftSuccessRates[0] || null
       worstDraftManager = draftSuccessRates[draftSuccessRates.length - 1] || null
@@ -305,23 +325,24 @@ export default function DraftsPage() {
   const hStyle = (a = 'left') => ({ padding: '8px 12px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: a, borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' })
   const cStyle = (a = 'left') => ({ padding: '10px 12px', fontSize: '12px', textAlign: a, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
 
+  // Both use z-scores (standard deviations from mean across all picks)
   const gradeLabel = (v) => {
     if (v == null) return { label: '—', color: muted }
-    if (v > 0.07) return { label: 'A', color: green }
-    if (v > 0.03) return { label: 'B', color: green }
+    if (v > 0.7) return { label: 'A', color: green }
+    if (v > 0.3) return { label: 'B', color: green }
     if (v > 0) return { label: 'C+', color: text }
-    if (v > -0.03) return { label: 'C-', color: text }
-    if (v > -0.07) return { label: 'D', color: red }
+    if (v > -0.3) return { label: 'C-', color: text }
+    if (v > -0.7) return { label: 'D', color: red }
     return { label: 'F', color: red }
   }
 
   const pickGrade = (v) => {
     if (v == null) return { label: '—', color: muted }
-    if (v > 0.20) return { label: 'A', color: green }
-    if (v > 0.10) return { label: 'B', color: green }
+    if (v > 1.0) return { label: 'A', color: green }
+    if (v > 0.5) return { label: 'B', color: green }
     if (v > 0) return { label: 'C+', color: text }
-    if (v > -0.10) return { label: 'C-', color: text }
-    if (v > -0.20) return { label: 'D', color: red }
+    if (v > -0.5) return { label: 'C-', color: text }
+    if (v > -1.0) return { label: 'D', color: red }
     return { label: 'F', color: red }
   }
 
@@ -424,7 +445,7 @@ export default function DraftsPage() {
                         <thead>
                           <tr style={{ background: cardBg }}>
                             <th style={hStyle()}>Manager</th>
-                            <th style={hStyle('center')}>Avg Value</th>
+                            <th style={hStyle('center')}>Avg Pts Above/Below Slot</th>
                             <th style={hStyle('center')}>Hit Rate</th>
                             <th style={hStyle('center')}>Picks</th>
                           </tr>
@@ -433,8 +454,8 @@ export default function DraftsPage() {
                           {superlatives.draftSuccessRates.map((m, i) => (
                             <tr key={m.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                               <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{m.name}</td>
-                              <td style={{ ...cStyle('center'), color: m.avgValue > 0 ? green : red, fontWeight: '600' }}>
-                                {m.avgValue > 0 ? '+' : ''}{(m.avgValue * 100).toFixed(1)}%
+                              <td style={{ ...cStyle('center'), color: m.avgRaw > 0 ? green : red, fontWeight: '600' }}>
+                                {m.avgRaw > 0 ? '+' : ''}{m.avgRaw.toFixed(1)} pts
                               </td>
                               <td style={{ ...cStyle('center'), color: m.hitRate >= 0.5 ? green : red }}>
                                 {(m.hitRate * 100).toFixed(0)}% ({m.hits}/{m.count})
@@ -446,7 +467,7 @@ export default function DraftsPage() {
                       </table>
                     </div>
                     <p style={{ fontSize: '10px', color: muted, marginTop: '8px', lineHeight: 1.6 }}>
-                      Avg Value = how much each pick outperformed their positional draft slot vs EOY positional rank. Hit Rate = % of picks that finished better than drafted.
+                      Avg Pts = actual fpts vs what the player who finished at your pick's positional slot scored that season. Early misses cost more; late finds pay more. Capped pools: top 70 WR/RB, top 32 QB/TE. Hit Rate = % of picks that outscored their draft slot.
                     </p>
                   </div>
                 )}
@@ -725,8 +746,8 @@ export default function DraftsPage() {
                   <StatCard label="📦 Most Fpts from Drafted Players" value={superlatives.mostFptsManager?.name} sub={superlatives.mostFptsManager ? `${superlatives.mostFptsManager.total.toLocaleString()} total pts from own draft picks (all seasons)` : 'Loading…'} color={gold} />
                   <StatCard label="💎 Best Value Pick Ever" value={superlatives.bestValue?.player_name} sub={superlatives.bestValue ? `Rd ${superlatives.bestValue.round}, Pick #${superlatives.bestValue.overall_pick} · ${superlatives.bestValue.manager_name} · ${superlatives.bestValue.season} · ${superlatives.bestValue.fpts?.toFixed(1)} pts` : 'Loading…'} color={green} />
                   <StatCard label="💀 Biggest Bust (Rds 1–3)" value={superlatives.biggestBust?.player_name} sub={superlatives.biggestBust ? `Rd ${superlatives.biggestBust.round}, Pick #${superlatives.biggestBust.overall_pick} · ${superlatives.biggestBust.manager_name} · ${superlatives.biggestBust.season} · ${superlatives.biggestBust.fpts?.toFixed(1)} pts` : 'Loading…'} color={red} />
-                  <StatCard label="🏆 Best Drafter All-Time" value={superlatives.bestDraftManager?.name} sub={superlatives.bestDraftManager ? `${(superlatives.bestDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg +${(superlatives.bestDraftManager.avgValue * 100).toFixed(1)}% value per pick` : 'Loading…'} color={gold} />
-                  <StatCard label="📉 Worst Drafter All-Time" value={superlatives.worstDraftManager?.name} sub={superlatives.worstDraftManager ? `${(superlatives.worstDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg ${(superlatives.worstDraftManager.avgValue * 100).toFixed(1)}% value per pick` : 'Loading…'} color={red} />
+                  <StatCard label="🏆 Best Drafter All-Time" value={superlatives.bestDraftManager?.name} sub={superlatives.bestDraftManager ? `${(superlatives.bestDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg ${superlatives.bestDraftManager.avgRaw > 0 ? '+' : ''}${superlatives.bestDraftManager.avgRaw?.toFixed(1)} pts per pick` : 'Loading…'} color={gold} />
+                  <StatCard label="📉 Worst Drafter All-Time" value={superlatives.worstDraftManager?.name} sub={superlatives.worstDraftManager ? `${(superlatives.worstDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg ${superlatives.worstDraftManager.avgRaw?.toFixed(1)} pts per pick` : 'Loading…'} color={red} />
                   <StatCard label="🎯 Best Early Pick (Rds 1–4)" value={superlatives.bestEarly?.player_name} sub={superlatives.bestEarly ? `Rd ${superlatives.bestEarly.round}, #${superlatives.bestEarly.overall_pick} · ${superlatives.bestEarly.manager_name} · ${superlatives.bestEarly.season} · ${superlatives.bestEarly.fpts?.toFixed(1)} pts` : 'Loading…'} color={POS_COLORS[superlatives.bestEarly?.position] || green} />
                   <StatCard label="🔍 Best Mid Pick (Rds 5–9)" value={superlatives.bestMid?.player_name} sub={superlatives.bestMid ? `Rd ${superlatives.bestMid.round}, #${superlatives.bestMid.overall_pick} · ${superlatives.bestMid.manager_name} · ${superlatives.bestMid.season} · ${superlatives.bestMid.fpts?.toFixed(1)} pts` : 'Loading…'} color={POS_COLORS[superlatives.bestMid?.position] || gold} />
                   <StatCard label="💡 Best Late Pick (Rd 10+)" value={superlatives.bestLate?.player_name} sub={superlatives.bestLate ? `Rd ${superlatives.bestLate.round}, #${superlatives.bestLate.overall_pick} · ${superlatives.bestLate.manager_name} · ${superlatives.bestLate.season} · ${superlatives.bestLate.fpts?.toFixed(1)} pts` : 'Loading…'} color={POS_COLORS[superlatives.bestLate?.position] || blue} />
