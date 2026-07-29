@@ -9,6 +9,32 @@ const POS_COLORS = { QB: '#4285F4', RB: '#34A853', WR: '#FBBC04', TE: '#EA4335',
 const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'D/ST']
 const SKILL_POS = ['QB', 'RB', 'WR', 'TE']
 
+const classifyStrategy = (picks) => {
+  const sorted = [...picks].sort((a, b) => a.overall_pick - b.overall_pick)
+  const first3 = sorted.filter(p => p.round <= 3)
+  const first5 = sorted.filter(p => p.round <= 5)
+  const rd1 = sorted.find(p => p.round === 1)
+  const rbIn3 = first3.filter(p => p.position === 'RB').length
+  const wrIn3 = first3.filter(p => p.position === 'WR').length
+  const rbIn5 = first5.filter(p => p.position === 'RB').length
+  const wrIn5 = first5.filter(p => p.position === 'WR').length
+  const firstQB = sorted.find(p => p.position === 'QB')
+  const firstTE = sorted.find(p => p.position === 'TE')
+  const tags = []
+  if (rd1?.position === 'RB') tags.push('Hero RB')
+  if (rd1?.position === 'WR') tags.push('Hero WR')
+  if (rbIn3 >= 2 || rbIn5 >= 3) tags.push('Early RBs')
+  if (wrIn3 >= 2 || wrIn5 >= 3) tags.push('Early WRs')
+  if (rbIn5 <= 1) tags.push('Zero RB')
+  if (wrIn5 <= 1) tags.push('Zero WR')
+  if (firstQB?.round <= 4) tags.push('Early QB')
+  if (firstTE?.round <= 4) tags.push('Early TE')
+  if (firstQB?.round >= 10) tags.push('Late QB')
+  if (firstTE?.round >= 10) tags.push('Late TE')
+  if (!tags.length) tags.push('Balanced')
+  return tags
+}
+
 const normName = (s) => (s || '')
   .toLowerCase()
   .replace(/['.,-]/g, '')
@@ -154,7 +180,9 @@ export default function DraftsPage() {
       const topR1 = Object.entries(r1c).sort((a, b) => b[1] - a[1])[0]?.[0] || '—'
       const early = mp.filter(p => p.round <= 3)
       const earlyPos = {}; early.forEach(p => { earlyPos[p.position] = (earlyPos[p.position] || 0) + 1 })
-      return { name: mgr, seasons: years.length, avgRound, topR1, earlyPos }
+      const strategyByYear = {}
+      years.forEach(yr => { strategyByYear[yr] = classifyStrategy(mp.filter(p => p.season === yr)) })
+      return { name: mgr, seasons: years.length, avgRound, topR1, earlyPos, strategyByYear, years: years.sort((a, b) => a - b) }
     })
   }, [allPicks])
 
@@ -450,6 +478,60 @@ export default function DraftsPage() {
                       </div>
                     )
                   })}
+                </div>
+
+                {/* Per-manager strategy history */}
+                <div style={{ marginTop: '56px' }}>
+                  <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '24px' }}>Draft Strategy History — By Manager</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+                    {trendData.map(m => {
+                      // Cross-reference with grade data to find best strategy
+                      const gradesByStrategy = {}
+                      m.years.forEach(yr => {
+                        const tags = m.strategyByYear[yr] || []
+                        const grade = superlatives?.gradeData?.grades?.[yr]?.[m.name]
+                        tags.forEach(tag => {
+                          if (!gradesByStrategy[tag]) gradesByStrategy[tag] = []
+                          if (grade != null) gradesByStrategy[tag].push(grade)
+                        })
+                      })
+                      const stratWithGrades = Object.entries(gradesByStrategy).filter(([, g]) => g.length > 0).map(([tag, grades]) => ({ tag, avg: grades.reduce((s, v) => s + v, 0) / grades.length, n: grades.length })).sort((a, b) => b.avg - a.avg)
+                      const bestStrategy = stratWithGrades[0]
+
+                      return (
+                        <div key={m.name}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                            <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: text }}>{m.name}</span>
+                            {bestStrategy && (
+                              <span style={{ fontSize: '11px', color: green }}>
+                                Best strategy: <strong>{bestStrategy.tag}</strong> (avg grade {bestStrategy.avg > 0 ? '+' : ''}{(bestStrategy.avg * 100).toFixed(1)}%)
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {m.years.map(yr => {
+                              const tags = m.strategyByYear[yr] || []
+                              const grade = superlatives?.gradeData?.grades?.[yr]?.[m.name]
+                              const { label: gradeStr, color: gradeColor } = gradeLabel(grade)
+                              return (
+                                <div key={yr} style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '11px', color: muted, minWidth: '36px' }}>{yr}</span>
+                                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', flex: 1 }}>
+                                    {tags.map(tag => (
+                                      <span key={tag} style={{ fontSize: '10px', padding: '2px 7px', background: tag === 'Balanced' ? (d ? '#1a1a1a' : '#e0ddd6') : (d ? '#1a1a2a' : '#e8eaf6'), color: tag === 'Balanced' ? muted : blue, border: `1px solid ${tag === 'Balanced' ? border : blue + '44'}`, letterSpacing: '0.05em' }}>{tag}</span>
+                                    ))}
+                                  </div>
+                                  {grade != null && (
+                                    <span style={{ fontSize: '12px', fontWeight: '700', color: gradeColor, fontFamily: "'Playfair Display', serif", minWidth: '24px', textAlign: 'right' }}>{gradeStr}</span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </>
             )}
