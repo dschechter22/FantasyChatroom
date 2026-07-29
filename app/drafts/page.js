@@ -22,9 +22,9 @@ const classifyStrategy = (picks) => {
   const firstQB = sorted.find(p => p.position === 'QB')
   const firstTE = sorted.find(p => p.position === 'TE')
   const tags = []
-  const heroRB = rd1?.position === 'RB'
-  const heroWR = rd1?.position === 'WR'
-  // Hero RB/WR are mutually exclusive with Early RBs/WRs and Zero RB/WR
+  // Hero RB = RB in rd 1 AND only 1 RB in first 5 rounds (one elite RB, then Zero RB after)
+  const heroRB = rd1?.position === 'RB' && rbIn5 <= 1
+  const heroWR = rd1?.position === 'WR' && wrIn5 <= 1
   if (heroRB) tags.push('Hero RB')
   else if (rbIn3 >= 2 || rbIn5 >= 3) tags.push('Early RBs')
   else if (rbIn5 <= 1) tags.push('Zero RB')
