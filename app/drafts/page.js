@@ -61,6 +61,10 @@ export default function DraftsPage() {
   const [enrichmentReady, setEnrichmentReady] = useState(false)
   const [unmatchedPicks, setUnmatchedPicks] = useState([])
 
+  // team performance data
+  const [teamSeasons, setTeamSeasons] = useState([])
+  const [seasonMatchups, setSeasonMatchups] = useState([])
+
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
@@ -119,6 +123,18 @@ export default function DraftsPage() {
     load()
   }, [])
 
+  useEffect(() => {
+    const load = async () => {
+      const [{ data: teams }, { data: mups }] = await Promise.all([
+        supabase.from('teams').select('id, manager_id, wins, losses, points_for, final_standing, playoff_result, made_playoffs, season:season_id(year), manager:manager_id(name)').eq('league_id', LEAGUE_ID).limit(500),
+        supabase.from('matchups').select('week, home_score, away_score, home_team:home_team_id(manager_id), away_team:away_team_id(manager_id), season:season_id(year)').eq('league_id', LEAGUE_ID).eq('is_playoff', false).limit(2000),
+      ])
+      if (teams) setTeamSeasons(teams)
+      if (mups) setSeasonMatchups(mups)
+    }
+    load()
+  }, [])
+
   // Fuzzy-match draft picks to player IDs, attach fpts
   const enrichedPicks = useMemo(() => {
     if (!enrichmentReady || !allPicks.length || !playerList.length) return []
@@ -151,7 +167,8 @@ export default function DraftsPage() {
 
   useEffect(() => {
     if (!enrichedPicks.length) return
-    setUnmatchedPicks(enrichedPicks.filter(p => !p.matched && SKILL_POS.includes(p.position)))
+    // Include both unmatched picks AND matched picks with no fpts data (IR, cut, etc.)
+    setUnmatchedPicks(enrichedPicks.filter(p => SKILL_POS.includes(p.position) && p.fpts == null))
   }, [enrichedPicks])
 
   // Value: actualFpts - expectedFpts, where expected = fpts of whoever finished at draft rank
@@ -200,6 +217,72 @@ export default function DraftsPage() {
       p.rawValue != null ? { ...p, valueScore: stddev > 0 ? (p.rawValue - mean) / stddev : 0 } : p
     )
   }, [enrichedPicks])
+
+  const teamByManagerYear = useMemo(() => {
+    if (!teamSeasons.length) return {}
+
+    // Weekly scores per manager per year from matchups
+    const weeklyScores = {}
+    const weekAllScores = {}
+    seasonMatchups.forEach(m => {
+      const yr = m.season?.year
+      if (!yr) return
+      const wk = `${yr}_${m.week}`
+      if (!weekAllScores[wk]) weekAllScores[wk] = []
+      weekAllScores[wk].push(m.home_score, m.away_score)
+      if (m.home_team?.manager_id) {
+        const k = `${m.home_team.manager_id}_${yr}`
+        if (!weeklyScores[k]) weeklyScores[k] = []
+        weeklyScores[k].push({ week: m.week, score: m.home_score })
+      }
+      if (m.away_team?.manager_id) {
+        const k = `${m.away_team.manager_id}_${yr}`
+        if (!weeklyScores[k]) weeklyScores[k] = []
+        weeklyScores[k].push({ week: m.week, score: m.away_score })
+      }
+    })
+
+    const raw = {}
+    teamSeasons.forEach(t => {
+      const yr = t.season?.year
+      const name = t.manager?.name
+      if (!yr || !name) return
+      const scores = weeklyScores[`${t.manager_id}_${yr}`] || []
+      const games = t.wins + t.losses
+      const avgPF = games > 0 ? t.points_for / games : 0
+      const winPct = games > 0 ? t.wins / games : 0
+      let apWins = 0, apGames = 0
+      scores.forEach(({ week, score }) => {
+        const others = (weekAllScores[`${yr}_${week}`] || []).filter(s => s !== score)
+        apWins += others.filter(s => score > s).length
+        apGames += others.length
+      })
+      const sorted = scores.map(s => s.score).sort((a, b) => a - b)
+      const mid = Math.floor(sorted.length / 2)
+      const medianScore = sorted.length ? (sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]) : 0
+      raw[`${name.toLowerCase().trim()}_${yr}`] = {
+        wins: t.wins, losses: t.losses, avgPF: parseFloat(avgPF.toFixed(1)),
+        finalStanding: t.final_standing, playoffResult: t.playoff_result, madePlayoffs: t.made_playoffs,
+        winPct, allPlayWinPct: apGames > 0 ? apWins / apGames : 0, medianScore, _yr: yr,
+      }
+    })
+
+    // Power score relative to year peers
+    const byYear = {}
+    Object.entries(raw).forEach(([k, v]) => { if (!byYear[v._yr]) byYear[v._yr] = []; byYear[v._yr].push({ k, v }) })
+    Object.values(byYear).forEach(entries => {
+      const vals = entries.map(e => e.v)
+      const mxW = Math.max(...vals.map(v => v.winPct)) || 1
+      const mxA = Math.max(...vals.map(v => v.avgPF)) || 1
+      const mxP = Math.max(...vals.map(v => v.allPlayWinPct)) || 1
+      const mxM = Math.max(...vals.map(v => v.medianScore)) || 1
+      entries.forEach(({ k, v }) => {
+        raw[k].powerScore = parseFloat(((v.winPct / mxW * 100 * 2) + (v.avgPF / mxA * 100 * 4) + (v.allPlayWinPct / mxP * 100 * 2) + (v.medianScore / mxM * 100 * 2)) / 10)
+      })
+    })
+
+    return raw
+  }, [teamSeasons, seasonMatchups])
 
   // Board data for selected year
   const picks = useMemo(() => allPicks.filter(p => p.season === selectedYear), [allPicks, selectedYear])
@@ -328,14 +411,21 @@ export default function DraftsPage() {
   const hStyle = (a = 'left') => ({ padding: '8px 12px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: a, borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' })
   const cStyle = (a = 'left') => ({ padding: '10px 12px', fontSize: '12px', textAlign: a, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
 
-  // z-score thresholds — flattened so more seasons land at A/F extremes
+  // z-score thresholds with +/− modifiers
   const gradeLabel = (v) => {
     if (v == null) return { label: '—', color: muted }
-    if (v > 0.4) return { label: 'A', color: green }
-    if (v > 0.2) return { label: 'B', color: green }
+    if (v > 0.6) return { label: 'A+', color: green }
+    if (v > 0.45) return { label: 'A', color: green }
+    if (v > 0.35) return { label: 'A-', color: green }
+    if (v > 0.25) return { label: 'B+', color: green }
+    if (v > 0.15) return { label: 'B', color: green }
+    if (v > 0.05) return { label: 'B-', color: green }
     if (v > 0) return { label: 'C+', color: text }
-    if (v > -0.2) return { label: 'C-', color: text }
-    if (v > -0.4) return { label: 'D', color: red }
+    if (v > -0.05) return { label: 'C', color: text }
+    if (v > -0.15) return { label: 'C-', color: text }
+    if (v > -0.25) return { label: 'D+', color: red }
+    if (v > -0.35) return { label: 'D', color: red }
+    if (v > -0.4) return { label: 'D-', color: red }
     return { label: 'F', color: red }
   }
 
@@ -343,24 +433,36 @@ export default function DraftsPage() {
   const pickGrade = (delta, round) => {
     if (delta == null) return { label: '—', color: muted }
     if (round <= 4) {
+      if (delta <= -3) return { label: 'A+', color: green }
       if (delta <= 0) return { label: 'A', color: green }
-      if (delta <= 2) return { label: 'B', color: green }
-      if (delta <= 8) return { label: 'C', color: text }
-      if (delta <= 15) return { label: 'D', color: red }
+      if (delta <= 1) return { label: 'B+', color: green }
+      if (delta <= 2) return { label: 'B-', color: green }
+      if (delta <= 5) return { label: 'C+', color: text }
+      if (delta <= 8) return { label: 'C-', color: text }
+      if (delta <= 11) return { label: 'D+', color: red }
+      if (delta <= 15) return { label: 'D-', color: red }
       return { label: 'F', color: red }
     }
     if (round <= 9) {
-      if (delta < 0) return { label: 'A', color: green }
-      if (delta <= 1) return { label: 'B', color: green }
-      if (delta <= 5) return { label: 'C', color: text }
-      if (delta <= 10) return { label: 'D', color: red }
+      if (delta <= -2) return { label: 'A+', color: green }
+      if (delta <= -1) return { label: 'A', color: green }
+      if (delta <= 0) return { label: 'B+', color: green }
+      if (delta <= 1) return { label: 'B-', color: green }
+      if (delta <= 3) return { label: 'C+', color: text }
+      if (delta <= 5) return { label: 'C-', color: text }
+      if (delta <= 7) return { label: 'D+', color: red }
+      if (delta <= 10) return { label: 'D-', color: red }
       return { label: 'F', color: red }
     }
-    // Late rounds (10+): late finds are rewarded, misses less penalized
+    // Late rounds (10+)
+    if (delta <= -5) return { label: 'A+', color: green }
     if (delta <= -3) return { label: 'A', color: green }
-    if (delta <= 0) return { label: 'B', color: green }
-    if (delta <= 3) return { label: 'C', color: text }
-    if (delta <= 9) return { label: 'D', color: red }
+    if (delta <= -1) return { label: 'B+', color: green }
+    if (delta <= 0) return { label: 'B-', color: green }
+    if (delta <= 2) return { label: 'C+', color: text }
+    if (delta <= 3) return { label: 'C-', color: text }
+    if (delta <= 6) return { label: 'D+', color: red }
+    if (delta <= 9) return { label: 'D-', color: red }
     return { label: 'F', color: red }
   }
 
@@ -628,9 +730,18 @@ export default function DraftsPage() {
                                 })
                               }
 
+                              const drawerTotalFpts = drawerPicks.filter(p => p.fpts != null).reduce((s, p) => s + p.fpts, 0)
+                              const skillDrawerPicks = drawerPicks.filter(p => SKILL_POS.includes(p.position) && p.rawValue != null)
+                              const drawerTotalRaw = skillDrawerPicks.reduce((s, p) => s + p.rawValue, 0)
+                              const drawerHits = skillDrawerPicks.filter(p => p.rawValue > 0).length
+                              const drawerHitRate = skillDrawerPicks.length ? drawerHits / skillDrawerPicks.length : null
+
                               const yearRow = (
                                 <tr key={`yr-${yr}`} onClick={() => setExpanded(isOpen ? null : { manager: m.name, year: yr })} style={{ cursor: 'pointer', background: isOpen ? (d ? '#0d0d0d' : '#f0ede6') : 'transparent' }}>
-                                  <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif" }}>{yr}</td>
+                                  <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif" }}>
+                                    <span style={{ marginRight: '8px' }}>{yr}</span>
+                                    <a href={`/season?year=${yr}`} onClick={e => e.stopPropagation()} style={{ fontSize: '9px', color: muted, textDecoration: 'none', letterSpacing: '0.05em', borderBottom: `1px solid ${border}` }} onMouseOver={e => e.currentTarget.style.color=text} onMouseOut={e => e.currentTarget.style.color=muted}>season</a>
+                                  </td>
                                   <td style={{ ...cStyle('center'), color: gradeColor, fontWeight: '700', fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{gradeStr}</td>
                                   <td style={{ ...cStyle(), paddingTop: '8px', paddingBottom: '8px' }}>
                                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{tags.map(tagChip)}</div>
@@ -638,6 +749,8 @@ export default function DraftsPage() {
                                   <td style={{ ...cStyle('center'), color: muted, fontSize: '10px' }}>{isOpen ? '▲' : '▼'}</td>
                                 </tr>
                               )
+
+                              const teamPerf = teamByManagerYear[`${m.name.toLowerCase().trim()}_${yr}`] || null
 
                               if (!isOpen) return [yearRow]
 
@@ -667,7 +780,11 @@ export default function DraftsPage() {
                                               return (
                                                 <tr key={p.overall_pick}>
                                                   <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>#{p.overall_pick}</td>
-                                                  <td style={{ ...cStyle(), fontSize: '11px' }}>{p.player_name}</td>
+                                                  <td style={{ ...cStyle(), fontSize: '11px' }}>
+                                                    {p.playerId
+                                                      ? <a href={`/players/${p.playerId}`} style={{ color: text, textDecoration: 'none' }} onMouseOver={e => e.currentTarget.style.textDecoration='underline'} onMouseOut={e => e.currentTarget.style.textDecoration='none'}>{p.player_name}</a>
+                                                      : p.player_name}
+                                                  </td>
                                                   <td style={{ ...cStyle('center'), fontSize: '10px', color: pc, fontWeight: '600', letterSpacing: '0.06em' }}>{p.position}</td>
                                                   <td style={{ ...cStyle('right'), fontSize: '11px', color: p.fpts != null ? text : muted }}>{p.fpts != null ? p.fpts.toFixed(1) : '—'}</td>
                                                   <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>{posLabel(p.eoyPosRank, p.position)}</td>
@@ -682,11 +799,55 @@ export default function DraftsPage() {
                                           </tbody>
                                         </table>
                                       </div>
-                                      <div style={{ padding: '10px 16px', borderTop: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                                        <span style={{ fontSize: '11px', color: muted }}>Overall Grade:</span>
-                                        <span style={{ fontSize: '14px', fontWeight: '700', color: gradeColor, fontFamily: "'Playfair Display', serif" }}>{gradeStr}</span>
-                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{tags.map(tagChip)}</div>
+                                      {/* Draft totals strip */}
+                                      <div style={{ padding: '10px 16px', borderTop: `1px solid ${border}`, display: 'flex', gap: '28px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                        <div>
+                                          <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginBottom: '2px' }}>Total EOY Pts</div>
+                                          <div style={{ fontSize: '14px', fontWeight: '700', color: text, fontFamily: "'Playfair Display', serif" }}>{drawerTotalFpts.toFixed(1)}</div>
+                                        </div>
+                                        <div>
+                                          <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginBottom: '2px' }}>Pts vs Slot</div>
+                                          <div style={{ fontSize: '14px', fontWeight: '700', color: drawerTotalRaw >= 0 ? green : red, fontFamily: "'Playfair Display', serif" }}>{drawerTotalRaw >= 0 ? '+' : ''}{drawerTotalRaw.toFixed(1)}</div>
+                                        </div>
+                                        {drawerHitRate != null && (
+                                          <div>
+                                            <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginBottom: '2px' }}>Hit Rate</div>
+                                            <div style={{ fontSize: '14px', fontWeight: '700', color: drawerHitRate >= 0.5 ? green : red, fontFamily: "'Playfair Display', serif" }}>{(drawerHitRate * 100).toFixed(0)}%</div>
+                                          </div>
+                                        )}
+                                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                          <span style={{ fontSize: '11px', color: muted }}>Draft Grade:</span>
+                                          <span style={{ fontSize: '16px', fontWeight: '700', color: gradeColor, fontFamily: "'Playfair Display', serif" }}>{gradeStr}</span>
+                                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{tags.map(tagChip)}</div>
+                                        </div>
                                       </div>
+                                      {/* Team performance strip */}
+                                      {teamPerf && (
+                                        <div style={{ padding: '10px 16px', borderTop: `1px solid ${border}`, display: 'flex', gap: '28px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                          <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginRight: '4px' }}>Season Result</div>
+                                          <div>
+                                            <div style={{ fontSize: '9px', color: muted, marginBottom: '2px' }}>Record</div>
+                                            <div style={{ fontSize: '14px', fontWeight: '700', color: text, fontFamily: "'Playfair Display', serif" }}>{teamPerf.wins}–{teamPerf.losses}</div>
+                                          </div>
+                                          <div>
+                                            <div style={{ fontSize: '9px', color: muted, marginBottom: '2px' }}>Avg PF</div>
+                                            <div style={{ fontSize: '14px', fontWeight: '700', color: text, fontFamily: "'Playfair Display', serif" }}>{teamPerf.avgPF.toFixed(1)}</div>
+                                          </div>
+                                          {teamPerf.powerScore != null && (
+                                            <div>
+                                              <div style={{ fontSize: '9px', color: muted, marginBottom: '2px' }}>Power Score</div>
+                                              <div style={{ fontSize: '14px', fontWeight: '700', color: text, fontFamily: "'Playfair Display', serif" }}>{teamPerf.powerScore.toFixed(1)}</div>
+                                            </div>
+                                          )}
+                                          <div>
+                                            <div style={{ fontSize: '9px', color: muted, marginBottom: '2px' }}>Finish</div>
+                                            <div style={{ fontSize: '14px', fontWeight: '700', color: teamPerf.madePlayoffs ? green : text, fontFamily: "'Playfair Display', serif" }}>
+                                              {teamPerf.playoffResult || (() => { const n = teamPerf.finalStanding; if (!n) return '—'; const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th','st','nd','rd'][Math.min(n % 10, 3)]; return `${n}${s} place` })()}
+                                            </div>
+                                          </div>
+                                          <a href={`/all-time-teams?year=${yr}`} style={{ marginLeft: 'auto', fontSize: '9px', color: muted, textDecoration: 'none', letterSpacing: '0.05em', borderBottom: `1px solid ${border}` }} onMouseOver={e => e.currentTarget.style.color=text} onMouseOut={e => e.currentTarget.style.color=muted}>all-time teams →</a>
+                                        </div>
+                                      )}
                                     </div>
                                   </td>
                                 </tr>
@@ -746,7 +907,7 @@ export default function DraftsPage() {
                 {unmatchedPicks.length > 0 && (
                   <div style={{ background: d ? '#1a1200' : '#fffbeb', border: `1px solid ${gold}`, padding: '12px 16px', marginBottom: '28px', fontSize: '12px' }}>
                     <span style={{ color: gold, fontWeight: '600' }}>⚠ {unmatchedPicks.length} skill-position picks</span>
-                    <span style={{ color: muted }}> couldn't be matched to Sleeper performance data — value/bust cards may be incomplete.</span>
+                    <span style={{ color: muted }}> have no scoring data (unmatched player names, IR'd before the season, or never rostered) — those picks show — for EOY rank.</span>
                     <details style={{ marginTop: '6px' }}>
                       <summary style={{ cursor: 'pointer', fontSize: '11px', color: muted }}>Show unmatched picks</summary>
                       <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
