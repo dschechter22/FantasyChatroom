@@ -336,13 +336,28 @@ export default function DraftsPage() {
     return { label: 'F', color: red }
   }
 
-  const pickGrade = (v) => {
-    if (v == null) return { label: '—', color: muted }
-    if (v > 1.0) return { label: 'A', color: green }
-    if (v > 0.5) return { label: 'B', color: green }
-    if (v > 0) return { label: 'C+', color: text }
-    if (v > -0.5) return { label: 'C-', color: text }
-    if (v > -1.0) return { label: 'D', color: red }
+  // delta = eoyPosRank - draftPosRank (negative = outperformed, positive = underperformed)
+  const pickGrade = (delta, round) => {
+    if (delta == null) return { label: '—', color: muted }
+    if (round <= 4) {
+      if (delta <= 0) return { label: 'A', color: green }
+      if (delta <= 2) return { label: 'B', color: green }
+      if (delta <= 8) return { label: 'C', color: text }
+      if (delta <= 15) return { label: 'D', color: red }
+      return { label: 'F', color: red }
+    }
+    if (round <= 9) {
+      if (delta < 0) return { label: 'A', color: green }
+      if (delta <= 1) return { label: 'B', color: green }
+      if (delta <= 5) return { label: 'C', color: text }
+      if (delta <= 10) return { label: 'D', color: red }
+      return { label: 'F', color: red }
+    }
+    // Late rounds (10+): late finds are rewarded, misses less penalized
+    if (delta <= -3) return { label: 'A', color: green }
+    if (delta <= 0) return { label: 'B', color: green }
+    if (delta <= 3) return { label: 'C', color: text }
+    if (delta <= 9) return { label: 'D', color: red }
     return { label: 'F', color: red }
   }
 
@@ -643,7 +658,7 @@ export default function DraftsPage() {
                                           </thead>
                                           <tbody>
                                             {drawerPicks.map(p => {
-                                              const pg = pickGrade(p.valueScore)
+                                              const pg = pickGrade(p.delta, p.round)
                                               const pc = POS_COLORS[p.position] || muted
                                               const posLabel = (rank, pos) => rank != null ? `${pos}${rank}` : '—'
                                               return (
