@@ -773,9 +773,11 @@ export default function DraftsPage() {
                                               <th style={{ ...hStyle(), fontSize: '9px' }}>Player</th>
                                               <th style={{ ...hStyle('center'), fontSize: '9px' }}>Pos</th>
                                               <th style={{ ...hStyle('right'), fontSize: '9px' }}>EOY Pts</th>
+                                              <th style={{ ...hStyle('right'), fontSize: '9px' }}>Exp Pts</th>
+                                              <th style={{ ...hStyle('right'), fontSize: '9px' }}>Pts Δ</th>
                                               <th style={{ ...hStyle('center'), fontSize: '9px' }}>EOY Rank</th>
                                               <th style={{ ...hStyle('center'), fontSize: '9px' }}>Draft Rank</th>
-                                              <th style={{ ...hStyle('center'), fontSize: '9px' }}>Δ</th>
+                                              <th style={{ ...hStyle('center'), fontSize: '9px' }}>Rank Δ</th>
                                               <th style={{ ...hStyle('center'), fontSize: '9px' }}>Grade</th>
                                             </tr>
                                           </thead>
@@ -784,6 +786,7 @@ export default function DraftsPage() {
                                               const pg = pickGrade(p.delta, p.round)
                                               const pc = POS_COLORS[p.position] || muted
                                               const posLabel = (rank, pos) => rank != null ? `${pos}${rank}` : '—'
+                                              const ptsColor = p.rawValue != null ? (p.rawValue > 0 ? green : p.rawValue < 0 ? red : text) : muted
                                               return (
                                                 <tr key={p.overall_pick}>
                                                   <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>#{p.overall_pick}</td>
@@ -794,6 +797,10 @@ export default function DraftsPage() {
                                                   </td>
                                                   <td style={{ ...cStyle('center'), fontSize: '10px', color: pc, fontWeight: '600', letterSpacing: '0.06em' }}>{p.position}</td>
                                                   <td style={{ ...cStyle('right'), fontSize: '11px', color: p.fpts != null ? text : muted }}>{p.fpts != null ? p.fpts.toFixed(1) : '—'}</td>
+                                                  <td style={{ ...cStyle('right'), fontSize: '11px', color: muted }}>{p.expectedFpts != null ? p.expectedFpts.toFixed(1) : '—'}</td>
+                                                  <td style={{ ...cStyle('right'), fontSize: '11px', fontWeight: p.rawValue != null && p.rawValue !== 0 ? '700' : '400', color: ptsColor }}>
+                                                    {p.rawValue != null ? (p.rawValue > 0 ? `+${p.rawValue.toFixed(1)}` : p.rawValue.toFixed(1)) : '—'}
+                                                  </td>
                                                   <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>{posLabel(p.eoyPosRank, p.position)}</td>
                                                   <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>{posLabel(p.draftPosRank, p.position)}</td>
                                                   <td style={{ ...cStyle('center'), fontSize: '11px', fontWeight: p.delta != null && p.delta !== 0 ? '600' : '400', color: p.delta != null ? (p.delta < 0 ? green : p.delta > 0 ? red : text) : muted }}>
