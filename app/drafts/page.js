@@ -60,20 +60,28 @@ export default function DraftsPage() {
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
-    supabase.from('draft_picks').select('*').eq('league_id', LEAGUE_ID).order('overall_pick').limit(2000)
-      .then(({ data }) => {
-        const rows = (data || []).map(p => ({
-          ...p,
-          season: parseInt(p.season),
-          round: parseInt(p.round),
-          overall_pick: parseInt(p.overall_pick),
-          pick_in_round: parseInt(p.pick_in_round),
-        }))
-        setAllPicks(rows)
-        const years = [...new Set(rows.map(p => p.season))].sort((a, b) => b - a)
-        setDbSeasons(years)
-        if (years.length) setSelectedYear(years[0])
-      })
+    const load = async () => {
+      let all = [], from = 0
+      while (true) {
+        const { data: batch } = await supabase.from('draft_picks').select('*').eq('league_id', LEAGUE_ID).order('overall_pick').range(from, from + 999)
+        if (!batch?.length) break
+        all = [...all, ...batch]
+        if (batch.length < 1000) break
+        from += 1000
+      }
+      const rows = all.map(p => ({
+        ...p,
+        season: parseInt(p.season),
+        round: parseInt(p.round),
+        overall_pick: parseInt(p.overall_pick),
+        pick_in_round: parseInt(p.pick_in_round),
+      }))
+      setAllPicks(rows)
+      const years = [...new Set(rows.map(p => p.season))].sort((a, b) => b - a)
+      setDbSeasons(years)
+      if (years.length) setSelectedYear(years[0])
+    }
+    load()
   }, [])
 
   useEffect(() => {
