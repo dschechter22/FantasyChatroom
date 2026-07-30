@@ -260,8 +260,9 @@ export default function DraftsPage() {
       const expectedFpts = pool[Math.min(draftPosRank, pool.length) - 1]
       const pKey = p.playerId ?? `_n_${normName(p.player_name)}`
       const fptsRank = fptsRankById[`${p.season}_${p.position}`]?.[pKey] ?? (p.fpts != null ? pool.length + 1 : null)
-      // No fpts = can't compute value — don't substitute 0 or it creates fake negatives
-      if (p.fpts == null) return { ...p, rawValue: null, expectedFpts, fptsRank, draftPosRank }
+      // Null fpts = player didn't produce (injured/cut/no PFR data).
+      // Treat as 0 actual pts vs expected — excluding these picks inflates every manager's avg.
+      if (p.fpts == null) return { ...p, rawValue: -expectedFpts, expectedFpts, fptsRank: pool.length + 1, draftPosRank }
       return { ...p, rawValue: p.fpts - expectedFpts, expectedFpts, fptsRank, draftPosRank }
     })
 
