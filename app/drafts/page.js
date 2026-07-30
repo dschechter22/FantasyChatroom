@@ -104,7 +104,8 @@ export default function DraftsPage() {
   const [seasonMatchups, setSeasonMatchups] = useState([])
 
   // positional focus controls (trends tab)
-  const [focusRounds, setFocusRounds] = useState(4)
+  const [focusRoundFrom, setFocusRoundFrom] = useState(1)
+  const [focusRounds, setFocusRounds] = useState(16)
   const [focusYearFrom, setFocusYearFrom] = useState(null)
   const [focusYearTo, setFocusYearTo] = useState(null)
 
@@ -1067,6 +1068,7 @@ export default function DraftsPage() {
                         const selSt = { background: cardBg, border: `1px solid ${border}`, color: text, padding: '4px 8px', fontSize: '12px', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif" }
                         const fp = allPicks.filter(p =>
                           p.manager_name === m.name &&
+                          p.round >= focusRoundFrom &&
                           p.round <= focusRounds &&
                           (!focusYearFrom || (p.season >= focusYearFrom && p.season <= (focusYearTo ?? Math.max(...dbSeasons))))
                         )
@@ -1074,15 +1076,38 @@ export default function DraftsPage() {
                         const posCounts = {}
                         fp.forEach(p => { posCounts[p.position] = (posCounts[p.position] || 0) + 1 })
                         const hasPicks = POSITIONS.filter(pos => posCounts[pos])
+
+                        // Pie chart arc computation
+                        const pieSize = 200, pieR = pieSize / 2 - 6, pieCx = pieSize / 2, pieCy = pieSize / 2
+                        let pieAngle = -Math.PI / 2
+                        const arcs = hasPicks.map(pos => {
+                          const count = posCounts[pos]
+                          const sweep = (count / total) * 2 * Math.PI
+                          const sa = pieAngle, ea = pieAngle + sweep
+                          pieAngle = ea
+                          const x1 = pieCx + pieR * Math.cos(sa), y1 = pieCy + pieR * Math.sin(sa)
+                          const x2 = pieCx + pieR * Math.cos(ea), y2 = pieCy + pieR * Math.sin(ea)
+                          const large = sweep > Math.PI ? 1 : 0
+                          const path = `M${pieCx},${pieCy} L${x1},${y1} A${pieR},${pieR} 0 ${large},1 ${x2},${y2} Z`
+                          const ma = sa + sweep / 2
+                          const lr = pieR * 0.62
+                          return { pos, count, color: POS_COLORS[pos], path, sweep, lx: pieCx + lr * Math.cos(ma), ly: pieCy + lr * Math.sin(ma) }
+                        })
+
                         return (
                           <div style={{ marginBottom: '32px', paddingBottom: '32px', borderBottom: `1px solid ${border}` }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                            {/* Controls */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
                               <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, margin: 0 }}>Positional Focus</p>
-                              <span style={{ fontSize: '11px', color: muted }}>Rds 1–</span>
-                              <select value={focusRounds} onChange={e => setFocusRounds(parseInt(e.target.value))} style={selSt}>
-                                {[3,4,5,6,8,10].map(n => <option key={n} value={n}>{n}</option>)}
+                              <span style={{ fontSize: '11px', color: muted }}>Rds</span>
+                              <select value={focusRoundFrom} onChange={e => { const v = parseInt(e.target.value); setFocusRoundFrom(v); if (v > focusRounds) setFocusRounds(v) }} style={selSt}>
+                                {Array.from({ length: 16 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}
                               </select>
-                              <span style={{ fontSize: '11px', color: muted, marginLeft: '4px' }}>Years:</span>
+                              <span style={{ fontSize: '11px', color: muted }}>–</span>
+                              <select value={focusRounds} onChange={e => setFocusRounds(parseInt(e.target.value))} style={selSt}>
+                                {Array.from({ length: 16 }, (_, i) => i + 1).filter(n => n >= focusRoundFrom).map(n => <option key={n} value={n}>{n}</option>)}
+                              </select>
+                              <span style={{ fontSize: '11px', color: muted, marginLeft: '8px' }}>Years:</span>
                               <select value={focusYearFrom ?? ''} onChange={e => { const v = e.target.value ? parseInt(e.target.value) : null; setFocusYearFrom(v); if (!v) setFocusYearTo(null) }} style={selSt}>
                                 <option value="">All</option>
                                 {[...dbSeasons].reverse().map(y => <option key={y} value={y}>{y}</option>)}
@@ -1097,31 +1122,60 @@ export default function DraftsPage() {
                                 </>
                               )}
                             </div>
+
                             {total === 0 ? <p style={{ color: muted, fontSize: '13px' }}>No picks in this range.</p> : (
                               <>
-                                {/* Large stacked bar */}
-                                <div style={{ display: 'flex', height: '40px', gap: '2px', marginBottom: '20px', overflow: 'hidden' }}>
+                                {/* Stacked bar */}
+                                <div style={{ display: 'flex', height: '40px', gap: '2px', marginBottom: '28px', overflow: 'hidden' }}>
                                   {hasPicks.map(pos => (
                                     <div key={pos} style={{ flex: posCounts[pos], background: POS_COLORS[pos], display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0, overflow: 'hidden' }}>
-                                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff', letterSpacing: '0.05em', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>{pos}</span>
+                                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff', letterSpacing: '0.05em', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{pos}</span>
                                     </div>
                                   ))}
                                 </div>
-                                {/* Position stat cards */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '1px', background: border, marginBottom: '24px' }}>
-                                  {hasPicks.map(pos => (
-                                    <div key={pos} style={{ background: cardBg, padding: '16px 20px' }}>
-                                      <div style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: POS_COLORS[pos], fontWeight: '700', marginBottom: '6px' }}>{pos}</div>
-                                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '30px', color: text, lineHeight: 1, marginBottom: '4px' }}>{posCounts[pos]}</div>
-                                      <div style={{ fontSize: '11px', color: muted }}>{(posCounts[pos] / total * 100).toFixed(0)}% of picks</div>
+
+                                {/* Pie chart + stat cards */}
+                                <div style={{ display: 'flex', gap: '28px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '28px' }}>
+                                  <div style={{ flexShrink: 0 }}>
+                                    <svg width={pieSize} height={pieSize} viewBox={`0 0 ${pieSize} ${pieSize}`}>
+                                      {arcs.map(a => (
+                                        <g key={a.pos}>
+                                          <path d={a.path} fill={a.color} stroke={d ? '#0a0a0a' : '#fff'} strokeWidth="1.5" />
+                                          {a.sweep > 0.28 && (
+                                            <>
+                                              <text x={a.lx} y={a.ly} textAnchor="middle" dominantBaseline="middle" fill="rgba(0,0,0,0.35)" fontSize="13" fontWeight="700" fontFamily="Inter, sans-serif">{a.pos}</text>
+                                              <text x={a.lx} y={a.ly} textAnchor="middle" dominantBaseline="middle" fill="#fff" fontSize="12" fontWeight="700" fontFamily="Inter, sans-serif">{a.pos}</text>
+                                            </>
+                                          )}
+                                        </g>
+                                      ))}
+                                    </svg>
+                                    {/* Legend for small slices */}
+                                    {arcs.filter(a => a.sweep <= 0.28).map(a => (
+                                      <div key={a.pos} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                                        <div style={{ width: '10px', height: '10px', background: a.color, flexShrink: 0 }} />
+                                        <span style={{ fontSize: '11px', color: muted }}>{a.pos} — {a.count} pick{a.count !== 1 ? 's' : ''}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* Stat cards */}
+                                  <div style={{ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '1px', background: border, alignContent: 'start' }}>
+                                    {hasPicks.map(pos => (
+                                      <div key={pos} style={{ background: cardBg, padding: '16px 20px' }}>
+                                        <div style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: POS_COLORS[pos], fontWeight: '700', marginBottom: '6px' }}>{pos}</div>
+                                        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '30px', color: text, lineHeight: 1, marginBottom: '4px' }}>{posCounts[pos]}</div>
+                                        <div style={{ fontSize: '11px', color: muted }}>{(posCounts[pos] / total * 100).toFixed(0)}%</div>
+                                      </div>
+                                    ))}
+                                    <div style={{ background: cardBg, padding: '16px 20px' }}>
+                                      <div style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Total</div>
+                                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '30px', color: text, lineHeight: 1, marginBottom: '4px' }}>{total}</div>
+                                      <div style={{ fontSize: '11px', color: muted }}>rds {focusRoundFrom}–{focusRounds}</div>
                                     </div>
-                                  ))}
-                                  <div style={{ background: cardBg, padding: '16px 20px' }}>
-                                    <div style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Total</div>
-                                    <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '30px', color: text, lineHeight: 1, marginBottom: '4px' }}>{total}</div>
-                                    <div style={{ fontSize: '11px', color: muted }}>picks rds 1–{focusRounds}</div>
                                   </div>
                                 </div>
+
                                 {/* Per-round breakdown */}
                                 <div style={{ overflowX: 'auto' }}>
                                   <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
@@ -1133,13 +1187,13 @@ export default function DraftsPage() {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {Array.from({ length: focusRounds }, (_, i) => i + 1).map((rd, i) => {
+                                      {Array.from({ length: focusRounds - focusRoundFrom + 1 }, (_, i) => focusRoundFrom + i).map((rd, i) => {
                                         const rdPicks = fp.filter(p => p.round === rd)
                                         const rdCounts = {}
                                         rdPicks.forEach(p => { rdCounts[p.position] = (rdCounts[p.position] || 0) + 1 })
                                         return (
                                           <tr key={rd} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
-                                            <td style={{ ...cStyle(), color: muted, fontVariantNumeric: 'tabular-nums' }}>Round {rd}</td>
+                                            <td style={{ ...cStyle(), color: muted }}>Round {rd}</td>
                                             {hasPicks.map(pos => (
                                               <td key={pos} style={{ ...cStyle('center'), color: rdCounts[pos] ? POS_COLORS[pos] : muted, fontWeight: rdCounts[pos] ? '700' : '400', fontSize: rdCounts[pos] ? '14px' : '11px' }}>
                                                 {rdCounts[pos] || '—'}
