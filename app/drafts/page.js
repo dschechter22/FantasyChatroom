@@ -87,6 +87,7 @@ export default function DraftsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold, blue } = useLayout()
   const [tab, setTab] = useState('by-year')
   const [expanded, setExpanded] = useState(null) // { manager, year }
+  const [intelExpanded, setIntelExpanded] = useState(null) // { mgr, yr } for draft intel tab
   const [selectedManager, setSelectedManager] = useState(null)
   const [allPicks, setAllPicks] = useState([])
   const [dbSeasons, setDbSeasons] = useState([])
@@ -1455,19 +1456,140 @@ export default function DraftsPage() {
                             <th style={hStyle('center')}>Draft Grade</th>
                             <th style={hStyle('center')}>Record</th>
                             <th style={hStyle('center')}>Playoffs</th>
+                            <th style={{ ...hStyle('center'), width: '28px' }}></th>
                           </tr></thead>
                           <tbody>
-                            {[...draftIntel.gradeVsWins].sort((a,b) => b.grade - a.grade).map((d, i) => {
-                              const { label: gl, color: gc } = gradeLabel(d.grade)
-                              return (
-                                <tr key={`${d.mgr}${d.yr}`} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
-                                  <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif" }}>{d.mgr}</td>
-                                  <td style={{ ...cStyle('center'), color: muted }}>{d.yr}</td>
+                            {[...draftIntel.gradeVsWins].sort((a,b) => b.grade - a.grade).flatMap((gw, i) => {
+                              const { label: gl, color: gc } = gradeLabel(gw.grade)
+                              const isOpen = intelExpanded?.mgr === gw.mgr && intelExpanded?.yr === gw.yr
+                              const rowKey = `${gw.mgr}${gw.yr}`
+
+                              const mainRow = (
+                                <tr key={rowKey} onClick={() => setIntelExpanded(isOpen ? null : { mgr: gw.mgr, yr: gw.yr })} style={{ cursor: 'pointer', background: isOpen ? (d ? '#0d0d0d' : '#f0ede6') : i % 2 === 0 ? 'transparent' : rowAlt }}>
+                                  <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif" }}>{gw.mgr}</td>
+                                  <td style={{ ...cStyle('center'), color: muted }}>{gw.yr}</td>
                                   <td style={{ ...cStyle('center'), color: gc, fontWeight: '700', fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{gl}</td>
-                                  <td style={{ ...cStyle('center') }}>{d.wins}–{d.losses}</td>
-                                  <td style={{ ...cStyle('center'), color: d.madePlayoffs ? green : muted, fontSize: '11px' }}>{d.madePlayoffs ? '✓' : '—'}</td>
+                                  <td style={{ ...cStyle('center') }}>{gw.wins}–{gw.losses}</td>
+                                  <td style={{ ...cStyle('center'), color: gw.madePlayoffs ? green : muted, fontSize: '11px' }}>{gw.madePlayoffs ? '✓' : '—'}</td>
+                                  <td style={{ ...cStyle('center'), color: muted, fontSize: '10px' }}>{isOpen ? '▲' : '▼'}</td>
                                 </tr>
                               )
+
+                              if (!isOpen) return [mainRow]
+
+                              // Build drawer picks (same logic as Manager Trends drawer)
+                              const mgrPicks = enrichedWithValue.filter(p => p.manager_name === gw.mgr && p.season === gw.yr)
+                              const allSeason = enrichedWithValue.filter(p => p.season === gw.yr)
+                              const fptsByPos = {}, draftPosByPick = {}
+                              SKILL_POS.forEach(pos => {
+                                ;[...allSeason].filter(p => p.position === pos && p.fpts != null).sort((a,b) => b.fpts - a.fpts).forEach((p, idx) => { fptsByPos[`${p.playerId ?? '_n_' + normName(p.player_name)}_${pos}`] = idx + 1 })
+                                ;[...allSeason].filter(p => p.position === pos).sort((a,b) => a.overall_pick - b.overall_pick).forEach((p, idx) => { draftPosByPick[`${p.overall_pick}_${pos}`] = idx + 1 })
+                              })
+                              const drawerPicks = [...mgrPicks].sort((a,b) => a.overall_pick - b.overall_pick).map(p => {
+                                const pKey = p.playerId ?? `_n_${normName(p.player_name)}`
+                                const eoyPosRank = SKILL_POS.includes(p.position) ? (fptsByPos[`${pKey}_${p.position}`] ?? null) : null
+                                const draftPosRank = SKILL_POS.includes(p.position) ? (draftPosByPick[`${p.overall_pick}_${p.position}`] ?? null) : null
+                                const delta = eoyPosRank != null && draftPosRank != null ? eoyPosRank - draftPosRank : null
+                                return { ...p, eoyPosRank, draftPosRank, delta }
+                              })
+                              const drawerTotalFpts = drawerPicks.filter(p => p.fpts != null).reduce((s,p) => s + p.fpts, 0)
+                              const skillDrawerPicks = drawerPicks.filter(p => SKILL_POS.includes(p.position) && p.rawValue != null)
+                              const drawerTotalRaw = skillDrawerPicks.reduce((s,p) => s + p.rawValue, 0)
+                              const drawerHits = skillDrawerPicks.filter(p => p.rawValue > 0).length
+                              const drawerHitRate = skillDrawerPicks.length ? drawerHits / skillDrawerPicks.length : null
+                              const teamPerf = teamByManagerYear[`${gw.mgr.toLowerCase().trim()}_${gw.yr}`] || null
+                              const tags = trendData.find(td => td.name === gw.mgr)?.strategyByYear?.[gw.yr] || []
+                              const tagChipI = (tag) => (
+                                <span key={tag} style={{ fontSize: '10px', padding: '2px 7px', background: tag === 'Balanced' ? (d ? '#1a1a1a' : '#e0ddd6') : (d ? '#1a1a2a' : '#e8eaf6'), color: tag === 'Balanced' ? muted : blue, border: `1px solid ${tag === 'Balanced' ? border : blue + '44'}`, letterSpacing: '0.05em' }}>{tag}</span>
+                              )
+
+                              const drawerRow = (
+                                <tr key={`${rowKey}-drawer`}>
+                                  <td colSpan={6} style={{ padding: 0, borderBottom: `1px solid ${border}` }}>
+                                    <div style={{ background: d ? '#080808' : '#f8f5ee' }}>
+                                      <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                          <thead>
+                                            <tr style={{ background: d ? '#111' : '#edeae3' }}>
+                                              <th style={{ ...hStyle('center'), fontSize: '9px' }}>Pick</th>
+                                              <th style={{ ...hStyle(), fontSize: '9px' }}>Player</th>
+                                              <th style={{ ...hStyle('center'), fontSize: '9px' }}>Pos</th>
+                                              <th style={{ ...hStyle('right'), fontSize: '9px' }}>EOY Pts</th>
+                                              <th style={{ ...hStyle('right'), fontSize: '9px' }}>Exp Pts</th>
+                                              <th style={{ ...hStyle('right'), fontSize: '9px' }}>Pts Δ</th>
+                                              <th style={{ ...hStyle('center'), fontSize: '9px' }}>EOY Rank</th>
+                                              <th style={{ ...hStyle('center'), fontSize: '9px' }}>Draft Rank</th>
+                                              <th style={{ ...hStyle('center'), fontSize: '9px' }}>Rank Δ</th>
+                                              <th style={{ ...hStyle('center'), fontSize: '9px' }}>Grade</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {drawerPicks.map(p => {
+                                              const pg = pickGrade(p.delta, p.round)
+                                              const pc = POS_COLORS[p.position] || muted
+                                              const posLabel = (rank, pos) => rank != null ? `${pos}${rank}` : '—'
+                                              const ptsC = p.rawValue != null ? (p.rawValue > 0 ? green : p.rawValue < 0 ? red : text) : muted
+                                              return (
+                                                <tr key={p.overall_pick}>
+                                                  <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>#{p.overall_pick}</td>
+                                                  <td style={{ ...cStyle(), fontSize: '11px' }}>
+                                                    {p.playerId ? <a href={`/players/${p.playerId}`} style={{ color: text, textDecoration: 'none' }} onMouseOver={e=>e.currentTarget.style.textDecoration='underline'} onMouseOut={e=>e.currentTarget.style.textDecoration='none'}>{p.player_name}</a> : p.player_name}
+                                                  </td>
+                                                  <td style={{ ...cStyle('center'), fontSize: '10px', color: pc, fontWeight: '600', letterSpacing: '0.06em' }}>{p.position}</td>
+                                                  <td style={{ ...cStyle('right'), fontSize: '11px', color: p.fpts != null ? text : muted }}>{p.fpts != null ? p.fpts.toFixed(1) : '—'}</td>
+                                                  <td style={{ ...cStyle('right'), fontSize: '11px', color: muted }}>{p.expectedFpts != null ? p.expectedFpts.toFixed(1) : '—'}</td>
+                                                  <td style={{ ...cStyle('right'), fontSize: '11px', fontWeight: p.rawValue != null && p.rawValue !== 0 ? '700' : '400', color: ptsC }}>
+                                                    {p.rawValue != null ? (p.rawValue > 0 ? `+${p.rawValue.toFixed(1)}` : p.rawValue.toFixed(1)) : '—'}
+                                                  </td>
+                                                  <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>{posLabel(p.eoyPosRank, p.position)}</td>
+                                                  <td style={{ ...cStyle('center'), fontSize: '11px', color: muted }}>{posLabel(p.draftPosRank, p.position)}</td>
+                                                  <td style={{ ...cStyle('center'), fontSize: '11px', fontWeight: p.delta != null && p.delta !== 0 ? '600' : '400', color: p.delta != null ? (p.delta < 0 ? green : p.delta > 0 ? red : text) : muted }}>
+                                                    {p.delta != null ? (p.delta > 0 ? `+${p.delta}` : `${p.delta}`) : '—'}
+                                                  </td>
+                                                  <td style={{ ...cStyle('center'), fontSize: '12px', fontWeight: '700', color: pg.color, fontFamily: "'Playfair Display', serif" }}>{pg.label}</td>
+                                                </tr>
+                                              )
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                      <div style={{ padding: '10px 16px', borderTop: `1px solid ${border}`, display: 'flex', gap: '28px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                        <div>
+                                          <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginBottom: '2px' }}>Total EOY Pts</div>
+                                          <div style={{ fontSize: '14px', fontWeight: '700', color: text, fontFamily: "'Playfair Display', serif" }}>{drawerTotalFpts.toFixed(1)}</div>
+                                        </div>
+                                        <div>
+                                          <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginBottom: '2px' }}>Pts vs Slot</div>
+                                          <div style={{ fontSize: '14px', fontWeight: '700', color: drawerTotalRaw >= 0 ? green : red, fontFamily: "'Playfair Display', serif" }}>{drawerTotalRaw >= 0 ? '+' : ''}{drawerTotalRaw.toFixed(1)}</div>
+                                        </div>
+                                        {drawerHitRate != null && (
+                                          <div>
+                                            <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginBottom: '2px' }}>Hit Rate</div>
+                                            <div style={{ fontSize: '14px', fontWeight: '700', color: drawerHitRate >= 0.5 ? green : red, fontFamily: "'Playfair Display', serif" }}>{(drawerHitRate * 100).toFixed(0)}%</div>
+                                          </div>
+                                        )}
+                                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                          <span style={{ fontSize: '11px', color: muted }}>Draft Grade:</span>
+                                          <span style={{ fontSize: '16px', fontWeight: '700', color: gc, fontFamily: "'Playfair Display', serif" }}>{gl}</span>
+                                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{tags.map(tagChipI)}</div>
+                                        </div>
+                                      </div>
+                                      {teamPerf && (
+                                        <div style={{ padding: '10px 16px', borderTop: `1px solid ${border}`, display: 'flex', gap: '28px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                          <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginRight: '4px' }}>Season Result</div>
+                                          <div><div style={{ fontSize: '9px', color: muted, marginBottom: '2px' }}>Record</div><div style={{ fontSize: '14px', fontWeight: '700', color: text, fontFamily: "'Playfair Display', serif" }}>{teamPerf.wins}–{teamPerf.losses}</div></div>
+                                          <div><div style={{ fontSize: '9px', color: muted, marginBottom: '2px' }}>Avg PF</div><div style={{ fontSize: '14px', fontWeight: '700', color: text, fontFamily: "'Playfair Display', serif" }}>{teamPerf.avgPF.toFixed(1)}</div></div>
+                                          {teamPerf.powerScore != null && <div><div style={{ fontSize: '9px', color: muted, marginBottom: '2px' }}>Power Score</div><div style={{ fontSize: '14px', fontWeight: '700', color: text, fontFamily: "'Playfair Display', serif" }}>{teamPerf.powerScore.toFixed(1)}</div></div>}
+                                          <div><div style={{ fontSize: '9px', color: muted, marginBottom: '2px' }}>Finish</div><div style={{ fontSize: '14px', fontWeight: '700', color: teamPerf.madePlayoffs ? green : text, fontFamily: "'Playfair Display', serif" }}>{teamPerf.playoffResult || (() => { const n = teamPerf.finalStanding; if (!n) return '—'; const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th','st','nd','rd'][Math.min(n % 10, 3)]; return `${n}${s} place` })()}</div></div>
+                                          <a href={`/all-time-teams?year=${gw.yr}`} style={{ marginLeft: 'auto', fontSize: '9px', color: muted, textDecoration: 'none', letterSpacing: '0.05em', borderBottom: `1px solid ${border}` }} onMouseOver={e=>e.currentTarget.style.color=text} onMouseOut={e=>e.currentTarget.style.color=muted}>all-time teams →</a>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+
+                              return [mainRow, drawerRow]
                             })}
                           </tbody>
                         </table>
