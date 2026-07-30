@@ -1062,6 +1062,102 @@ export default function DraftsPage() {
                         </table>
                       </div>
 
+                      {/* Positional Focus */}
+                      {(() => {
+                        const selSt = { background: cardBg, border: `1px solid ${border}`, color: text, padding: '4px 8px', fontSize: '12px', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif" }
+                        const fp = allPicks.filter(p =>
+                          p.manager_name === m.name &&
+                          p.round <= focusRounds &&
+                          (!focusYearFrom || (p.season >= focusYearFrom && p.season <= (focusYearTo ?? Math.max(...dbSeasons))))
+                        )
+                        const total = fp.length
+                        const posCounts = {}
+                        fp.forEach(p => { posCounts[p.position] = (posCounts[p.position] || 0) + 1 })
+                        const hasPicks = POSITIONS.filter(pos => posCounts[pos])
+                        return (
+                          <div style={{ marginBottom: '32px', paddingBottom: '32px', borderBottom: `1px solid ${border}` }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                              <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, margin: 0 }}>Positional Focus</p>
+                              <span style={{ fontSize: '11px', color: muted }}>Rds 1–</span>
+                              <select value={focusRounds} onChange={e => setFocusRounds(parseInt(e.target.value))} style={selSt}>
+                                {[3,4,5,6,8,10].map(n => <option key={n} value={n}>{n}</option>)}
+                              </select>
+                              <span style={{ fontSize: '11px', color: muted, marginLeft: '4px' }}>Years:</span>
+                              <select value={focusYearFrom ?? ''} onChange={e => { const v = e.target.value ? parseInt(e.target.value) : null; setFocusYearFrom(v); if (!v) setFocusYearTo(null) }} style={selSt}>
+                                <option value="">All</option>
+                                {[...dbSeasons].reverse().map(y => <option key={y} value={y}>{y}</option>)}
+                              </select>
+                              {focusYearFrom && (
+                                <>
+                                  <span style={{ fontSize: '11px', color: muted }}>–</span>
+                                  <select value={focusYearTo ?? ''} onChange={e => setFocusYearTo(e.target.value ? parseInt(e.target.value) : null)} style={selSt}>
+                                    <option value="">Latest</option>
+                                    {[...dbSeasons].reverse().filter(y => y >= focusYearFrom).map(y => <option key={y} value={y}>{y}</option>)}
+                                  </select>
+                                </>
+                              )}
+                            </div>
+                            {total === 0 ? <p style={{ color: muted, fontSize: '13px' }}>No picks in this range.</p> : (
+                              <>
+                                {/* Large stacked bar */}
+                                <div style={{ display: 'flex', height: '40px', gap: '2px', marginBottom: '20px', overflow: 'hidden' }}>
+                                  {hasPicks.map(pos => (
+                                    <div key={pos} style={{ flex: posCounts[pos], background: POS_COLORS[pos], display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0, overflow: 'hidden' }}>
+                                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff', letterSpacing: '0.05em', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>{pos}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {/* Position stat cards */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '1px', background: border, marginBottom: '24px' }}>
+                                  {hasPicks.map(pos => (
+                                    <div key={pos} style={{ background: cardBg, padding: '16px 20px' }}>
+                                      <div style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: POS_COLORS[pos], fontWeight: '700', marginBottom: '6px' }}>{pos}</div>
+                                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '30px', color: text, lineHeight: 1, marginBottom: '4px' }}>{posCounts[pos]}</div>
+                                      <div style={{ fontSize: '11px', color: muted }}>{(posCounts[pos] / total * 100).toFixed(0)}% of picks</div>
+                                    </div>
+                                  ))}
+                                  <div style={{ background: cardBg, padding: '16px 20px' }}>
+                                    <div style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Total</div>
+                                    <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '30px', color: text, lineHeight: 1, marginBottom: '4px' }}>{total}</div>
+                                    <div style={{ fontSize: '11px', color: muted }}>picks rds 1–{focusRounds}</div>
+                                  </div>
+                                </div>
+                                {/* Per-round breakdown */}
+                                <div style={{ overflowX: 'auto' }}>
+                                  <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                                    <thead>
+                                      <tr style={{ background: cardBg }}>
+                                        <th style={hStyle()}>Round</th>
+                                        {hasPicks.map(pos => <th key={pos} style={{ ...hStyle('center'), color: POS_COLORS[pos] }}>{pos}</th>)}
+                                        <th style={hStyle('center')}>Total</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {Array.from({ length: focusRounds }, (_, i) => i + 1).map((rd, i) => {
+                                        const rdPicks = fp.filter(p => p.round === rd)
+                                        const rdCounts = {}
+                                        rdPicks.forEach(p => { rdCounts[p.position] = (rdCounts[p.position] || 0) + 1 })
+                                        return (
+                                          <tr key={rd} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                                            <td style={{ ...cStyle(), color: muted, fontVariantNumeric: 'tabular-nums' }}>Round {rd}</td>
+                                            {hasPicks.map(pos => (
+                                              <td key={pos} style={{ ...cStyle('center'), color: rdCounts[pos] ? POS_COLORS[pos] : muted, fontWeight: rdCounts[pos] ? '700' : '400', fontSize: rdCounts[pos] ? '14px' : '11px' }}>
+                                                {rdCounts[pos] || '—'}
+                                              </td>
+                                            ))}
+                                            <td style={{ ...cStyle('center'), color: muted, fontSize: '11px' }}>{rdPicks.length || '—'}</td>
+                                          </tr>
+                                        )
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )
+                      })()}
+
                       {/* Avg draft round by positional rank */}
                       <div style={{ marginTop: '24px', marginBottom: '24px' }}>
                         <p style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '12px' }}>Avg Draft Round by Positional Pick</p>
@@ -1133,63 +1229,6 @@ export default function DraftsPage() {
                   <p style={{ color: muted, fontSize: '13px' }}>Select a manager above to see their draft history.</p>
                 )}
 
-                {/* Positional Focus */}
-                <div style={{ marginTop: '48px', paddingTop: '36px', borderTop: `1px solid ${border}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
-                    <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, margin: 0 }}>Positional Focus</p>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '11px', color: muted }}>Rounds 1–</span>
-                      <select value={focusRounds} onChange={e => setFocusRounds(parseInt(e.target.value))} style={{ background: cardBg, border: `1px solid ${border}`, color: text, padding: '4px 8px', fontSize: '12px', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif" }}>
-                        {[3,4,5,6,8,10].map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                      <span style={{ fontSize: '11px', color: muted, marginLeft: '8px' }}>Years:</span>
-                      <select value={focusYearFrom ?? ''} onChange={e => { const v = e.target.value ? parseInt(e.target.value) : null; setFocusYearFrom(v); if (!v) setFocusYearTo(null) }} style={{ background: cardBg, border: `1px solid ${border}`, color: text, padding: '4px 8px', fontSize: '12px', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif" }}>
-                        <option value="">All</option>
-                        {[...dbSeasons].reverse().map(y => <option key={y} value={y}>{y}</option>)}
-                      </select>
-                      {focusYearFrom && (
-                        <>
-                          <span style={{ fontSize: '11px', color: muted }}>–</span>
-                          <select value={focusYearTo ?? ''} onChange={e => setFocusYearTo(e.target.value ? parseInt(e.target.value) : null)} style={{ background: cardBg, border: `1px solid ${border}`, color: text, padding: '4px 8px', fontSize: '12px', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif" }}>
-                            <option value="">Latest</option>
-                            {[...dbSeasons].reverse().filter(y => y >= focusYearFrom).map(y => <option key={y} value={y}>{y}</option>)}
-                          </select>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(190px, 1fr))', gap: '1px', background: border }}>
-                    {trendData.map(m => {
-                      const fp = allPicks.filter(p =>
-                        p.manager_name === m.name &&
-                        p.round <= focusRounds &&
-                        (!focusYearFrom || (p.season >= focusYearFrom && p.season <= (focusYearTo ?? Math.max(...dbSeasons))))
-                      )
-                      const total = fp.length
-                      const posCounts = {}
-                      fp.forEach(p => { posCounts[p.position] = (posCounts[p.position] || 0) + 1 })
-                      return (
-                        <div key={m.name} style={{ background: cardBg, padding: '16px' }}>
-                          <div style={{ fontSize: '11px', color: muted, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{m.name}</div>
-                          {total === 0 ? <span style={{ color: muted, fontSize: '11px' }}>No data</span> : (
-                            <>
-                              <div style={{ display: 'flex', height: '10px', marginBottom: '8px', overflow: 'hidden', gap: '1px' }}>
-                                {POSITIONS.filter(pos => posCounts[pos]).map(pos => (
-                                  <div key={pos} style={{ width: `${(posCounts[pos] / total) * 100}%`, background: POS_COLORS[pos] }} />
-                                ))}
-                              </div>
-                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                {POSITIONS.filter(pos => posCounts[pos]).map(pos => (
-                                  <span key={pos} style={{ fontSize: '10px', color: POS_COLORS[pos] }}>{pos} {posCounts[pos]}</span>
-                                ))}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
               </>
             )}
           </div>
