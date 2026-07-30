@@ -10,13 +10,48 @@ const POS_COLORS = { QB: '#4285F4', RB: '#34A853', WR: '#FBBC04', TE: '#EA4335',
 const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'D/ST']
 const SKILL_POS = ['QB', 'RB', 'WR', 'TE']
 
+const getPickGradeLabel = (delta, round) => {
+  if (delta == null) return null
+  if (round <= 4) {
+    if (delta <= -3) return 'A+'
+    if (delta <= 0) return 'A'
+    if (delta <= 1) return 'B+'
+    if (delta <= 2) return 'B-'
+    if (delta <= 5) return 'C+'
+    if (delta <= 8) return 'C-'
+    if (delta <= 11) return 'D+'
+    if (delta <= 15) return 'D-'
+    return 'F'
+  }
+  if (round <= 9) {
+    if (delta <= -2) return 'A+'
+    if (delta <= -1) return 'A'
+    if (delta <= 0) return 'B+'
+    if (delta <= 1) return 'B-'
+    if (delta <= 3) return 'C+'
+    if (delta <= 5) return 'C-'
+    if (delta <= 7) return 'D+'
+    if (delta <= 10) return 'D-'
+    return 'F'
+  }
+  if (delta <= -5) return 'A+'
+  if (delta <= -3) return 'A'
+  if (delta <= -1) return 'B+'
+  if (delta <= 0) return 'B-'
+  if (delta <= 2) return 'C+'
+  if (delta <= 3) return 'C-'
+  if (delta <= 6) return 'D+'
+  if (delta <= 9) return 'D-'
+  return 'F'
+}
+
 const classifyStrategy = (picks) => {
   const sorted = [...picks].sort((a, b) => a.overall_pick - b.overall_pick)
-  const first3 = sorted.filter(p => p.round <= 3)
+  const first4 = sorted.filter(p => p.round <= 4)
   const first5 = sorted.filter(p => p.round <= 5)
   const rd1 = sorted.find(p => p.round === 1)
-  const rbIn3 = first3.filter(p => p.position === 'RB').length
-  const wrIn3 = first3.filter(p => p.position === 'WR').length
+  const rbIn4 = first4.filter(p => p.position === 'RB').length
+  const wrIn4 = first4.filter(p => p.position === 'WR').length
   const rbIn5 = first5.filter(p => p.position === 'RB').length
   const wrIn5 = first5.filter(p => p.position === 'WR').length
   const firstQB = sorted.find(p => p.position === 'QB')
@@ -26,16 +61,18 @@ const classifyStrategy = (picks) => {
   const heroRB = rd1?.position === 'RB' && rbIn5 <= 1
   const heroWR = rd1?.position === 'WR' && wrIn5 <= 1
   if (heroRB) tags.push('Hero RB')
-  else if (rbIn3 >= 2 || rbIn5 >= 3) tags.push('Early RBs')
+  else if (rbIn4 >= 3) tags.push('Early RBs')
   else if (rbIn5 <= 1) tags.push('Zero RB')
   if (heroWR) tags.push('Hero WR')
-  else if (wrIn3 >= 2 || wrIn5 >= 3) tags.push('Early WRs')
+  else if (wrIn4 >= 3) tags.push('Early WRs')
   else if (wrIn5 <= 1) tags.push('Zero WR')
   if (firstQB?.round <= 4) tags.push('Early QB')
   if (firstTE?.round <= 4) tags.push('Early TE')
   if (firstQB?.round >= 10) tags.push('Late QB')
   if (firstTE?.round >= 10) tags.push('Late TE')
-  if (!tags.length) tags.push('Balanced')
+  const hasRbTag = tags.some(t => t.includes('RB'))
+  const hasWrTag = tags.some(t => t.includes('WR'))
+  if (!hasRbTag && !hasWrTag && rbIn4 >= 2 && wrIn4 >= 2) tags.push('Balanced')
   return tags
 }
 
@@ -65,6 +102,11 @@ export default function DraftsPage() {
   // team performance data
   const [teamSeasons, setTeamSeasons] = useState([])
   const [seasonMatchups, setSeasonMatchups] = useState([])
+
+  // positional focus controls (trends tab)
+  const [focusRounds, setFocusRounds] = useState(4)
+  const [focusYearFrom, setFocusYearFrom] = useState(null)
+  const [focusYearTo, setFocusYearTo] = useState(null)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -303,6 +345,8 @@ export default function DraftsPage() {
   const rounds = useMemo(() => [...new Set(picks.map(p => p.round))].sort((a, b) => a - b), [picks])
 
   // Trends
+  const POS_N = { QB: 2, RB: 4, WR: 4, TE: 2, K: 1, 'D/ST': 1 }
+
   const trendData = useMemo(() => {
     if (!allPicks.length) return []
     return [...new Set(allPicks.map(p => p.manager_name))].sort().map(mgr => {
@@ -313,111 +357,288 @@ export default function DraftsPage() {
         const vals = years.map(yr => mp.filter(p => p.season === yr && p.position === pos).sort((a, b) => a.overall_pick - b.overall_pick)[0]?.round).filter(Boolean)
         avgRound[pos] = vals.length ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)) : null
       })
+      const avgRoundByN = {}
+      Object.entries(POS_N).forEach(([pos, max]) => {
+        for (let n = 1; n <= max; n++) {
+          const vals = years.map(yr => {
+            const sorted = mp.filter(p => p.season === yr && p.position === pos).sort((a, b) => a.overall_pick - b.overall_pick)
+            return sorted[n - 1]?.round
+          }).filter(Boolean)
+          if (vals.length) avgRoundByN[`${pos}${n}`] = parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1))
+        }
+      })
       const r1 = mp.filter(p => p.round === 1)
       const r1c = {}; r1.forEach(p => { r1c[p.position] = (r1c[p.position] || 0) + 1 })
       const topR1 = Object.entries(r1c).sort((a, b) => b[1] - a[1])[0]?.[0] || '—'
-      const early = mp.filter(p => p.round <= 3)
-      const earlyPos = {}; early.forEach(p => { earlyPos[p.position] = (earlyPos[p.position] || 0) + 1 })
+      const earlyPos = {}
+      mp.filter(p => p.round <= 3).forEach(p => { earlyPos[p.position] = (earlyPos[p.position] || 0) + 1 })
       const strategyByYear = {}
       years.forEach(yr => { strategyByYear[yr] = classifyStrategy(mp.filter(p => p.season === yr)) })
-      return { name: mgr, seasons: years.length, avgRound, topR1, earlyPos, strategyByYear, years: years.sort((a, b) => a - b) }
+      return { name: mgr, seasons: years.length, avgRound, avgRoundByN, topR1, earlyPos, strategyByYear, years: years.sort((a, b) => a - b) }
     })
   }, [allPicks])
 
-  // Superlatives (draft-data only + performance-based)
   const superlatives = useMemo(() => {
-    if (!allPicks.length) return null
-    const keys = [...new Set(allPicks.map(p => `${p.manager_name}|||${p.season}`))]
+    if (!enrichedWithValue.length) return null
+    const HIT = new Set(['A+', 'A', 'B+', 'B-'])
 
-    const earlyQB = [...allPicks].filter(p => p.position === 'QB').sort((a, b) => a.overall_pick - b.overall_pick)[0]
-    const earlyTE = [...allPicks].filter(p => p.position === 'TE').sort((a, b) => a.overall_pick - b.overall_pick)[0]
-    const latestK = [...allPicks].filter(p => p.position === 'K').sort((a, b) => b.overall_pick - a.overall_pick)[0]
-    const earlyDST = [...allPicks].filter(p => p.position === 'D/ST').sort((a, b) => a.overall_pick - b.overall_pick)[0]
+    const gradedPicks = enrichedWithValue
+      .filter(p => p.fptsRank != null && p.draftPosRank != null)
+      .map(p => ({ ...p, delta: p.fptsRank - p.draftPosRank, gl: getPickGradeLabel(p.fptsRank - p.draftPosRank, p.round) }))
 
-    let latestFirstQB = null, mostRBsEarly = null, mostWRsEarly = null
-    const zeroRBSeasons = []
-    keys.forEach(key => {
-      const [mgr, yr] = key.split('|||'); const yrN = parseInt(yr)
-      const ms = allPicks.filter(p => p.manager_name === mgr && p.season === yrN)
-      const firstQB = ms.filter(p => p.position === 'QB').sort((a, b) => a.overall_pick - b.overall_pick)[0]
-      if (firstQB && (!latestFirstQB || firstQB.round > latestFirstQB.round)) latestFirstQB = { ...firstQB, manager_name: mgr, season: yrN }
-      const rbE = ms.filter(p => p.round <= 3 && p.position === 'RB').length
-      if (!mostRBsEarly || rbE > mostRBsEarly.count) mostRBsEarly = { manager: mgr, season: yrN, count: rbE }
-      const wrE = ms.filter(p => p.round <= 3 && p.position === 'WR').length
-      if (!mostWRsEarly || wrE > mostWRsEarly.count) mostWRsEarly = { manager: mgr, season: yrN, count: wrE }
-      if (rbE === 0) zeroRBSeasons.push({ manager: mgr, season: yrN })
+    // Per-draft stats
+    const draftKeys = [...new Set(gradedPicks.map(p => `${p.manager_name}|||${p.season}`))]
+    const draftStats = draftKeys.map(key => {
+      const [mgr, yrStr] = key.split('|||'); const yr = parseInt(yrStr)
+      const dp = gradedPicks.filter(p => p.manager_name === mgr && p.season === yr)
+      if (!dp.length) return null
+      const aPlus = dp.filter(p => p.gl === 'A+').length
+      const fCount = dp.filter(p => p.gl === 'F').length
+      const hits = dp.filter(p => HIT.has(p.gl)).length
+      const totalRaw = dp.reduce((s, p) => s + (p.rawValue || 0), 0)
+      const vs = enrichedWithValue.filter(p => p.manager_name === mgr && p.season === yr && p.valueScore != null)
+      const avgVS = vs.length ? vs.reduce((s, p) => s + p.valueScore, 0) / vs.length : null
+      return { mgr, yr, aPlus, fCount, hits, hitRate: hits / dp.length, totalPicks: dp.length, totalRaw, avgVS }
+    }).filter(Boolean)
+
+    const withRaw = enrichedWithValue.filter(p => p.rawValue != null)
+    const bestPickEver = [...withRaw].sort((a, b) => b.rawValue - a.rawValue)[0] || null
+    const bestEarlyPick = [...withRaw].filter(p => p.round <= 4).sort((a, b) => b.rawValue - a.rawValue)[0] || null
+    const worstBust = [...withRaw].filter(p => p.round <= 4).sort((a, b) => a.rawValue - b.rawValue)[0] || null
+    const bestLatePick = [...withRaw].filter(p => p.round >= 10).sort((a, b) => b.rawValue - a.rawValue)[0] || null
+
+    const mostAplusDraft = [...draftStats].sort((a, b) => b.aPlus - a.aPlus)[0] || null
+    const mostFDraft = [...draftStats].sort((a, b) => b.fCount - a.fCount)[0] || null
+    const bestSingleDraft = [...draftStats].filter(d => d.avgVS != null).sort((a, b) => b.avgVS - a.avgVS)[0] || null
+    const worstSingleDraft = [...draftStats].filter(d => d.avgVS != null).sort((a, b) => a.avgVS - b.avgVS)[0] || null
+    const highestHitRate = [...draftStats].filter(d => d.totalPicks >= 5).sort((a, b) => b.hitRate - a.hitRate)[0] || null
+    const mostPtsAbove = [...draftStats].sort((a, b) => b.totalRaw - a.totalRaw)[0] || null
+    const mostPtsBelow = [...draftStats].sort((a, b) => a.totalRaw - b.totalRaw)[0] || null
+
+    // Per-manager career stats
+    const managers = [...new Set(gradedPicks.map(p => p.manager_name))]
+    const careerStats = managers.map(mgr => {
+      const mp = gradedPicks.filter(p => p.manager_name === mgr)
+      const aPlus = mp.filter(p => p.gl === 'A+').length
+      const fCount = mp.filter(p => p.gl === 'F').length
+      const hits = mp.filter(p => HIT.has(p.gl)).length
+      const totalRaw = mp.reduce((s, p) => s + (p.rawValue || 0), 0)
+      const vs = enrichedWithValue.filter(p => p.manager_name === mgr && p.valueScore != null)
+      const avgVS = vs.length ? vs.reduce((s, p) => s + p.valueScore, 0) / vs.length : null
+      const seasons = [...new Set(vs.map(p => p.season))].length
+      return { name: mgr, aPlus, fCount, hits, hitRate: mp.length ? hits / mp.length : 0, totalPicks: mp.length, totalRaw, avgVS, seasons }
+    }).sort((a, b) => (b.avgVS ?? -Infinity) - (a.avgVS ?? -Infinity))
+
+    // Grade grid (used in trends and success tabs)
+    const ws = enrichedWithValue.filter(p => p.valueScore != null)
+    const gradeMgrs = [...new Set(ws.map(p => p.manager_name))].sort()
+    const gradeSeasons = [...new Set(ws.map(p => p.season))].sort()
+    const grades = {}
+    gradeSeasons.forEach(yr => {
+      grades[yr] = {}
+      gradeMgrs.forEach(mgr => {
+        const mw = ws.filter(p => p.manager_name === mgr && p.season === yr)
+        if (mw.length) grades[yr][mgr] = mw.reduce((s, p) => s + p.valueScore, 0) / mw.length
+      })
     })
 
-    const playerCount = {}
-    allPicks.forEach(p => { playerCount[p.player_name] = (playerCount[p.player_name] || 0) + 1 })
-    const mostDrafted = Object.entries(playerCount).sort((a, b) => b[1] - a[1])[0]
+    // draftSuccessRates kept for Draft Success tab
+    const draftSuccessRates = careerStats.map(s => ({
+      name: s.name, hitRate: s.hitRate,
+      avgValue: s.avgVS ?? 0,
+      avgRaw: s.totalPicks ? s.totalRaw / s.totalPicks : 0,
+      count: s.totalPicks, hits: s.hits,
+    }))
 
-    const fastestDST = trendData.filter(m => m.avgRound['D/ST'] != null).sort((a, b) => a.avgRound['D/ST'] - b.avgRound['D/ST'])[0]
-    const slowestDST = trendData.filter(m => m.avgRound['D/ST'] != null).sort((a, b) => b.avgRound['D/ST'] - a.avgRound['D/ST'])[0]
-    const fastestQB = trendData.filter(m => m.avgRound['QB'] != null).sort((a, b) => a.avgRound['QB'] - b.avgRound['QB'])[0]
-    const slowestQB = trendData.filter(m => m.avgRound['QB'] != null).sort((a, b) => b.avgRound['QB'] - a.avgRound['QB'])[0]
-    const earlyTEManager = trendData.filter(m => m.avgRound['TE'] != null).sort((a, b) => a.avgRound['TE'] - b.avgRound['TE'])[0]
+    return {
+      bestPickEver, bestEarlyPick, worstBust, bestLatePick,
+      mostAplusDraft, mostFDraft, bestSingleDraft, worstSingleDraft, highestHitRate, mostPtsAbove, mostPtsBelow,
+      careerStats, gradeData: { seasons: gradeSeasons, managers: gradeMgrs, grades }, draftSuccessRates, draftStats,
+    }
+  }, [enrichedWithValue])
 
-    // Re-draft favorites — per manager
-    const reDraftCount = {}
-    allPicks.forEach(p => {
-      const key = `${p.manager_name}|||${p.player_name}`
-      reDraftCount[key] = (reDraftCount[key] || 0) + 1
+  const seasonSuperlatives = useMemo(() => {
+    if (!selectedYear || !enrichedWithValue.length) return null
+    const HIT = new Set(['A+', 'A', 'B+', 'B-'])
+    const yp = enrichedWithValue.filter(p => p.season === selectedYear)
+    const gp = yp.filter(p => p.fptsRank != null && p.draftPosRank != null)
+      .map(p => ({ ...p, gl: getPickGradeLabel(p.fptsRank - p.draftPosRank, p.round) }))
+    if (!gp.length) return null
+    const mgrs = [...new Set(gp.map(p => p.manager_name))]
+    const ms = mgrs.map(mgr => {
+      const mp = gp.filter(p => p.manager_name === mgr)
+      const aPlus = mp.filter(p => p.gl === 'A+').length
+      const fCount = mp.filter(p => p.gl === 'F').length
+      const hits = mp.filter(p => HIT.has(p.gl)).length
+      const totalRaw = mp.reduce((s, p) => s + (p.rawValue || 0), 0)
+      const vs = yp.filter(p => p.manager_name === mgr && p.valueScore != null)
+      const avgVS = vs.length ? vs.reduce((s, p) => s + p.valueScore, 0) / vs.length : null
+      return { name: mgr, aPlus, fCount, hits, hitRate: mp.length ? hits / mp.length : 0, totalPicks: mp.length, totalRaw, avgVS }
     })
-    const mgrsAll = [...new Set(allPicks.map(p => p.manager_name))].sort()
-    const reDraftByManager = mgrsAll.map(mgr => {
-      const picks = Object.entries(reDraftCount).filter(([k]) => k.startsWith(`${mgr}|||`)).sort((a, b) => b[1] - a[1])
-      const top = picks[0]
-      if (!top || top[1] < 2) return { manager: mgr, player: null, count: 0 }
-      return { manager: mgr, player: top[0].split('|||')[1], count: top[1] }
-    })
+    const wr = yp.filter(p => p.rawValue != null)
+    const by = (arr, fn) => [...arr].sort(fn)[0] || null
+    return {
+      bestDraft:   by(ms.filter(m => m.avgVS != null), (a, b) => b.avgVS - a.avgVS),
+      worstDraft:  by(ms.filter(m => m.avgVS != null), (a, b) => a.avgVS - b.avgVS),
+      mostAplus:   by(ms, (a, b) => b.aPlus - a.aPlus),
+      mostF:       by(ms, (a, b) => b.fCount - a.fCount),
+      highestHit:  by(ms.filter(m => m.totalPicks >= 4), (a, b) => b.hitRate - a.hitRate),
+      mostAbove:   by(ms, (a, b) => b.totalRaw - a.totalRaw),
+      mostBelow:   by(ms, (a, b) => a.totalRaw - b.totalRaw),
+      bestPick:    by(wr, (a, b) => b.rawValue - a.rawValue),
+      worstPick:   by(wr.filter(p => p.round <= 4), (a, b) => a.rawValue - b.rawValue),
+    }
+  }, [enrichedWithValue, selectedYear])
 
-    // Performance-based (needs enrichedWithValue)
-    let bestValue = null, biggestBust = null, bestDraftManager = null, worstDraftManager = null, draftSuccessRates = []
-    let mostFptsManager = null, bestEarly = null, bestMid = null, bestLate = null, gradeData = null
-    if (enrichedWithValue.length) {
-      const ws = enrichedWithValue.filter(p => p.valueScore != null)
-      bestValue = [...ws].sort((a, b) => b.valueScore - a.valueScore)[0] || null
-      biggestBust = [...ws].filter(p => p.round <= 3).sort((a, b) => a.valueScore - b.valueScore)[0] || null
-      bestEarly = [...ws].filter(p => p.round <= 4).sort((a, b) => b.valueScore - a.valueScore)[0] || null
-      bestMid = [...ws].filter(p => p.round >= 5 && p.round <= 9).sort((a, b) => b.valueScore - a.valueScore)[0] || null
-      bestLate = [...ws].filter(p => p.round >= 10).sort((a, b) => b.valueScore - a.valueScore)[0] || null
+  const draftIntel = useMemo(() => {
+    if (!enrichedWithValue.length || !allPicks.length) return null
+    const skilled = enrichedWithValue.filter(p => SKILL_POS.includes(p.position) && p.rawValue != null)
+    const draftKeys = [...new Set(enrichedWithValue.map(p => `${p.manager_name}|||${p.season}`))]
 
-      const mgrs = [...new Set(ws.map(p => p.manager_name))]
-      draftSuccessRates = mgrs.map(mgr => {
-        const mp = ws.filter(p => p.manager_name === mgr)
-        if (!mp.length) return null
-        const hits = mp.filter(p => p.valueScore > 0).length
-        const avgValue = mp.reduce((s, p) => s + p.valueScore, 0) / mp.length
-        const avgRaw = mp.reduce((s, p) => s + (p.rawValue ?? 0), 0) / mp.length
-        return { name: mgr, hitRate: hits / mp.length, avgValue, avgRaw, count: mp.length, hits }
-      }).filter(Boolean).sort((a, b) => b.avgValue - a.avgValue)
-      bestDraftManager = draftSuccessRates[0] || null
-      worstDraftManager = draftSuccessRates[draftSuccessRates.length - 1] || null
-
-      // Most total fpts from drafted players
-      const totals = {}
-      enrichedWithValue.filter(p => p.fpts != null).forEach(p => { totals[p.manager_name] = (totals[p.manager_name] || 0) + p.fpts })
-      const topFpts = Object.entries(totals).sort((a, b) => b[1] - a[1])[0]
-      if (topFpts) mostFptsManager = { name: topFpts[0], total: Math.round(topFpts[1]) }
-
-      // Draft grades per manager per season
-      const gradeMgrs = [...new Set(ws.map(p => p.manager_name))].sort()
-      const gradeSeasons = [...new Set(ws.map(p => p.season))].sort()
-      const grades = {}
-      gradeSeasons.forEach(yr => {
-        grades[yr] = {}
-        gradeMgrs.forEach(mgr => {
-          const mp = ws.filter(p => p.manager_name === mgr && p.season === yr)
-          if (!mp.length) return
-          grades[yr][mgr] = mp.reduce((s, p) => s + p.valueScore, 0) / mp.length
+    // 1. Draft grade → wins correlation
+    const gradeVsWins = []
+    if (superlatives?.gradeData) {
+      Object.entries(superlatives.gradeData.grades).forEach(([yr, mgrs]) => {
+        Object.entries(mgrs).forEach(([mgr, grade]) => {
+          const team = teamByManagerYear[`${mgr.toLowerCase().trim()}_${parseInt(yr)}`]
+          if (team) gradeVsWins.push({ mgr, yr: parseInt(yr), grade, wins: team.wins, losses: team.losses, madePlayoffs: team.madePlayoffs })
         })
       })
-      gradeData = { seasons: gradeSeasons, managers: gradeMgrs, grades }
+    }
+    let correlation = null
+    if (gradeVsWins.length >= 4) {
+      const xs = gradeVsWins.map(d => d.grade), ys = gradeVsWins.map(d => d.wins)
+      const n = xs.length, mx = xs.reduce((a,b)=>a+b)/n, my = ys.reduce((a,b)=>a+b)/n
+      const num = xs.reduce((s,x,i)=>s+(x-mx)*(ys[i]-my),0)
+      const den = Math.sqrt(xs.reduce((s,x)=>s+(x-mx)**2,0)*ys.reduce((s,y)=>s+(y-my)**2,0))
+      correlation = den > 0 ? parseFloat((num/den).toFixed(2)) : 0
     }
 
-    return { earlyQB, earlyTE, latestK, earlyDST, latestFirstQB, mostRBsEarly, mostWRsEarly, zeroRBSeasons, mostDrafted, fastestDST, slowestDST, fastestQB, slowestQB, earlyTEManager, reDraftByManager, bestValue, biggestBust, bestDraftManager, worstDraftManager, draftSuccessRates, mostFptsManager, bestEarly, bestMid, bestLate, gradeData }
-  }, [allPicks, trendData, enrichedWithValue])
+    // 2. Draft slot ROI
+    const slotMap = {}
+    skilled.forEach(p => {
+      const s = p.pick_in_round; if (s == null) return
+      if (!slotMap[s]) slotMap[s] = []
+      slotMap[s].push(p.rawValue)
+    })
+    const slotRoi = Object.entries(slotMap)
+      .map(([slot, vals]) => ({ slot: parseInt(slot), avg: vals.reduce((a,b)=>a+b)/vals.length, count: vals.length }))
+      .sort((a,b) => a.slot - b.slot)
+
+    // 3. Breakout finder (drafted outside top 20 at pos, finished top 5)
+    const breakouts = skilled
+      .filter(p => p.draftPosRank != null && p.draftPosRank > 15 && p.fptsRank != null && p.fptsRank <= 5)
+      .sort((a,b) => a.fptsRank - b.fptsRank)
+
+    // 4. Manager trajectory (draft grade by year, already in gradeData)
+    const trajectory = superlatives?.gradeData ? superlatives.gradeData.managers.map(mgr => ({
+      mgr,
+      points: superlatives.gradeData.seasons.map(yr => ({ yr, v: superlatives.gradeData.grades[yr]?.[mgr] ?? null })),
+    })) : []
+
+    // 5. Carry rate (% of team fpts from top-3 drafted players)
+    const carryByDraft = draftKeys.map(key => {
+      const [mgr, yrStr] = key.split('|||'); const yr = parseInt(yrStr)
+      const dp = enrichedWithValue.filter(p => p.manager_name === mgr && p.season === yr && p.fpts != null)
+      if (!dp.length) return null
+      const total = dp.reduce((s,p)=>s+p.fpts, 0); if (!total) return null
+      const top3 = [...dp].sort((a,b)=>b.fpts-a.fpts).slice(0,3)
+      return { mgr, yr, rate: top3.reduce((s,p)=>s+p.fpts,0)/total, topPlayer: top3[0]?.player_name }
+    }).filter(Boolean)
+    const carryByMgr = {}
+    carryByDraft.forEach(d => { if (!carryByMgr[d.mgr]) carryByMgr[d.mgr] = []; carryByMgr[d.mgr].push(d.rate) })
+    const carryArr = Object.entries(carryByMgr)
+      .map(([mgr, rates]) => ({ mgr, avg: rates.reduce((a,b)=>a+b)/rates.length, seasons: rates.length }))
+      .sort((a,b) => b.avg - a.avg)
+
+    // 6. Position ROI by round tier
+    const posRoiMap = {}
+    SKILL_POS.forEach(pos => { posRoiMap[pos] = { early: [], mid: [], late: [] } })
+    skilled.forEach(p => {
+      const tier = p.round <= 4 ? 'early' : p.round <= 9 ? 'mid' : 'late'
+      posRoiMap[p.position]?.[tier].push(p.rawValue)
+    })
+    const posRoi = {}
+    SKILL_POS.forEach(pos => {
+      posRoi[pos] = {}
+      ;['early','mid','late'].forEach(t => {
+        const v = posRoiMap[pos][t]; posRoi[pos][t] = v.length ? v.reduce((a,b)=>a+b)/v.length : null
+      })
+    })
+
+    // 7. Positional value cliff (avg rawValue by round per position)
+    const cliffData = {}
+    SKILL_POS.forEach(pos => {
+      const byRd = {}
+      skilled.filter(p => p.position === pos).forEach(p => { if (!byRd[p.round]) byRd[p.round] = []; byRd[p.round].push(p.rawValue) })
+      cliffData[pos] = Object.entries(byRd)
+        .map(([rd, vals]) => ({ rd: parseInt(rd), avg: vals.reduce((a,b)=>a+b)/vals.length, count: vals.length }))
+        .sort((a,b) => a.rd - b.rd)
+    })
+
+    // 8. NFL team draft value (min 3 picks)
+    const nflMap = {}
+    skilled.filter(p => p.nfl_team).forEach(p => {
+      if (!nflMap[p.nfl_team]) nflMap[p.nfl_team] = []
+      nflMap[p.nfl_team].push(p.rawValue)
+    })
+    const nflArr = Object.entries(nflMap)
+      .filter(([,v]) => v.length >= 3)
+      .map(([team, vals]) => ({ team, avg: vals.reduce((a,b)=>a+b)/vals.length, count: vals.length }))
+      .sort((a,b) => b.avg - a.avg)
+
+    // 9. Sleeper rate (rd 8+, finished top 12 at position)
+    const sleeperMap = {}
+    skilled.filter(p => p.round >= 8 && p.fptsRank != null && p.fptsRank <= 12).forEach(p => {
+      if (!sleeperMap[p.manager_name]) sleeperMap[p.manager_name] = []
+      sleeperMap[p.manager_name].push(p)
+    })
+    const sleeperArr = Object.entries(sleeperMap).map(([mgr, picks]) => {
+      const totalLate = skilled.filter(p => p.manager_name === mgr && p.round >= 8).length
+      return { mgr, count: picks.length, rate: totalLate ? picks.length/totalLate : 0, totalLate, picks: picks.sort((a,b)=>a.fptsRank-b.fptsRank) }
+    }).sort((a,b) => b.count - a.count)
+
+    // 10. Round 1 dependence (avg % of team fpts from rd1 pick)
+    const rd1DepMap = {}
+    draftKeys.forEach(key => {
+      const [mgr, yrStr] = key.split('|||'); const yr = parseInt(yrStr)
+      const dp = enrichedWithValue.filter(p => p.manager_name === mgr && p.season === yr && p.fpts != null)
+      const rd1 = dp.find(p => p.round === 1)
+      const total = dp.reduce((s,p)=>s+p.fpts, 0)
+      if (!rd1 || !total) return
+      if (!rd1DepMap[mgr]) rd1DepMap[mgr] = []
+      rd1DepMap[mgr].push({ rate: rd1.fpts/total, player: rd1.player_name, yr, fpts: rd1.fpts })
+    })
+    const rd1DepArr = Object.entries(rd1DepMap)
+      .map(([mgr, seasons]) => ({ mgr, avg: seasons.reduce((s,d)=>s+d.rate,0)/seasons.length, seasons, count: seasons.length }))
+      .sort((a,b) => b.avg - a.avg)
+
+    // 11. Stack ROI (QB + same-team WR in same draft)
+    const stackedDrafts = [], unStackedDrafts = []
+    draftKeys.forEach(key => {
+      const [mgr, yrStr] = key.split('|||'); const yr = parseInt(yrStr)
+      const dp = enrichedWithValue.filter(p => p.manager_name === mgr && p.season === yr)
+      const qb = dp.find(p => p.position === 'QB')
+      if (!qb?.nfl_team) return
+      const stackedWRs = dp.filter(p => p.position === 'WR' && p.nfl_team === qb.nfl_team)
+      const graded = dp.filter(p => p.rawValue != null)
+      if (!graded.length) return
+      const avgRaw = graded.reduce((s,p)=>s+p.rawValue,0)/graded.length
+      if (stackedWRs.length) stackedDrafts.push({ mgr, yr, avgRaw, qb: qb.player_name, wrs: stackedWRs.map(w=>w.player_name) })
+      else unStackedDrafts.push({ mgr, yr, avgRaw })
+    })
+    const stackAvg = stackedDrafts.length ? stackedDrafts.reduce((s,d)=>s+d.avgRaw,0)/stackedDrafts.length : null
+    const noStackAvg = unStackedDrafts.length ? unStackedDrafts.reduce((s,d)=>s+d.avgRaw,0)/unStackedDrafts.length : null
+
+    // 12. Pick #1 all-time
+    const pick1s = allPicks.filter(p => p.overall_pick === 1).map(p => {
+      const e = enrichedWithValue.find(e => e.manager_name === p.manager_name && e.season === p.season && e.player_name === p.player_name)
+      const delta = e?.fptsRank != null && e?.draftPosRank != null ? e.fptsRank - e.draftPosRank : null
+      return { ...p, fpts: e?.fpts ?? null, rawValue: e?.rawValue ?? null, fptsRank: e?.fptsRank ?? null, gl: delta != null ? getPickGradeLabel(delta, 1) : null }
+    }).sort((a,b) => b.season - a.season)
+
+    return { gradeVsWins, correlation, slotRoi, breakouts, trajectory, carryArr, posRoi, cliffData, nflArr, sleeperArr, rd1DepArr, stackedDrafts, unStackedDrafts, stackAvg, noStackAvg, pick1s }
+  }, [enrichedWithValue, allPicks, superlatives, teamByManagerYear])
 
   if (!mounted) return null
 
@@ -487,7 +708,7 @@ export default function DraftsPage() {
     </div>
   )
 
-  const TABS = [['by-year', 'Draft by Year'], ['success', 'Draft Success'], ['trends', 'Manager Trends'], ['superlatives', 'All-Time Superlatives']]
+  const TABS = [['by-year', 'Draft by Year'], ['success', 'Draft Success'], ['trends', 'Manager Trends'], ['records', 'Draft Records'], ['intel', 'Draft Intelligence']]
 
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
@@ -560,6 +781,24 @@ export default function DraftsPage() {
                     </div>
                   ))}
                 </div>
+
+                {/* Seasonal superlatives */}
+                {seasonSuperlatives && enrichmentReady && (
+                  <div style={{ marginTop: '48px', paddingTop: '36px', borderTop: `1px solid ${border}` }}>
+                    <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '16px' }}>{selectedYear} Draft Superlatives</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1px', background: border }}>
+                      <StatCard label="Best Draft" value={seasonSuperlatives.bestDraft?.name} sub={seasonSuperlatives.bestDraft ? `${gradeLabel(seasonSuperlatives.bestDraft.avgVS).label} · ${(seasonSuperlatives.bestDraft.hitRate * 100).toFixed(0)}% hit rate` : ''} color={green} />
+                      <StatCard label="Worst Draft" value={seasonSuperlatives.worstDraft?.name} sub={seasonSuperlatives.worstDraft ? `${gradeLabel(seasonSuperlatives.worstDraft.avgVS).label} · ${(seasonSuperlatives.worstDraft.hitRate * 100).toFixed(0)}% hit rate` : ''} color={red} />
+                      <StatCard label="Most A+ Picks" value={seasonSuperlatives.mostAplus?.name} sub={seasonSuperlatives.mostAplus ? `${seasonSuperlatives.mostAplus.aPlus} A+ picks` : ''} color={green} />
+                      <StatCard label="Most F Picks" value={seasonSuperlatives.mostF?.name} sub={seasonSuperlatives.mostF ? `${seasonSuperlatives.mostF.fCount} F picks` : ''} color={red} />
+                      <StatCard label="Highest Hit Rate" value={seasonSuperlatives.highestHit?.name} sub={seasonSuperlatives.highestHit ? `${(seasonSuperlatives.highestHit.hitRate * 100).toFixed(0)}% B or better` : ''} color={gold} />
+                      <StatCard label="Most Pts Above Slot" value={seasonSuperlatives.mostAbove?.name} sub={seasonSuperlatives.mostAbove?.totalRaw > 0 ? `+${seasonSuperlatives.mostAbove.totalRaw.toFixed(1)} pts above expectation` : ''} color={green} />
+                      <StatCard label="Most Pts Below Slot" value={seasonSuperlatives.mostBelow?.name} sub={seasonSuperlatives.mostBelow?.totalRaw < 0 ? `${seasonSuperlatives.mostBelow.totalRaw.toFixed(1)} pts below expectation` : ''} color={red} />
+                      <StatCard label="Best Pick" value={seasonSuperlatives.bestPick?.player_name} sub={seasonSuperlatives.bestPick ? `${seasonSuperlatives.bestPick.manager_name} · Rd ${seasonSuperlatives.bestPick.round} · +${seasonSuperlatives.bestPick.rawValue.toFixed(1)} pts vs slot` : ''} color={green} />
+                      <StatCard label="Biggest Bust (Rds 1–4)" value={seasonSuperlatives.worstPick?.player_name} sub={seasonSuperlatives.worstPick ? `${seasonSuperlatives.worstPick.manager_name} · Rd ${seasonSuperlatives.worstPick.round} · ${seasonSuperlatives.worstPick.rawValue.toFixed(1)} pts vs slot` : ''} color={red} />
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -605,63 +844,6 @@ export default function DraftsPage() {
                   </div>
                 )}
 
-                <p style={{ fontSize: '11px', color: muted, marginBottom: '24px' }}>Avg round each manager first drafts each position · green = early, red = late</p>
-                <div style={{ overflowX: 'auto', marginBottom: '56px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
-                    <thead>
-                      <tr style={{ background: cardBg }}>
-                        <th style={hStyle()}>Manager</th>
-                        <th style={hStyle('center')}>Seasons</th>
-                        {POSITIONS.map(pos => <th key={pos} style={{ ...hStyle('center'), color: POS_COLORS[pos] }}>{pos}</th>)}
-                        <th style={hStyle('center')}>Rd1 Fav.</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {trendData.map((m, i) => (
-                        <tr key={m.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
-                          <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{m.name}</td>
-                          <td style={{ ...cStyle('center'), color: muted }}>{m.seasons}</td>
-                          {POSITIONS.map(pos => {
-                            const r = m.avgRound[pos]
-                            const isEarly = r && r <= 5, isLate = r && r >= 12
-                            return (
-                              <td key={pos} style={{ ...cStyle('center'), color: isEarly ? green : isLate ? red : text, fontWeight: (isEarly || isLate) ? '600' : '400' }}>
-                                {r != null ? `Rd ${r}` : <span style={{ color: muted }}>—</span>}
-                              </td>
-                            )
-                          })}
-                          <td style={{ ...cStyle('center'), color: POS_COLORS[m.topR1] || text, fontWeight: '600', fontSize: '11px', letterSpacing: '0.08em' }}>{m.topR1}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '20px' }}>Rounds 1–3 Positional Focus</p>
-                <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(190px, 1fr))', gap: '1px', background: border }}>
-                  {trendData.map(m => {
-                    const total = Object.values(m.earlyPos).reduce((s, v) => s + v, 0)
-                    return (
-                      <div key={m.name} style={{ background: cardBg, padding: '16px' }}>
-                        <div style={{ fontSize: '11px', color: muted, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{m.name}</div>
-                        {total === 0 ? <span style={{ color: muted, fontSize: '11px' }}>No data</span> : (
-                          <>
-                            <div style={{ display: 'flex', height: '10px', marginBottom: '8px', borderRadius: '2px', overflow: 'hidden', gap: '1px' }}>
-                              {POSITIONS.filter(pos => m.earlyPos[pos]).map(pos => (
-                                <div key={pos} style={{ width: `${(m.earlyPos[pos] / total) * 100}%`, background: POS_COLORS[pos] }} />
-                              ))}
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                              {POSITIONS.filter(pos => m.earlyPos[pos]).map(pos => (
-                                <span key={pos} style={{ fontSize: '10px', color: POS_COLORS[pos] }}>{pos} {m.earlyPos[pos]}</span>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
               </>
             )}
           </div>
@@ -880,6 +1062,41 @@ export default function DraftsPage() {
                         </table>
                       </div>
 
+                      {/* Avg draft round by positional rank */}
+                      <div style={{ marginTop: '24px', marginBottom: '24px' }}>
+                        <p style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '12px' }}>Avg Draft Round by Positional Pick</p>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                            <thead>
+                              <tr style={{ background: cardBg }}>
+                                {Object.entries(POS_N).flatMap(([pos, max]) =>
+                                  Array.from({ length: max }, (_, i) => (
+                                    <th key={`${pos}${i+1}`} style={{ ...hStyle('center'), fontSize: '9px', color: POS_COLORS[pos] }}>{pos}{max > 1 ? i + 1 : ''}</th>
+                                  ))
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                {Object.entries(POS_N).flatMap(([pos, max]) =>
+                                  Array.from({ length: max }, (_, i) => {
+                                    const key = `${pos}${i + 1}`
+                                    const r = m.avgRoundByN[key]
+                                    const isEarly = r && r <= 5, isLate = r && r >= 12
+                                    return (
+                                      <td key={key} style={{ ...cStyle('center'), fontSize: '12px', color: r == null ? muted : isEarly ? green : isLate ? red : text, fontWeight: (isEarly || isLate) ? '600' : '400' }}>
+                                        {r != null ? `Rd ${r}` : '—'}
+                                      </td>
+                                    )
+                                  })
+                                )}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <p style={{ fontSize: '10px', color: muted, marginTop: '6px' }}>Avg round across all seasons · green ≤ 5, red ≥ 12</p>
+                      </div>
+
                       {stratRows.length > 0 && (
                         <div>
                           <p style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '8px' }}>Strategy Summary</p>
@@ -915,77 +1132,141 @@ export default function DraftsPage() {
                 {!selectedManager && (
                   <p style={{ color: muted, fontSize: '13px' }}>Select a manager above to see their draft history.</p>
                 )}
+
+                {/* Positional Focus */}
+                <div style={{ marginTop: '48px', paddingTop: '36px', borderTop: `1px solid ${border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                    <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, margin: 0 }}>Positional Focus</p>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '11px', color: muted }}>Rounds 1–</span>
+                      <select value={focusRounds} onChange={e => setFocusRounds(parseInt(e.target.value))} style={{ background: cardBg, border: `1px solid ${border}`, color: text, padding: '4px 8px', fontSize: '12px', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif" }}>
+                        {[3,4,5,6,8,10].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <span style={{ fontSize: '11px', color: muted, marginLeft: '8px' }}>Years:</span>
+                      <select value={focusYearFrom ?? ''} onChange={e => { const v = e.target.value ? parseInt(e.target.value) : null; setFocusYearFrom(v); if (!v) setFocusYearTo(null) }} style={{ background: cardBg, border: `1px solid ${border}`, color: text, padding: '4px 8px', fontSize: '12px', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif" }}>
+                        <option value="">All</option>
+                        {[...dbSeasons].reverse().map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                      {focusYearFrom && (
+                        <>
+                          <span style={{ fontSize: '11px', color: muted }}>–</span>
+                          <select value={focusYearTo ?? ''} onChange={e => setFocusYearTo(e.target.value ? parseInt(e.target.value) : null)} style={{ background: cardBg, border: `1px solid ${border}`, color: text, padding: '4px 8px', fontSize: '12px', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif" }}>
+                            <option value="">Latest</option>
+                            {[...dbSeasons].reverse().filter(y => y >= focusYearFrom).map(y => <option key={y} value={y}>{y}</option>)}
+                          </select>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(190px, 1fr))', gap: '1px', background: border }}>
+                    {trendData.map(m => {
+                      const fp = allPicks.filter(p =>
+                        p.manager_name === m.name &&
+                        p.round <= focusRounds &&
+                        (!focusYearFrom || (p.season >= focusYearFrom && p.season <= (focusYearTo ?? Math.max(...dbSeasons))))
+                      )
+                      const total = fp.length
+                      const posCounts = {}
+                      fp.forEach(p => { posCounts[p.position] = (posCounts[p.position] || 0) + 1 })
+                      return (
+                        <div key={m.name} style={{ background: cardBg, padding: '16px' }}>
+                          <div style={{ fontSize: '11px', color: muted, marginBottom: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{m.name}</div>
+                          {total === 0 ? <span style={{ color: muted, fontSize: '11px' }}>No data</span> : (
+                            <>
+                              <div style={{ display: 'flex', height: '10px', marginBottom: '8px', overflow: 'hidden', gap: '1px' }}>
+                                {POSITIONS.filter(pos => posCounts[pos]).map(pos => (
+                                  <div key={pos} style={{ width: `${(posCounts[pos] / total) * 100}%`, background: POS_COLORS[pos] }} />
+                                ))}
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                {POSITIONS.filter(pos => posCounts[pos]).map(pos => (
+                                  <span key={pos} style={{ fontSize: '10px', color: POS_COLORS[pos] }}>{pos} {posCounts[pos]}</span>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               </>
             )}
           </div>
         )}
 
-        {/* ── ALL-TIME SUPERLATIVES ── */}
-        {tab === 'superlatives' && (
+        {/* ── DRAFT RECORDS ── */}
+        {tab === 'records' && (
           <div>
             {!superlatives ? <p style={{ color: muted }}>No data yet.</p> : (
               <>
-                {unmatchedPicks.length > 0 && (
-                  <div style={{ background: d ? '#1a1200' : '#fffbeb', border: `1px solid ${gold}`, padding: '12px 16px', marginBottom: '28px', fontSize: '12px' }}>
-                    <span style={{ color: gold, fontWeight: '600' }}>⚠ {unmatchedPicks.length} skill-position picks</span>
-                    <span style={{ color: muted }}> have no scoring data (unmatched player names, IR'd before the season, or never rostered) — those picks show — for EOY rank.</span>
-                    <details style={{ marginTop: '6px' }}>
-                      <summary style={{ cursor: 'pointer', fontSize: '11px', color: muted }}>Show unmatched picks</summary>
-                      <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {unmatchedPicks.slice(0, 30).map((p, i) => (
-                          <span key={i} style={{ fontSize: '10px', background: cardBg, padding: '2px 6px', border: `1px solid ${border}`, color: muted }}>{p.player_name} ({p.season})</span>
-                        ))}
-                        {unmatchedPicks.length > 30 && <span style={{ fontSize: '10px', color: muted }}>+{unmatchedPicks.length - 30} more</span>}
-                      </div>
-                    </details>
-                  </div>
-                )}
+                {/* Individual picks */}
+                <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '16px' }}>Individual Picks</p>
+                <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1px', background: border, marginBottom: '48px' }}>
+                  <StatCard label="Best Pick Ever" value={superlatives.bestPickEver?.player_name} sub={superlatives.bestPickEver ? `${superlatives.bestPickEver.manager_name} · ${superlatives.bestPickEver.season} · Rd ${superlatives.bestPickEver.round} · +${superlatives.bestPickEver.rawValue.toFixed(1)} pts vs slot` : ''} color={green} />
+                  <StatCard label="Biggest Bust (Rds 1–4)" value={superlatives.worstBust?.player_name} sub={superlatives.worstBust ? `${superlatives.worstBust.manager_name} · ${superlatives.worstBust.season} · Rd ${superlatives.worstBust.round} · ${superlatives.worstBust.rawValue.toFixed(1)} pts vs slot` : ''} color={red} />
+                  <StatCard label="Best Early Pick (Rds 1–4)" value={superlatives.bestEarlyPick?.player_name} sub={superlatives.bestEarlyPick ? `${superlatives.bestEarlyPick.manager_name} · ${superlatives.bestEarlyPick.season} · Rd ${superlatives.bestEarlyPick.round} · +${superlatives.bestEarlyPick.rawValue.toFixed(1)} pts` : ''} color={green} />
+                  <StatCard label="Best Late Pick (Rd 10+)" value={superlatives.bestLatePick?.player_name} sub={superlatives.bestLatePick ? `${superlatives.bestLatePick.manager_name} · ${superlatives.bestLatePick.season} · Rd ${superlatives.bestLatePick.round} · +${superlatives.bestLatePick.rawValue.toFixed(1)} pts` : ''} color={gold} />
+                </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1px', background: border }}>
-                  {/* Performance-based */}
-                  <StatCard label="📦 Most Fpts from Drafted Players" value={superlatives.mostFptsManager?.name} sub={superlatives.mostFptsManager ? `${superlatives.mostFptsManager.total.toLocaleString()} total pts from own draft picks (all seasons)` : 'Loading…'} color={gold} />
-                  <StatCard label="💎 Best Value Pick Ever" value={superlatives.bestValue?.player_name} sub={superlatives.bestValue ? `Rd ${superlatives.bestValue.round}, Pick #${superlatives.bestValue.overall_pick} · ${superlatives.bestValue.manager_name} · ${superlatives.bestValue.season} · ${superlatives.bestValue.fpts?.toFixed(1)} pts` : 'Loading…'} color={green} />
-                  <StatCard label="💀 Biggest Bust (Rds 1–3)" value={superlatives.biggestBust?.player_name} sub={superlatives.biggestBust ? `Rd ${superlatives.biggestBust.round}, Pick #${superlatives.biggestBust.overall_pick} · ${superlatives.biggestBust.manager_name} · ${superlatives.biggestBust.season} · ${superlatives.biggestBust.fpts?.toFixed(1)} pts` : 'Loading…'} color={red} />
-                  <StatCard label="🏆 Best Drafter All-Time" value={superlatives.bestDraftManager?.name} sub={superlatives.bestDraftManager ? `${(superlatives.bestDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg ${superlatives.bestDraftManager.avgRaw > 0 ? '+' : ''}${superlatives.bestDraftManager.avgRaw?.toFixed(1)} pts per pick` : 'Loading…'} color={gold} />
-                  <StatCard label="📉 Worst Drafter All-Time" value={superlatives.worstDraftManager?.name} sub={superlatives.worstDraftManager ? `${(superlatives.worstDraftManager.hitRate * 100).toFixed(0)}% hit rate · Avg ${superlatives.worstDraftManager.avgRaw?.toFixed(1)} pts per pick` : 'Loading…'} color={red} />
-                  <StatCard label="🎯 Best Early Pick (Rds 1–4)" value={superlatives.bestEarly?.player_name} sub={superlatives.bestEarly ? `Rd ${superlatives.bestEarly.round}, #${superlatives.bestEarly.overall_pick} · ${superlatives.bestEarly.manager_name} · ${superlatives.bestEarly.season} · ${superlatives.bestEarly.fpts?.toFixed(1)} pts` : 'Loading…'} color={POS_COLORS[superlatives.bestEarly?.position] || green} />
-                  <StatCard label="🔍 Best Mid Pick (Rds 5–9)" value={superlatives.bestMid?.player_name} sub={superlatives.bestMid ? `Rd ${superlatives.bestMid.round}, #${superlatives.bestMid.overall_pick} · ${superlatives.bestMid.manager_name} · ${superlatives.bestMid.season} · ${superlatives.bestMid.fpts?.toFixed(1)} pts` : 'Loading…'} color={POS_COLORS[superlatives.bestMid?.position] || gold} />
-                  <StatCard label="💡 Best Late Pick (Rd 10+)" value={superlatives.bestLate?.player_name} sub={superlatives.bestLate ? `Rd ${superlatives.bestLate.round}, #${superlatives.bestLate.overall_pick} · ${superlatives.bestLate.manager_name} · ${superlatives.bestLate.season} · ${superlatives.bestLate.fpts?.toFixed(1)} pts` : 'Loading…'} color={POS_COLORS[superlatives.bestLate?.position] || blue} />
-                  <div style={{ background: cardBg, padding: '18px 20px', borderTop: `2px solid ${blue}`, gridColumn: effectiveMobile ? 'span 2' : 'span 2' }}>
-                    <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '12px' }}>🔁 Favorite Re-Draft Target — By Manager</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {(superlatives.reDraftByManager || []).map(r => (
-                        <div key={r.manager} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
-                          <span style={{ color: muted, minWidth: '80px' }}>{r.manager}</span>
-                          {r.player
-                            ? <><span style={{ color: text, fontFamily: "'Playfair Display', serif", flex: 1, paddingLeft: '12px' }}>{r.player}</span><span style={{ color: blue, fontWeight: '600', fontSize: '11px', marginLeft: '8px' }}>{r.count}×</span></>
-                            : <span style={{ color: muted, fontSize: '11px', paddingLeft: '12px' }}>No repeat picks</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                {/* Single draft records */}
+                <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '16px' }}>Single Draft Records</p>
+                <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1px', background: border, marginBottom: '48px' }}>
+                  <StatCard label="Best Draft Grade" value={superlatives.bestSingleDraft ? `${superlatives.bestSingleDraft.mgr} — ${superlatives.bestSingleDraft.yr}` : '—'} sub={superlatives.bestSingleDraft ? `${gradeLabel(superlatives.bestSingleDraft.avgVS).label} · ${(superlatives.bestSingleDraft.hitRate * 100).toFixed(0)}% hit rate` : ''} color={green} />
+                  <StatCard label="Worst Draft Grade" value={superlatives.worstSingleDraft ? `${superlatives.worstSingleDraft.mgr} — ${superlatives.worstSingleDraft.yr}` : '—'} sub={superlatives.worstSingleDraft ? `${gradeLabel(superlatives.worstSingleDraft.avgVS).label} · ${(superlatives.worstSingleDraft.hitRate * 100).toFixed(0)}% hit rate` : ''} color={red} />
+                  <StatCard label="Most A+ Picks — Single Draft" value={superlatives.mostAplusDraft ? `${superlatives.mostAplusDraft.mgr} — ${superlatives.mostAplusDraft.yr}` : '—'} sub={superlatives.mostAplusDraft ? `${superlatives.mostAplusDraft.aPlus} A+ picks out of ${superlatives.mostAplusDraft.totalPicks} graded` : ''} color={green} />
+                  <StatCard label="Most F Picks — Single Draft" value={superlatives.mostFDraft ? `${superlatives.mostFDraft.mgr} — ${superlatives.mostFDraft.yr}` : '—'} sub={superlatives.mostFDraft ? `${superlatives.mostFDraft.fCount} F picks out of ${superlatives.mostFDraft.totalPicks} graded` : ''} color={red} />
+                  <StatCard label="Highest Hit Rate — Single Draft" value={superlatives.highestHitRate ? `${superlatives.highestHitRate.mgr} — ${superlatives.highestHitRate.yr}` : '—'} sub={superlatives.highestHitRate ? `${(superlatives.highestHitRate.hitRate * 100).toFixed(0)}% B or better (${superlatives.highestHitRate.hits}/${superlatives.highestHitRate.totalPicks})` : ''} color={gold} />
+                  <StatCard label="Most Pts Above Slot" value={superlatives.mostPtsAbove ? `${superlatives.mostPtsAbove.mgr} — ${superlatives.mostPtsAbove.yr}` : '—'} sub={superlatives.mostPtsAbove ? `+${superlatives.mostPtsAbove.totalRaw.toFixed(1)} pts above expectation` : ''} color={green} />
+                  <StatCard label="Most Pts Below Slot" value={superlatives.mostPtsBelow ? `${superlatives.mostPtsBelow.mgr} — ${superlatives.mostPtsBelow.yr}` : '—'} sub={superlatives.mostPtsBelow ? `${superlatives.mostPtsBelow.totalRaw.toFixed(1)} pts below expectation` : ''} color={red} />
+                </div>
 
-                  {/* Draft-data only */}
-                  <StatCard label="🏈 First QB Off the Board" value={superlatives.earlyQB?.player_name} sub={superlatives.earlyQB ? `Pick #${superlatives.earlyQB.overall_pick} (Rd ${superlatives.earlyQB.round}) · ${superlatives.earlyQB.manager_name} · ${superlatives.earlyQB.season}` : ''} color={POS_COLORS.QB} />
-                  <StatCard label="⏰ Latest First QB Drafted" value={superlatives.latestFirstQB?.player_name} sub={superlatives.latestFirstQB ? `Round ${superlatives.latestFirstQB.round} · ${superlatives.latestFirstQB.manager_name} · ${superlatives.latestFirstQB.season}` : ''} color={red} />
-                  <StatCard label="⚡ Earliest QB Drafter (Avg)" value={superlatives.fastestQB?.name} sub={`Avg Rd ${superlatives.fastestQB?.avgRound?.QB} for first QB`} color={POS_COLORS.QB} />
-                  <StatCard label="⏳ Latest QB Drafter (Avg)" value={superlatives.slowestQB?.name} sub={`Avg Rd ${superlatives.slowestQB?.avgRound?.QB} for first QB`} color={red} />
-                  <StatCard label="💍 Earliest TE Off the Board" value={superlatives.earlyTE?.player_name} sub={superlatives.earlyTE ? `Pick #${superlatives.earlyTE.overall_pick} (Rd ${superlatives.earlyTE.round}) · ${superlatives.earlyTE.manager_name} · ${superlatives.earlyTE.season}` : ''} color={POS_COLORS.TE} />
-                  <StatCard label="🎯 TE Premium Manager" value={superlatives.earlyTEManager?.name} sub={`Avg Rd ${superlatives.earlyTEManager?.avgRound?.TE} for first TE`} color={POS_COLORS.TE} />
-                  <StatCard label="🦵 Latest Kicker Drafted" value={superlatives.latestK?.player_name} sub={superlatives.latestK ? `Pick #${superlatives.latestK.overall_pick} (Rd ${superlatives.latestK.round}) · ${superlatives.latestK.manager_name} · ${superlatives.latestK.season}` : ''} color={muted} />
-                  <StatCard label="🚨 Earliest D/ST Drafted" value={superlatives.earlyDST?.player_name} sub={superlatives.earlyDST ? `Pick #${superlatives.earlyDST.overall_pick} (Rd ${superlatives.earlyDST.round}) · ${superlatives.earlyDST.manager_name} · ${superlatives.earlyDST.season}` : ''} color={muted} />
-                  <StatCard label="⚡ D/ST Earliest Drafter (Avg)" value={superlatives.fastestDST?.name} sub={`Avg Rd ${superlatives.fastestDST?.avgRound?.['D/ST']} for first D/ST`} color={gold} />
-                  <StatCard label="😴 D/ST Latest Drafter (Avg)" value={superlatives.slowestDST?.name} sub={`Avg Rd ${superlatives.slowestDST?.avgRound?.['D/ST']} for first D/ST`} color={muted} />
-                  <StatCard label="🐂 Most RBs in Rounds 1–3" value={superlatives.mostRBsEarly ? `${superlatives.mostRBsEarly.manager} — ${superlatives.mostRBsEarly.count} RBs` : '—'} sub={superlatives.mostRBsEarly ? `${superlatives.mostRBsEarly.season} season` : ''} color={POS_COLORS.RB} />
-                  <StatCard label="🏹 Most WRs in Rounds 1–3" value={superlatives.mostWRsEarly ? `${superlatives.mostWRsEarly.manager} — ${superlatives.mostWRsEarly.count} WRs` : '—'} sub={superlatives.mostWRsEarly ? `${superlatives.mostWRsEarly.season} season` : ''} color={POS_COLORS.WR} />
-                  <StatCard label="🤡 Zero RB Drafter(s)" value={superlatives.zeroRBSeasons.length ? superlatives.zeroRBSeasons.map(z => `${z.manager} (${z.season})`).join(', ') : 'None'} sub="0 RBs taken in rounds 1–3" color={red} />
-                  <StatCard label="🔄 Most Drafted Player" value={superlatives.mostDrafted?.[0]} sub={superlatives.mostDrafted ? `Drafted ${superlatives.mostDrafted[1]}× across all seasons` : ''} color={gold} />
+                {/* Career records */}
+                <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '16px' }}>Career Records</p>
+                <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1px', background: border, marginBottom: '32px' }}>
+                  <StatCard label="Best Career Drafter" value={superlatives.careerStats[0]?.name} sub={superlatives.careerStats[0] ? `${gradeLabel(superlatives.careerStats[0].avgVS).label} avg · ${(superlatives.careerStats[0].hitRate * 100).toFixed(0)}% hit rate` : ''} color={gold} />
+                  <StatCard label="Worst Career Drafter" value={superlatives.careerStats[superlatives.careerStats.length - 1]?.name} sub={superlatives.careerStats.length ? `${gradeLabel(superlatives.careerStats[superlatives.careerStats.length - 1].avgVS).label} avg · ${(superlatives.careerStats[superlatives.careerStats.length - 1].hitRate * 100).toFixed(0)}% hit rate` : ''} color={red} />
+                  <StatCard label="Most A+ Picks All-Time" value={superlatives.careerStats.slice().sort((a, b) => b.aPlus - a.aPlus)[0]?.name} sub={`${superlatives.careerStats.slice().sort((a, b) => b.aPlus - a.aPlus)[0]?.aPlus ?? 0} A+ picks all-time`} color={green} />
+                  <StatCard label="Most F Picks All-Time" value={superlatives.careerStats.slice().sort((a, b) => b.fCount - a.fCount)[0]?.name} sub={`${superlatives.careerStats.slice().sort((a, b) => b.fCount - a.fCount)[0]?.fCount ?? 0} F picks all-time`} color={red} />
+                </div>
+
+                {/* Career table */}
+                <div style={{ overflowX: 'auto', marginBottom: '48px' }}>
+                  <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                    <thead>
+                      <tr style={{ background: cardBg }}>
+                        <th style={hStyle()}>Manager</th>
+                        <th style={hStyle('center')}>Avg Grade</th>
+                        <th style={hStyle('center')}>A+</th>
+                        <th style={hStyle('center')}>F</th>
+                        <th style={hStyle('center')}>Hit Rate</th>
+                        <th style={hStyle('right')}>Pts vs Slot</th>
+                        <th style={hStyle('center')}>Seasons</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {superlatives.careerStats.map((s, i) => {
+                        const { label: gl, color: gc } = gradeLabel(s.avgVS)
+                        return (
+                          <tr key={s.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                            <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{s.name}</td>
+                            <td style={{ ...cStyle('center'), color: gc, fontWeight: '700', fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{gl}</td>
+                            <td style={{ ...cStyle('center'), color: s.aPlus > 0 ? green : muted }}>{s.aPlus}</td>
+                            <td style={{ ...cStyle('center'), color: s.fCount > 0 ? red : muted }}>{s.fCount}</td>
+                            <td style={{ ...cStyle('center'), color: s.hitRate >= 0.5 ? green : red }}>{(s.hitRate * 100).toFixed(0)}%</td>
+                            <td style={{ ...cStyle('right'), color: s.totalRaw >= 0 ? green : red, fontWeight: '600' }}>{s.totalRaw >= 0 ? '+' : ''}{s.totalRaw.toFixed(0)}</td>
+                            <td style={{ ...cStyle('center'), color: muted }}>{s.seasons}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
 
                 {/* Draft grade grid */}
                 {superlatives.gradeData && (
-                  <div style={{ marginTop: '48px' }}>
-                    <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '20px' }}>Draft Grade by Season — Skill Positions</p>
+                  <div>
+                    <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '20px' }}>Draft Grade by Season</p>
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                         <thead>
@@ -1005,7 +1286,7 @@ export default function DraftsPage() {
                                 const { label, color } = gradeLabel(val)
                                 return (
                                   <td key={mgr} style={{ padding: '10px 14px', textAlign: 'center', borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' }}>
-                                    <span style={{ fontSize: '13px', fontWeight: '700', color, fontFamily: "'Playfair Display', serif" }} title={val != null ? `${(val * 100).toFixed(1)}% avg value` : ''}>{label}</span>
+                                    <span style={{ fontSize: '13px', fontWeight: '700', color, fontFamily: "'Playfair Display', serif" }} title={val != null ? `z=${val.toFixed(2)}` : ''}>{label}</span>
                                   </td>
                                 )
                               })}
@@ -1014,13 +1295,405 @@ export default function DraftsPage() {
                         </tbody>
                       </table>
                     </div>
-                    <p style={{ fontSize: '10px', color: muted, marginTop: '8px' }}>A = great value picks, F = busted picks · hover grade for exact score</p>
+                    <p style={{ fontSize: '10px', color: muted, marginTop: '8px' }}>Grade based on avg pick value z-score · hover for exact score</p>
                   </div>
                 )}
               </>
             )}
           </div>
         )}
+        {/* ── DRAFT INTELLIGENCE ── */}
+        {tab === 'intel' && (
+          <div>
+            {!draftIntel ? <p style={{ color: muted }}>Loading…</p> : (() => {
+              const Section = ({ title, children, mb = 48 }) => (
+                <div style={{ marginBottom: mb }}>
+                  <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '16px' }}>{title}</p>
+                  {children}
+                </div>
+              )
+              const ptsColor = v => v == null ? muted : v > 0 ? green : v < 0 ? red : text
+              const fmtPts = v => v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1)
+
+              return (
+                <>
+                  {/* 1. Draft grade → wins correlation */}
+                  <Section title="Draft Grade vs Wins Correlation">
+                    <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr' : '200px 1fr', gap: '24px', alignItems: 'start' }}>
+                      <div style={{ background: cardBg, padding: '20px', borderTop: `2px solid ${draftIntel.correlation > 0.3 ? green : draftIntel.correlation < 0 ? red : gold}` }}>
+                        <div style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '8px' }}>Correlation (r)</div>
+                        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '36px', color: draftIntel.correlation > 0.3 ? green : draftIntel.correlation < 0 ? red : text }}>
+                          {draftIntel.correlation != null ? draftIntel.correlation.toFixed(2) : '—'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: muted, marginTop: '6px' }}>
+                          {draftIntel.correlation > 0.5 ? 'Strong positive — drafting well predicts wins' : draftIntel.correlation > 0.2 ? 'Moderate — some signal' : draftIntel.correlation > 0 ? 'Weak — mostly noise' : 'Negative — luck dominates'}
+                        </div>
+                      </div>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}`, width: '100%' }}>
+                          <thead><tr style={{ background: cardBg }}>
+                            <th style={hStyle()}>Manager</th>
+                            <th style={hStyle('center')}>Year</th>
+                            <th style={hStyle('center')}>Draft Grade</th>
+                            <th style={hStyle('center')}>Record</th>
+                            <th style={hStyle('center')}>Playoffs</th>
+                          </tr></thead>
+                          <tbody>
+                            {[...draftIntel.gradeVsWins].sort((a,b) => b.grade - a.grade).map((d, i) => {
+                              const { label: gl, color: gc } = gradeLabel(d.grade)
+                              return (
+                                <tr key={`${d.mgr}${d.yr}`} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                                  <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif" }}>{d.mgr}</td>
+                                  <td style={{ ...cStyle('center'), color: muted }}>{d.yr}</td>
+                                  <td style={{ ...cStyle('center'), color: gc, fontWeight: '700', fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{gl}</td>
+                                  <td style={{ ...cStyle('center') }}>{d.wins}–{d.losses}</td>
+                                  <td style={{ ...cStyle('center'), color: d.madePlayoffs ? green : muted, fontSize: '11px' }}>{d.madePlayoffs ? '✓' : '—'}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </Section>
+
+                  {/* 2. Draft slot ROI */}
+                  <Section title="Draft Slot ROI — Avg Pts vs Slot by Pick Number">
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                        <thead><tr style={{ background: cardBg }}>
+                          {draftIntel.slotRoi.map(s => <th key={s.slot} style={hStyle('center')}>#{s.slot}</th>)}
+                        </tr></thead>
+                        <tbody><tr>
+                          {draftIntel.slotRoi.map(s => (
+                            <td key={s.slot} style={{ ...cStyle('center'), color: ptsColor(s.avg), fontWeight: '600' }}>
+                              {fmtPts(s.avg)}
+                              <div style={{ fontSize: '10px', color: muted, fontWeight: '400' }}>{s.count} picks</div>
+                            </td>
+                          ))}
+                        </tr></tbody>
+                      </table>
+                    </div>
+                    <p style={{ fontSize: '10px', color: muted, marginTop: '8px' }}>Avg pts above/below slot expectation for each draft position within a round · snake draft normalizes pick order</p>
+                  </Section>
+
+                  {/* 3. Breakout finder */}
+                  <Section title="Breakout Finder — Drafted Outside Top 15, Finished Top 5">
+                    {draftIntel.breakouts.length === 0 ? <p style={{ color: muted, fontSize: '13px' }}>No breakouts found.</p> : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}`, width: '100%' }}>
+                          <thead><tr style={{ background: cardBg }}>
+                            <th style={hStyle()}>Player</th>
+                            <th style={hStyle('center')}>Pos</th>
+                            <th style={hStyle()}>Manager</th>
+                            <th style={hStyle('center')}>Year</th>
+                            <th style={hStyle('center')}>Rd</th>
+                            <th style={hStyle('center')}>Draft Rank</th>
+                            <th style={hStyle('center')}>EOY Rank</th>
+                            <th style={hStyle('right')}>Pts vs Slot</th>
+                          </tr></thead>
+                          <tbody>
+                            {draftIntel.breakouts.map((p, i) => (
+                              <tr key={`${p.player_name}${p.season}`} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                                <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif" }}>
+                                  {p.playerId ? <a href={`/players/${p.playerId}`} style={{ color: text, textDecoration: 'none' }} onMouseOver={e=>e.currentTarget.style.textDecoration='underline'} onMouseOut={e=>e.currentTarget.style.textDecoration='none'}>{p.player_name}</a> : p.player_name}
+                                </td>
+                                <td style={{ ...cStyle('center'), color: POS_COLORS[p.position], fontWeight: '600', fontSize: '11px' }}>{p.position}</td>
+                                <td style={cStyle()}>{p.manager_name}</td>
+                                <td style={{ ...cStyle('center'), color: muted }}>{p.season}</td>
+                                <td style={{ ...cStyle('center'), color: muted }}>{p.round}</td>
+                                <td style={{ ...cStyle('center'), color: muted }}>{p.position}{p.draftPosRank}</td>
+                                <td style={{ ...cStyle('center'), color: green, fontWeight: '700' }}>{p.position}{p.fptsRank}</td>
+                                <td style={{ ...cStyle('right'), color: green, fontWeight: '600' }}>+{p.rawValue.toFixed(1)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </Section>
+
+                  {/* 4. Manager trajectory */}
+                  <Section title="Manager Trajectory — Draft Grade Year over Year">
+                    <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1px', background: border }}>
+                      {draftIntel.trajectory.map(({ mgr, points }) => {
+                        const valid = points.filter(p => p.v != null)
+                        if (!valid.length) return null
+                        const first = valid[0].v, last = valid[valid.length - 1].v
+                        const trend = last - first
+                        return (
+                          <div key={mgr} style={{ background: cardBg, padding: '16px 20px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px' }}>
+                              <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '14px', color: text }}>{mgr}</span>
+                              <span style={{ fontSize: '11px', color: trend > 0.05 ? green : trend < -0.05 ? red : muted }}>
+                                {trend > 0.05 ? '↑ Improving' : trend < -0.05 ? '↓ Declining' : '→ Stable'}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                              {points.map(({ yr, v }) => {
+                                const { label: gl, color: gc } = gradeLabel(v)
+                                return (
+                                  <div key={yr} style={{ textAlign: 'center', minWidth: '32px' }}>
+                                    <div style={{ fontSize: '13px', fontWeight: '700', color: gc, fontFamily: "'Playfair Display', serif" }}>{gl}</div>
+                                    <div style={{ fontSize: '9px', color: muted, marginTop: '2px' }}>{String(yr).slice(2)}</div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </Section>
+
+                  {/* 5. Carry rate */}
+                  <Section title="Carry Rate — Avg % of Team Pts from Top 3 Drafted Players">
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}`, width: '100%' }}>
+                        <thead><tr style={{ background: cardBg }}>
+                          <th style={hStyle()}>Manager</th>
+                          <th style={hStyle('center')}>Avg Carry Rate</th>
+                          <th style={hStyle('center')}>Seasons</th>
+                        </tr></thead>
+                        <tbody>
+                          {draftIntel.carryArr.map((s, i) => (
+                            <tr key={s.mgr} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                              <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{s.mgr}</td>
+                              <td style={{ ...cStyle('center'), fontWeight: '700', fontFamily: "'Playfair Display', serif", fontSize: '14px', color: s.avg > 0.55 ? red : s.avg < 0.45 ? green : text }}>
+                                {(s.avg * 100).toFixed(0)}%
+                              </td>
+                              <td style={{ ...cStyle('center'), color: muted }}>{s.seasons}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p style={{ fontSize: '10px', color: muted, marginTop: '8px' }}>High % = star-dependent · Low % = balanced depth</p>
+                  </Section>
+
+                  {/* 6. Position ROI by round tier */}
+                  <Section title="Position ROI by Round Tier — Avg Pts vs Slot">
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                        <thead><tr style={{ background: cardBg }}>
+                          <th style={hStyle()}>Position</th>
+                          <th style={{ ...hStyle('center'), color: text }}>Early (Rds 1–4)</th>
+                          <th style={{ ...hStyle('center'), color: muted }}>Mid (Rds 5–9)</th>
+                          <th style={{ ...hStyle('center'), color: muted }}>Late (Rd 10+)</th>
+                        </tr></thead>
+                        <tbody>
+                          {SKILL_POS.map((pos, i) => (
+                            <tr key={pos} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                              <td style={{ ...cStyle(), color: POS_COLORS[pos], fontWeight: '600', letterSpacing: '0.06em' }}>{pos}</td>
+                              {['early','mid','late'].map(t => (
+                                <td key={t} style={{ ...cStyle('center'), color: ptsColor(draftIntel.posRoi[pos][t]), fontWeight: '600' }}>
+                                  {fmtPts(draftIntel.posRoi[pos][t])}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Section>
+
+                  {/* 7. Positional value cliff */}
+                  <Section title="Positional Value Cliff — Avg Pts vs Slot by Round">
+                    <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '1px', background: border }}>
+                      {SKILL_POS.map(pos => (
+                        <div key={pos} style={{ background: cardBg, padding: '14px 16px' }}>
+                          <div style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: POS_COLORS[pos], marginBottom: '10px', fontWeight: '700' }}>{pos}</div>
+                          {draftIntel.cliffData[pos].map(({ rd, avg, count }) => (
+                            <div key={rd} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '10px', color: muted, minWidth: '36px' }}>Rd {rd}</span>
+                              <div style={{ flex: 1, height: '4px', background: border, margin: '0 8px', position: 'relative', overflow: 'visible' }}>
+                                {avg !== 0 && <div style={{ position: 'absolute', top: 0, width: `${Math.min(Math.abs(avg) / 60 * 100, 100)}%`, height: '100%', background: avg > 0 ? green : red, [avg > 0 ? 'left' : 'right']: 0 }} />}
+                              </div>
+                              <span style={{ fontSize: '10px', color: ptsColor(avg), fontWeight: '600', minWidth: '44px', textAlign: 'right' }}>{fmtPts(avg)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+
+                  {/* 8. NFL team draft value */}
+                  <Section title="NFL Team Draft Value — Avg Pts vs Slot (min 3 picks)">
+                    <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : '1fr 1fr', gap: '24px' }}>
+                      <div>
+                        <p style={{ fontSize: '10px', color: green, letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '10px' }}>Best to Draft From</p>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}`, width: '100%' }}>
+                            <thead><tr style={{ background: cardBg }}>
+                              <th style={hStyle()}>Team</th><th style={hStyle('right')}>Avg vs Slot</th><th style={hStyle('center')}>Picks</th>
+                            </tr></thead>
+                            <tbody>{draftIntel.nflArr.slice(0, 8).map((t, i) => (
+                              <tr key={t.team} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                                <td style={{ ...cStyle(), fontWeight: '600' }}>{t.team}</td>
+                                <td style={{ ...cStyle('right'), color: green, fontWeight: '700' }}>+{t.avg.toFixed(1)}</td>
+                                <td style={{ ...cStyle('center'), color: muted }}>{t.count}</td>
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </div>
+                      <div>
+                        <p style={{ fontSize: '10px', color: red, letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '10px' }}>Avoid Drafting From</p>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}`, width: '100%' }}>
+                            <thead><tr style={{ background: cardBg }}>
+                              <th style={hStyle()}>Team</th><th style={hStyle('right')}>Avg vs Slot</th><th style={hStyle('center')}>Picks</th>
+                            </tr></thead>
+                            <tbody>{[...draftIntel.nflArr].reverse().slice(0, 8).map((t, i) => (
+                              <tr key={t.team} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                                <td style={{ ...cStyle(), fontWeight: '600' }}>{t.team}</td>
+                                <td style={{ ...cStyle('right'), color: red, fontWeight: '700' }}>{t.avg.toFixed(1)}</td>
+                                <td style={{ ...cStyle('center'), color: muted }}>{t.count}</td>
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </Section>
+
+                  {/* 9. Sleeper rate */}
+                  <Section title="Sleeper Rate — Rd 8+ Picks Finishing Top 12 at Position">
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}`, width: '100%' }}>
+                        <thead><tr style={{ background: cardBg }}>
+                          <th style={hStyle()}>Manager</th>
+                          <th style={hStyle('center')}>Sleepers Found</th>
+                          <th style={hStyle('center')}>Late Picks</th>
+                          <th style={hStyle('center')}>Rate</th>
+                          <th style={hStyle()}>Best Late Find</th>
+                        </tr></thead>
+                        <tbody>
+                          {draftIntel.sleeperArr.map((s, i) => (
+                            <tr key={s.mgr} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                              <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{s.mgr}</td>
+                              <td style={{ ...cStyle('center'), color: s.count > 0 ? green : muted, fontWeight: '700' }}>{s.count}</td>
+                              <td style={{ ...cStyle('center'), color: muted }}>{s.totalLate}</td>
+                              <td style={{ ...cStyle('center'), color: s.rate > 0.1 ? green : muted }}>{(s.rate * 100).toFixed(0)}%</td>
+                              <td style={{ ...cStyle(), fontSize: '11px', color: muted }}>
+                                {s.picks[0] ? `${s.picks[0].player_name} (${s.picks[0].season} · ${s.picks[0].position}${s.picks[0].fptsRank})` : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                          {draftIntel.sleeperArr.length === 0 && (
+                            <tr><td colSpan={5} style={{ ...cStyle(), color: muted }}>No sleeper picks found (rd 8+ top-12 finishes)</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Section>
+
+                  {/* 10. Round 1 dependence */}
+                  <Section title="Round 1 Dependence — Avg % of Season Pts from First Pick">
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}`, width: '100%' }}>
+                        <thead><tr style={{ background: cardBg }}>
+                          <th style={hStyle()}>Manager</th>
+                          <th style={hStyle('center')}>Avg % from Rd 1</th>
+                          <th style={hStyle('center')}>Seasons</th>
+                          <th style={hStyle()}>Highest Single Year</th>
+                        </tr></thead>
+                        <tbody>
+                          {draftIntel.rd1DepArr.map((s, i) => {
+                            const peak = [...s.seasons].sort((a, b) => b.rate - a.rate)[0]
+                            return (
+                              <tr key={s.mgr} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                                <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{s.mgr}</td>
+                                <td style={{ ...cStyle('center'), fontWeight: '700', fontFamily: "'Playfair Display', serif", fontSize: '14px', color: s.avg > 0.22 ? red : s.avg < 0.14 ? green : text }}>
+                                  {(s.avg * 100).toFixed(0)}%
+                                </td>
+                                <td style={{ ...cStyle('center'), color: muted }}>{s.count}</td>
+                                <td style={{ ...cStyle(), fontSize: '11px', color: muted }}>
+                                  {peak ? `${peak.player} ${(peak.rate * 100).toFixed(0)}% (${peak.yr})` : '—'}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p style={{ fontSize: '10px', color: muted, marginTop: '8px' }}>High % = star-dependent roster · Low % = well-distributed value</p>
+                  </Section>
+
+                  {/* 11. Stack ROI */}
+                  <Section title="QB–WR Stack ROI">
+                    <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: '1px', background: border, marginBottom: '24px' }}>
+                      <StatCard label="Avg Value — Stacked Drafts" value={draftIntel.stackAvg != null ? fmtPts(draftIntel.stackAvg) + ' pts/pick' : '—'} sub={`${draftIntel.stackedDrafts.length} stacked drafts`} color={ptsColor(draftIntel.stackAvg)} />
+                      <StatCard label="Avg Value — Unstacked Drafts" value={draftIntel.noStackAvg != null ? fmtPts(draftIntel.noStackAvg) + ' pts/pick' : '—'} sub={`${draftIntel.unStackedDrafts.length} unstacked drafts`} color={ptsColor(draftIntel.noStackAvg)} />
+                      <StatCard
+                        label="Stack Edge"
+                        value={draftIntel.stackAvg != null && draftIntel.noStackAvg != null ? fmtPts(draftIntel.stackAvg - draftIntel.noStackAvg) + ' pts/pick' : '—'}
+                        sub={draftIntel.stackAvg != null && draftIntel.noStackAvg != null ? (draftIntel.stackAvg > draftIntel.noStackAvg ? 'Stacking pays off in this league' : 'No clear stack advantage') : ''}
+                        color={draftIntel.stackAvg != null && draftIntel.noStackAvg != null ? ptsColor(draftIntel.stackAvg - draftIntel.noStackAvg) : muted}
+                      />
+                    </div>
+                    {draftIntel.stackedDrafts.length > 0 && (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}`, width: '100%' }}>
+                          <thead><tr style={{ background: cardBg }}>
+                            <th style={hStyle()}>Manager</th><th style={hStyle('center')}>Year</th><th style={hStyle()}>QB</th><th style={hStyle()}>Stacked WR(s)</th><th style={hStyle('right')}>Avg Pts vs Slot</th>
+                          </tr></thead>
+                          <tbody>{draftIntel.stackedDrafts.sort((a,b)=>b.avgRaw-a.avgRaw).map((d, i) => (
+                            <tr key={`${d.mgr}${d.yr}`} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                              <td style={cStyle()}>{d.mgr}</td>
+                              <td style={{ ...cStyle('center'), color: muted }}>{d.yr}</td>
+                              <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif" }}>{d.qb}</td>
+                              <td style={{ ...cStyle(), color: muted, fontSize: '11px' }}>{d.wrs.join(', ')}</td>
+                              <td style={{ ...cStyle('right'), color: ptsColor(d.avgRaw), fontWeight: '600' }}>{fmtPts(d.avgRaw)}</td>
+                            </tr>
+                          ))}</tbody>
+                        </table>
+                      </div>
+                    )}
+                  </Section>
+
+                  {/* 12. Pick #1 all-time */}
+                  <Section title="Pick #1 All-Time" mb={0}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}`, width: '100%' }}>
+                        <thead><tr style={{ background: cardBg }}>
+                          <th style={hStyle('center')}>Year</th>
+                          <th style={hStyle()}>Player</th>
+                          <th style={hStyle('center')}>Pos</th>
+                          <th style={hStyle()}>Manager</th>
+                          <th style={hStyle('right')}>EOY Pts</th>
+                          <th style={hStyle('right')}>Pts vs Slot</th>
+                          <th style={hStyle('center')}>EOY Rank</th>
+                          <th style={hStyle('center')}>Grade</th>
+                        </tr></thead>
+                        <tbody>
+                          {draftIntel.pick1s.map((p, i) => {
+                            const glColor = p.gl ? (p.gl === 'A+' || p.gl === 'A' || p.gl === 'B+' || p.gl === 'B-' ? green : p.gl === 'F' || p.gl === 'D-' || p.gl === 'D+' ? red : text) : muted
+                            return (
+                              <tr key={p.season} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                                <td style={{ ...cStyle('center'), color: muted }}>{p.season}</td>
+                                <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif" }}>
+                                  {p.playerId ? <a href={`/players/${p.playerId}`} style={{ color: text, textDecoration: 'none' }} onMouseOver={e=>e.currentTarget.style.textDecoration='underline'} onMouseOut={e=>e.currentTarget.style.textDecoration='none'}>{p.player_name}</a> : p.player_name}
+                                </td>
+                                <td style={{ ...cStyle('center'), color: POS_COLORS[p.position], fontWeight: '600', fontSize: '11px' }}>{p.position}</td>
+                                <td style={cStyle()}>{p.manager_name}</td>
+                                <td style={{ ...cStyle('right'), color: p.fpts != null ? text : muted }}>{p.fpts != null ? p.fpts.toFixed(1) : '—'}</td>
+                                <td style={{ ...cStyle('right'), color: ptsColor(p.rawValue), fontWeight: '600' }}>{fmtPts(p.rawValue)}</td>
+                                <td style={{ ...cStyle('center'), color: muted }}>{p.fptsRank != null ? `${p.position}${p.fptsRank}` : '—'}</td>
+                                <td style={{ ...cStyle('center'), color: glColor, fontWeight: '700', fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{p.gl || '—'}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Section>
+                </>
+              )
+            })()}
+          </div>
+        )}
+
       </div>
     </div>
   )
