@@ -552,28 +552,53 @@ export default function DraftsPage() {
       .map(([mgr, rates]) => ({ mgr, avg: rates.reduce((a,b)=>a+b)/rates.length, seasons: rates.length }))
       .sort((a,b) => b.avg - a.avg)
 
+    // Blended score: 50% pts-vs-slot z-score + 50% actual fpts z-score
+    // Corrects the bias where early rds look bad (high bust variance) and
+    // late rds look good (low floor = easy to beat slot) by weighting actual impact equally.
+    const allSkilledFpts = skilled.filter(p => p.fpts != null).map(p => p.fpts)
+    const fptsMu = allSkilledFpts.reduce((a,b)=>a+b,0) / allSkilledFpts.length
+    const fptsSig = Math.sqrt(allSkilledFpts.reduce((s,v)=>s+(v-fptsMu)**2,0)/allSkilledFpts.length) || 1
+    const blended = p => p.fpts != null ? 0.5 * (p.valueScore ?? 0) + 0.5 * ((p.fpts - fptsMu) / fptsSig) : null
+
     // 6. Position ROI by round tier
     const posRoiMap = {}
     SKILL_POS.forEach(pos => { posRoiMap[pos] = { early: [], mid: [], late: [] } })
     skilled.forEach(p => {
+      const b = blended(p); if (b == null) return
       const tier = p.round <= 4 ? 'early' : p.round <= 9 ? 'mid' : 'late'
-      posRoiMap[p.position]?.[tier].push(p.rawValue)
+      posRoiMap[p.position]?.[tier].push({ b, rawValue: p.rawValue, fpts: p.fpts })
     })
     const posRoi = {}
     SKILL_POS.forEach(pos => {
       posRoi[pos] = {}
       ;['early','mid','late'].forEach(t => {
-        const v = posRoiMap[pos][t]; posRoi[pos][t] = v.length ? v.reduce((a,b)=>a+b)/v.length : null
+        const v = posRoiMap[pos][t]
+        if (!v.length) { posRoi[pos][t] = null; return }
+        posRoi[pos][t] = {
+          score: v.reduce((a,c)=>a+c.b,0)/v.length,
+          avgRaw: v.reduce((a,c)=>a+c.rawValue,0)/v.length,
+          avgFpts: v.reduce((a,c)=>a+c.fpts,0)/v.length,
+        }
       })
     })
 
-    // 7. Positional value cliff (avg rawValue by round per position)
+    // 7. Positional value cliff (blended score by round per position)
     const cliffData = {}
     SKILL_POS.forEach(pos => {
       const byRd = {}
-      skilled.filter(p => p.position === pos).forEach(p => { if (!byRd[p.round]) byRd[p.round] = []; byRd[p.round].push(p.rawValue) })
+      skilled.filter(p => p.position === pos).forEach(p => {
+        const b = blended(p); if (b == null) return
+        if (!byRd[p.round]) byRd[p.round] = []
+        byRd[p.round].push({ b, rawValue: p.rawValue, fpts: p.fpts })
+      })
       cliffData[pos] = Object.entries(byRd)
-        .map(([rd, vals]) => ({ rd: parseInt(rd), avg: vals.reduce((a,b)=>a+b)/vals.length, count: vals.length }))
+        .map(([rd, vals]) => ({
+          rd: parseInt(rd),
+          avg: vals.reduce((a,c)=>a+c.b,0)/vals.length,
+          avgRaw: vals.reduce((a,c)=>a+c.rawValue,0)/vals.length,
+          avgFpts: vals.reduce((a,c)=>a+c.fpts,0)/vals.length,
+          count: vals.length,
+        }))
         .sort((a,b) => a.rd - b.rd)
     })
 
@@ -1565,7 +1590,7 @@ export default function DraftsPage() {
                   </Section>
 
                   {/* 6. Position ROI by round tier */}
-                  <Section title="Position ROI by Round Tier — Avg Pts vs Slot">
+                  <Section title="Position ROI by Round Tier — Blended Value Score">
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                         <thead><tr style={{ background: cardBg }}>
@@ -1578,36 +1603,46 @@ export default function DraftsPage() {
                           {SKILL_POS.map((pos, i) => (
                             <tr key={pos} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                               <td style={{ ...cStyle(), color: POS_COLORS[pos], fontWeight: '600', letterSpacing: '0.06em' }}>{pos}</td>
-                              {['early','mid','late'].map(t => (
-                                <td key={t} style={{ ...cStyle('center'), color: ptsColor(draftIntel.posRoi[pos][t]), fontWeight: '600' }}>
-                                  {fmtPts(draftIntel.posRoi[pos][t])}
-                                </td>
-                              ))}
+                              {['early','mid','late'].map(t => {
+                                const cell = draftIntel.posRoi[pos][t]
+                                const sc = cell?.score ?? null
+                                return (
+                                  <td key={t} style={{ ...cStyle('center'), color: ptsColor(sc), fontWeight: '600' }}>
+                                    <div>{sc != null ? (sc >= 0 ? '+' : '') + sc.toFixed(2) : '—'}</div>
+                                    {cell?.avgFpts != null && <div style={{ fontSize: '10px', color: muted, fontWeight: '400', marginTop: '2px' }}>{cell.avgFpts.toFixed(0)} pts avg</div>}
+                                  </td>
+                                )
+                              })}
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
+                    <p style={{ fontSize: '10px', color: muted, marginTop: '8px' }}>Score = z-score blend of pts vs slot (50%) + avg fpts scored (50%) · positive = good round tier for this position</p>
                   </Section>
 
                   {/* 7. Positional value cliff */}
-                  <Section title="Positional Value Cliff — Avg Pts vs Slot by Round">
+                  <Section title="Positional Value Cliff — Blended Value Score by Round">
                     <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: '1px', background: border }}>
                       {SKILL_POS.map(pos => (
                         <div key={pos} style={{ background: cardBg, padding: '14px 16px' }}>
                           <div style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: POS_COLORS[pos], marginBottom: '10px', fontWeight: '700' }}>{pos}</div>
-                          {draftIntel.cliffData[pos].map(({ rd, avg, count }) => (
-                            <div key={rd} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          {draftIntel.cliffData[pos].map(({ rd, avg, avgFpts, count }) => (
+                            <div key={rd} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
                               <span style={{ fontSize: '10px', color: muted, minWidth: '36px' }}>Rd {rd}</span>
-                              <div style={{ flex: 1, height: '4px', background: border, margin: '0 8px', position: 'relative', overflow: 'visible' }}>
-                                {avg !== 0 && <div style={{ position: 'absolute', top: 0, width: `${Math.min(Math.abs(avg) / 60 * 100, 100)}%`, height: '100%', background: avg > 0 ? green : red, [avg > 0 ? 'left' : 'right']: 0 }} />}
+                              <div style={{ flex: 1, height: '4px', background: border, margin: '0 8px', position: 'relative' }}>
+                                {avg !== 0 && <div style={{ position: 'absolute', top: 0, width: `${Math.min(Math.abs(avg) / 1.5 * 100, 100)}%`, height: '100%', background: avg > 0 ? green : red, [avg > 0 ? 'left' : 'right']: 0 }} />}
                               </div>
-                              <span style={{ fontSize: '10px', color: ptsColor(avg), fontWeight: '600', minWidth: '44px', textAlign: 'right' }}>{fmtPts(avg)}</span>
+                              <div style={{ minWidth: '52px', textAlign: 'right' }}>
+                                <div style={{ fontSize: '10px', color: ptsColor(avg), fontWeight: '600' }}>{avg >= 0 ? '+' : ''}{avg.toFixed(2)}</div>
+                                <div style={{ fontSize: '9px', color: muted }}>{avgFpts?.toFixed(0)} pts</div>
+                              </div>
                             </div>
                           ))}
                         </div>
                       ))}
                     </div>
+                    <p style={{ fontSize: '10px', color: muted, marginTop: '10px' }}>Score = z-score blend of pts vs slot (50%) + avg fpts scored (50%) · captures both value efficiency and real impact</p>
                   </Section>
 
                   {/* 8. NFL team draft value */}
