@@ -1,13 +1,8 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const INTERPERSONAL = {
   'caden':        ['braden', 'mamby-tenner', 'big-e'],
@@ -75,9 +70,10 @@ export default function RivalriesPage() {
   const [selectedManager, setSelectedManager] = useState(null)
 
   useEffect(() => {
-    supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
+    supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
     supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .then(({ data }) => setMatchups(data || []))
   }, [])
 

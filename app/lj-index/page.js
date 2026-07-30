@@ -1,12 +1,8 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 const MANAGER_COLORS = {
   'dan': '#4285F4', 'wally': '#EA4335', 'john': '#FBBC04', 'braden': '#34A853',
   'jm': '#FF6D00', 'big-e': '#46BDC6', 'mamby-tenner': '#7BAAF7', 'reid': '#F07B72',
@@ -28,23 +24,27 @@ export default function LJIndexPage() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => {
-    supabase.from('seasons').select('year, season_number').order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
-    supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
+    supabase.from('seasons').select('year, season_number').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
+    supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
     supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .limit(10000)
       .then(({ data }) => setAllMatchups(data || []))
     supabase.from('teams')
       .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .then(({ data }) => setAllTeams(data || []))
   }, [])
   useEffect(() => {
     setMatchups([]); setTeams([])
     supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .then(({ data }) => setMatchups((data || []).filter(m => m.season?.year === selectedYear && !m.is_playoff)))
     supabase.from('teams')
       .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .then(({ data }) => setTeams((data || []).filter(t => t.season?.year === selectedYear)))
   }, [selectedYear])
   const computeData = () => {

@@ -1,13 +1,8 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 export default function PowerRankingsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold, blue } = useLayout()
@@ -20,8 +15,8 @@ export default function PowerRankingsPage() {
   const [managers, setManagers] = useState([])
 
   useEffect(() => {
-    supabase.from('seasons').select('year, season_number').order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
-    supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
+    supabase.from('seasons').select('year, season_number').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
+    supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
   }, [])
 
   useEffect(() => {
@@ -30,6 +25,7 @@ export default function PowerRankingsPage() {
     setSelectedWeek(null)
     supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .then(({ data }) => {
         const filtered = (data || []).filter(m => m.season?.year === selectedYear && !m.is_playoff)
         setMatchups(filtered)
@@ -38,6 +34,7 @@ export default function PowerRankingsPage() {
       })
     supabase.from('teams')
       .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .then(({ data }) => setTeams((data || []).filter(t => t.season?.year === selectedYear)))
   }, [selectedYear])
 

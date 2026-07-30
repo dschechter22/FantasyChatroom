@@ -1,14 +1,9 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const SKILL_POSITIONS = ['QB', 'RB', 'WR', 'TE']
 const POS_COLORS = { QB: '#4285F4', RB: '#34A853', WR: '#FBBC04', TE: '#EA4335' }
@@ -31,11 +26,12 @@ export default function ManagersPage() {
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
-    supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
-    supabase.from('teams').select('*, season:season_id(year)').then(({ data }) => setTeams(data || []))
-    supabase.from('seasons').select('*, champion:champion_id(id), mol_bowl_loser:mol_bowl_loser_id(id)').then(({ data }) => setSeasons(data || []))
+    supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
+    supabase.from('teams').select('*, season:season_id(year)').eq('league_id', LEAGUE_ID).then(({ data }) => setTeams(data || []))
+    supabase.from('seasons').select('*, champion:champion_id(id), mol_bowl_loser:mol_bowl_loser_id(id)').eq('league_id', LEAGUE_ID).then(({ data }) => setSeasons(data || []))
     supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .eq('is_playoff', false)
       .then(({ data }) => setMatchups(data || []))
 
@@ -47,6 +43,7 @@ export default function ManagersPage() {
         const { data: batch } = await supabase
           .from('roster_entries')
           .select('id, player_id, team_id, avg_pts, fpts, prk, player:player_id(id, name, position)')
+          .eq('league_id', LEAGUE_ID)
           .range(from, from + 999)
         if (!batch || batch.length === 0) break
         all = [...all, ...batch]

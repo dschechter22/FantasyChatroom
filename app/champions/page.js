@@ -1,13 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 export default function ChampionsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, gold, red } = useLayout()
@@ -19,9 +14,10 @@ export default function ChampionsPage() {
   useEffect(() => {
     supabase.from('seasons')
       .select('*, champion:champion_id(id, name, slug), mol_bowl_winner:mol_bowl_winner_id(id, name), mol_bowl_loser:mol_bowl_loser_id(id, name)')
+      .eq('league_id', LEAGUE_ID)
       .order('year', { ascending: false })
       .then(({ data }) => setSeasons(data || []))
-    supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
+    supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
   }, [])
 
   const filteredSeasons = seasons.filter(s =>

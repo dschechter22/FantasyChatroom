@@ -1,14 +1,9 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import RosterDrawer from '../../components/RosterDrawer'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const RESULT_OPTIONS = [
   'All', 'Champion', 'Runner Up', 'Third Place', '4th Place',
@@ -36,9 +31,11 @@ export default function AllTimeTeamsPage() {
   useEffect(() => {
     supabase.from('teams')
       .select('*, manager:manager_id(name, slug), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .then(({ data }) => setTeams(data || []))
     supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)')
+      .eq('league_id', LEAGUE_ID)
       .eq('is_playoff', false)
       .then(({ data }) => setMatchups(data || []))
   }, [])

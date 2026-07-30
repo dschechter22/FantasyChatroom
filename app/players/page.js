@@ -1,14 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const POSITIONS = ['All', 'QB', 'RB', 'WR', 'TE', 'K', 'D/ST']
 
@@ -42,6 +37,7 @@ export default function PlayersPage() {
         const { data: batch } = await supabase
           .from('roster_entries')
           .select('player_id, fpts, avg_pts, team_id')
+          .eq('league_id', LEAGUE_ID)
           .range(from, from + 999)
         if (!batch || batch.length === 0) break
         allEntries = [...allEntries, ...batch]
@@ -54,6 +50,7 @@ export default function PlayersPage() {
       const { data: teams } = await supabase
         .from('teams')
         .select('id, season:season_id(year)')
+        .eq('league_id', LEAGUE_ID)
         .limit(1000)
 
       if (!entries.length || !teams) { setLoading(false); return }

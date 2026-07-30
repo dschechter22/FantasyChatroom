@@ -1,14 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../../lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Nav from '../../../components/Nav'
 import { useLayout } from '../../../hooks/useLayout'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 const STAT_FIELDS = {
   QB: [
@@ -86,6 +81,7 @@ export default function PlayerProfilePage() {
             season:season_id(year)
           )
         `)
+        .eq('league_id', LEAGUE_ID)
         .eq('player_id', params.id)
         .limit(1000)
 
@@ -127,7 +123,7 @@ export default function PlayerProfilePage() {
       setStatsCache(prev => ({ ...prev, [year]: stats }))
       // Persist to DB
       for (const entryId of entryIds) {
-        await supabase.from('roster_entries').update({ stats }).eq('id', entryId)
+        await supabase.from('roster_entries').update({ stats }).eq('league_id', LEAGUE_ID).eq('id', entryId)
       }
     } catch (e) {
       console.error('Sleeper fetch failed', year, e)

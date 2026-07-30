@@ -1,13 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 export default function H2HPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red } = useLayout()
@@ -21,8 +16,8 @@ export default function H2HPage() {
   const [modal, setModal] = useState(null) // { managerA, managerB }
 
   useEffect(() => {
-    supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
-    supabase.from('matchups').select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)').then(({ data }) => setMatchups(data || []))
+    supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
+    supabase.from('matchups').select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)').eq('league_id', LEAGUE_ID).then(({ data }) => setMatchups(data || []))
   }, [])
 
   const displayManagers = (showRetired ? managers : managers.filter(m => m.active))

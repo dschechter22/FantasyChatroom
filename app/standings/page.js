@@ -1,13 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
 
 export default function StandingsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, statsBg, green, red, gold } = useLayout()
@@ -28,10 +23,10 @@ export default function StandingsPage() {
   const [yearTo, setYearTo] = useState('all')
 
   useEffect(() => {
-    supabase.from('managers').select('*').then(({ data }) => setManagers(data || []))
-    supabase.from('teams').select('*, season:season_id(year)').then(({ data }) => setTeams(data || []))
-    supabase.from('seasons').select('*, champion:champion_id(id), mol_bowl_winner:mol_bowl_winner_id(id), mol_bowl_loser:mol_bowl_loser_id(id)').then(({ data }) => setSeasons(data || []))
-    supabase.from('matchups').select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)').eq('is_playoff', true).then(({ data }) => setMatchups(data || []))
+    supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
+    supabase.from('teams').select('*, season:season_id(year)').eq('league_id', LEAGUE_ID).then(({ data }) => setTeams(data || []))
+    supabase.from('seasons').select('*, champion:champion_id(id), mol_bowl_winner:mol_bowl_winner_id(id), mol_bowl_loser:mol_bowl_loser_id(id)').eq('league_id', LEAGUE_ID).then(({ data }) => setSeasons(data || []))
+    supabase.from('matchups').select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)').eq('league_id', LEAGUE_ID).eq('is_playoff', true).then(({ data }) => setMatchups(data || []))
   }, [])
 
   const toggleExpand = (slug) => setExpanded(prev => ({ ...prev, [slug]: !prev[slug] }))
