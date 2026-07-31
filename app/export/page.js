@@ -22,6 +22,7 @@ export default function ExportPage() {
   const [seasons, setSeasons] = useState([])
   const [teams, setTeams] = useState([])
   const [matchups, setMatchups] = useState([])
+  const [allMatchups, setAllMatchups] = useState([])
   const [draftPicks, setDraftPicks] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState({
@@ -29,7 +30,9 @@ export default function ExportPage() {
     draftTrends: true,
     allTimeTeams: true,
     managerCareer: true,
+    managerH2H: true,
     seasonStandings: true,
+    yearlySchedule: true,
     champions: true,
   })
   const [format, setFormat] = useState('csv')
@@ -39,7 +42,7 @@ export default function ExportPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: mgrs }, { data: szns }, { data: tms }, { data: mups }] = await Promise.all([
+      const [{ data: mgrs }, { data: szns }, { data: tms }, { data: mups }, { data: allMups }] = await Promise.all([
         supabase.from('managers').select('*').eq('league_id', LEAGUE_ID),
         supabase.from('seasons').select('*, champion:champion_id(id, name), mol_bowl_loser:mol_bowl_loser_id(id, name)').eq('league_id', LEAGUE_ID),
         supabase.from('teams').select('*, manager:manager_id(id, name, slug), season:season_id(id, year)').eq('league_id', LEAGUE_ID),
@@ -47,11 +50,15 @@ export default function ExportPage() {
           .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)')
           .eq('league_id', LEAGUE_ID)
           .eq('is_playoff', false),
+        supabase.from('matchups')
+          .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
+          .eq('league_id', LEAGUE_ID),
       ])
       setManagers(mgrs || [])
       setSeasons(szns || [])
       setTeams(tms || [])
       setMatchups(mups || [])
+      setAllMatchups(allMups || [])
 
       let allPicks = [], from = 0
       while (true) {
@@ -221,15 +228,62 @@ export default function ExportPage() {
       }
     }).sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
 
+    // 7. Manager head-to-head records (one row per unique manager pair, all games including playoffs)
+    const managerNameById = Object.fromEntries(managers.map(m => [m.id, m.name]))
+    const sortedManagers = [...managers].sort((a, b) => a.name.localeCompare(b.name))
+    const managerH2HRows = []
+    for (let i = 0; i < sortedManagers.length; i++) {
+      for (let j = i + 1; j < sortedManagers.length; j++) {
+        const a = sortedManagers[i], b = sortedManagers[j]
+        const games = allMatchups.filter(m => {
+          const h = m.home_team?.manager_id, aw = m.away_team?.manager_id
+          return (h === a.id && aw === b.id) || (h === b.id && aw === a.id)
+        })
+        if (!games.length) continue
+        let aWins = 0, bWins = 0, ties = 0, aPf = 0, bPf = 0
+        games.forEach(m => {
+          const aIsHome = m.home_team?.manager_id === a.id
+          const aScore = aIsHome ? m.home_score : m.away_score
+          const bScore = aIsHome ? m.away_score : m.home_score
+          aPf += aScore; bPf += bScore
+          if (aScore > bScore) aWins++
+          else if (bScore > aScore) bWins++
+          else ties++
+        })
+        managerH2HRows.push({
+          manager_a: a.name, manager_b: b.name,
+          a_wins: aWins, b_wins: bWins, ties, games: games.length,
+          a_pf: parseFloat(aPf.toFixed(2)), b_pf: parseFloat(bPf.toFixed(2)),
+          a_avg_pf: parseFloat((aPf / games.length).toFixed(2)), b_avg_pf: parseFloat((bPf / games.length).toFixed(2)),
+        })
+      }
+    }
+
+    // 8. Yearly schedule (every matchup, every season, including playoffs)
+    const yearlyScheduleRows = allMatchups.map(m => {
+      const homeScore = m.home_score, awayScore = m.away_score
+      const homeMgr = managerNameById[m.home_team?.manager_id] || ''
+      const awayMgr = managerNameById[m.away_team?.manager_id] || ''
+      return {
+        year: m.season?.year, week: m.week,
+        game_type: m.is_mol_bowl ? 'Mol Bowl' : m.is_consolation ? 'Consolation' : m.is_playoff ? 'Playoff' : 'Regular Season',
+        home_manager: homeMgr, home_team: m.home_team?.team_name || '', home_score: homeScore,
+        away_manager: awayMgr, away_team: m.away_team?.team_name || '', away_score: awayScore,
+        winner: homeScore > awayScore ? homeMgr : awayScore > homeScore ? awayMgr : 'Tie',
+      }
+    }).sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || (a.week ?? 0) - (b.week ?? 0))
+
     return {
       draftPicks: { label: 'Draft Picks (raw, every pick ever made)', rows: draftPicksRows },
       draftTrends: { label: 'Draft Trends & History by Manager', rows: draftTrendsRows },
       allTimeTeams: { label: 'All-Time Teams (every team season)', rows: allTimeTeamsRows },
       managerCareer: { label: 'Manager Career Stats', rows: managerCareerRows },
+      managerH2H: { label: 'Manager Head-to-Head Records', rows: managerH2HRows },
       seasonStandings: { label: 'Yearly Season Standings', rows: seasonStandingsRows },
+      yearlySchedule: { label: 'Yearly Schedule (every matchup, every season)', rows: yearlyScheduleRows },
       champions: { label: 'Champions History', rows: championsRows },
     }
-  }, [draftPicks, teams, managers, seasons, teamStats])
+  }, [draftPicks, teams, managers, seasons, teamStats, allMatchups])
 
   const selectedKeys = Object.keys(selected).filter(k => selected[k])
   const allSelected = selectedKeys.length === Object.keys(selected).length
