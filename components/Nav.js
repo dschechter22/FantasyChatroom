@@ -20,6 +20,7 @@ const NAV_LINKS = [
   ['All-Time Teams', '/all-time-teams'],
   ['Players', '/players'],
   ['Stats', '/stats'],
+  ['Export', '/export'],
 ]
 
 export default function Nav() {
