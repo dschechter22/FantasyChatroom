@@ -4,21 +4,27 @@ import { usePathname } from 'next/navigation'
 import { useLayout } from '../hooks/LayoutContext'
 
 const NAV_LINKS = [
+  // Live / current
   ['2026-27', '/current-season'],
-  ['Drafts', '/drafts'],
   ['Sportsbook', '/sportsbook'],
-  ['Champions', '/champions'],
+  // Draft
+  ['Drafts', '/drafts'],
+  // Team & manager stats
   ['Standings', '/standings'],
-  ['Graphs', '/graphs'],
-  ['H2H', '/h2h'],
   ['Season', '/season'],
-  ['Rivalries', '/rivalries'],
   ['Managers', '/managers'],
-  ['Writeups', '/writeups'],
+  ['All-Time Teams', '/all-time-teams'],
+  ['H2H', '/h2h'],
+  ['Rivalries', '/rivalries'],
+  ['Champions', '/champions'],
+  // Analytics
   ['Power Rankings', '/power-rankings'],
   ['LJ Index', '/lj-index'],
-  ['All-Time Teams', '/all-time-teams'],
+  ['Graphs', '/graphs'],
+  // Content
+  ['Writeups', '/writeups'],
   ['Players', '/players'],
+  // Meta / tools
   ['Stats', '/stats'],
   ['Export', '/export'],
 ]

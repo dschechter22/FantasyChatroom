@@ -7,15 +7,15 @@ export default function HomePage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg } = useLayout()
 
   const cards = [
-    { label: 'Champions', href: '/champions', desc: 'Hall of fame, year by year' },
     { label: 'Standings', href: '/standings', desc: 'All-time career records' },
-    { label: 'H2H', href: '/h2h', desc: 'Head-to-head matchup history' },
     { label: 'Season', href: '/season', desc: 'Browse any season' },
-    { label: 'All-Time Teams', href: '/all-time-teams', desc: 'Every team season ranked' },
-    { label: 'LJ Index', href: '/lj-index', desc: 'Luck vs skill scatter plot' },
-    { label: 'Rivalries', href: '/rivalries', desc: 'The great feuds' },
     { label: 'Managers', href: '/managers', desc: 'Career profiles' },
+    { label: 'All-Time Teams', href: '/all-time-teams', desc: 'Every team season ranked' },
+    { label: 'H2H', href: '/h2h', desc: 'Head-to-head matchup history' },
+    { label: 'Rivalries', href: '/rivalries', desc: 'The great feuds' },
+    { label: 'Champions', href: '/champions', desc: 'Hall of fame, year by year' },
     { label: 'Power Rankings', href: '/power-rankings', desc: 'Weekly power rankings' },
+    { label: 'LJ Index', href: '/lj-index', desc: 'Luck vs skill scatter plot' },
   ]
 
   return (
