@@ -4,10 +4,11 @@ import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import {
-  DEFAULT_REG_WEEKS, PLAYOFF_SPOTS, BYE_SPOTS,
+  PLAYOFF_SPOTS, BYE_SPOTS,
   isPlayed, buildRatings, makeLine, simulateFutures,
   projectedStarterPoints, fmtOdds, fmtSpread,
 } from '../../lib/predictions'
+import { REG_SEASON_WEEKS, resolveSchedule } from '../../lib/schedule'
 export const dynamic = 'force-dynamic'
 
 const ADMIN_PIN = '2910'
@@ -86,8 +87,31 @@ export default function PredictionsPage() {
   const isCurrentSeason = seasons.length > 0 && selectedYear === seasons[0].year
   const maxWeekWithRows = matchups.length ? Math.max(...matchups.map(m => m.week)) : 0
   const regWeeks = isCurrentSeason
-    ? Math.max(maxWeekWithRows, DEFAULT_REG_WEEKS)
-    : (maxWeekWithRows || DEFAULT_REG_WEEKS)
+    ? Math.max(maxWeekWithRows, REG_SEASON_WEEKS)
+    : (maxWeekWithRows || REG_SEASON_WEEKS)
+
+  const fixedSchedule = useMemo(
+    () => (isCurrentSeason && teams.length ? resolveSchedule(teams) : { games: [], unresolved: [] }),
+    [teams, isCurrentSeason],
+  )
+
+  // Played games come from the database; the league's fixed fixture list fills
+  // in any week that hasn't synced yet, so future weeks still get a board.
+  const fixtures = useMemo(() => {
+    const weeksWithRows = new Set(matchups.map(m => m.week))
+    const out = matchups.map(m => ({
+      key: m.id,
+      week: m.week,
+      homeId: m.home_team?.id,
+      awayId: m.away_team?.id,
+      m,
+    }))
+    fixedSchedule.games.forEach(g => {
+      if (weeksWithRows.has(g.week)) return
+      out.push({ key: `s-${g.week}-${g.homeId}-${g.awayId}`, ...g, m: null })
+    })
+    return out.filter(f => f.homeId && f.awayId)
+  }, [matchups, fixedSchedule])
 
   // Default to the first week that hasn't been played.
   useEffect(() => {
@@ -109,15 +133,15 @@ export default function PredictionsPage() {
 
   const weekGames = useMemo(() => {
     if (!ratings) return []
-    return matchups
-      .filter(m => m.week === week)
-      .map(m => {
-        const a = ratings.byId[m.home_team?.id]
-        const b = ratings.byId[m.away_team?.id]
+    return fixtures
+      .filter(f => f.week === week)
+      .map(f => {
+        const a = ratings.byId[f.homeId]
+        const b = ratings.byId[f.awayId]
         if (!a || !b) return null
         const line = makeLine(a, b)
-        const played = isPlayed(m)
-        const sA = m.home_score, sB = m.away_score
+        const played = !!f.m && isPlayed(f.m)
+        const sA = f.m?.home_score, sB = f.m?.away_score
         let grade = null
         if (played) {
           const atsMargin = sA + line.spread - sB
@@ -130,22 +154,21 @@ export default function PredictionsPage() {
             favHit: (line.spread < 0 && sA > sB) || (line.spread > 0 && sB > sA),
           }
         }
-        return { m, a, b, line, played, grade }
+        return { key: f.key, a, b, line, played, grade }
       })
       .filter(Boolean)
       .sort((x, y) => (y.line.projA + y.line.projB) - (x.line.projA + x.line.projB))
-  }, [matchups, week, ratings])
+  }, [fixtures, week, ratings])
 
   // Run the season simulation off the render path — it's ~10k full seasons.
   useEffect(() => {
     if (!ratings || !hasSignal || !teams.length) { setFutures(null); return }
     setSimming(true)
-    const weeksWithRows = new Set(matchups.map(m => m.week))
+    const remaining = fixtures.filter(f => f.week >= week && f.week <= regWeeks)
+    const covered = new Set(remaining.map(f => f.week))
     let randomWeeks = 0
-    for (let w = week; w <= regWeeks; w++) if (!weeksWithRows.has(w)) randomWeeks++
-    const schedule = matchups
-      .filter(m => m.week >= week && m.home_team?.id && m.away_team?.id)
-      .map(m => ({ homeId: m.home_team.id, awayId: m.away_team.id }))
+    for (let w = week; w <= regWeeks; w++) if (!covered.has(w)) randomWeeks++
+    const schedule = remaining.map(f => ({ homeId: f.homeId, awayId: f.awayId }))
 
     const n = ratings.rows.length
     const id = setTimeout(() => {
@@ -158,7 +181,7 @@ export default function PredictionsPage() {
       setSimming(false)
     }, 0)
     return () => clearTimeout(id)
-  }, [ratings, hasSignal, matchups, week, regWeeks, teams.length])
+  }, [ratings, hasSignal, fixtures, week, regWeeks, teams.length])
 
   const futuresRows = useMemo(() => {
     if (!futures || !ratings) return []
@@ -328,7 +351,14 @@ export default function PredictionsPage() {
           <>
             {weekGames.length === 0 && (
               <p style={{ color: muted, fontSize: '13px' }}>
-                No Week {week} matchups on file. The schedule loads from ESPN as the season syncs.
+                No Week {week} matchups for {seasonLabel(selectedYear)}.
+              </p>
+            )}
+
+            {fixedSchedule.unresolved.length > 0 && (
+              <p style={{ color: red, fontSize: '12px', marginBottom: '20px', lineHeight: 1.6 }}>
+                The fixed schedule couldn't match {fixedSchedule.unresolved.join(', ')} to a manager on this
+                season's roster, so those games fall back to the database. Check the names in lib/schedule.js.
               </p>
             )}
 
@@ -365,10 +395,10 @@ export default function PredictionsPage() {
                 {flash.msg && <p style={{ fontSize: '12px', color: flash.ok ? green : red, marginBottom: '12px' }}>{flash.msg}</p>}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '48px' }}>
-                  {weekGames.map(({ m, a, b, line, played, grade }) => {
+                  {weekGames.map(({ key, a, b, line, played, grade }) => {
                     const favA = line.spread < 0
                     return (
-                      <div key={m.id} style={{ background: cardBg, border: `1px solid ${border}` }}>
+                      <div key={key} style={{ background: cardBg, border: `1px solid ${border}` }}>
                         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}` }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                             <div>
