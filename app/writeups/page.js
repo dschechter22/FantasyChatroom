@@ -74,6 +74,13 @@ export default function WriteupsPage() {
   const [copiedId, setCopiedId] = useState(null)
   const [mounted, setMounted] = useState(false)
 
+  // admin lock
+  const [adminUnlocked, setAdminUnlocked] = useState(false)
+  const [adminModal, setAdminModal] = useState(null) // { writeupId } — set when opening a locked writeup
+  const [adminPinInput, setAdminPinInput] = useState('')
+  const [adminPinError, setAdminPinError] = useState('')
+  const [lockError, setLockError] = useState('')
+
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => { fetchWriteups() }, [])
   useEffect(() => { if (expandedId) fetchComments(expandedId) }, [expandedId])
@@ -82,7 +89,7 @@ export default function WriteupsPage() {
   useEffect(() => {
     if (!mounted || !writeups.length) return
     const hash = window.location.hash.replace('#', '')
-    if (hash && writeups.some(w => w.id === hash)) {
+    if (hash && writeups.some(w => w.id === hash && !w.is_locked)) {
       setExpandedId(hash)
       setTimeout(() => {
         document.getElementById(`writeup-${hash}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -165,6 +172,20 @@ export default function WriteupsPage() {
     if (error) return setCommentErrors(e => ({ ...e, [writeupId]: 'Failed to post.' }))
     setCommentForms(f => ({ ...f, [writeupId]: { author_name: cf.author_name, content: '', pin: '' } }))
     fetchComments(writeupId)
+  }
+
+  const submitAdminPin = () => {
+    if (adminPinInput !== ADMIN_PIN) return setAdminPinError('Incorrect admin code.')
+    setAdminUnlocked(true)
+    if (adminModal?.writeupId) setExpandedId(adminModal.writeupId)
+    setAdminModal(null); setAdminPinInput(''); setAdminPinError('')
+  }
+
+  const toggleLock = async (w) => {
+    setLockError('')
+    const { error } = await supabase.from('writeups').update({ is_locked: !w.is_locked }).eq('id', w.id)
+    if (error) return setLockError('Could not save — the writeups table needs an is_locked boolean column.')
+    fetchWriteups()
   }
 
   const handleCommentPinSubmit = async () => {
@@ -300,6 +321,27 @@ export default function WriteupsPage() {
         </>
       )}
 
+      {/* Admin code modal */}
+      {adminModal && (
+        <>
+          <div onClick={() => { setAdminModal(null); setAdminPinInput(''); setAdminPinError('') }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '90vw' : '360px' }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, marginBottom: '8px' }}>
+              {adminModal.writeupId ? '🔒 Locked Writeup' : 'Admin Access'}
+            </h3>
+            <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>
+              {adminModal.writeupId ? 'Enter the admin code to open this writeup.' : 'Enter the admin code to lock or unlock writeups.'}
+            </p>
+            <input type="password" placeholder="Admin code" value={adminPinInput} onChange={e => { setAdminPinInput(e.target.value); setAdminPinError('') }} onKeyDown={e => e.key === 'Enter' && submitAdminPin()} style={{ ...inputStyle, marginBottom: '8px' }} />
+            {adminPinError && <p style={{ fontSize: '12px', color: red, marginBottom: '8px' }}>{adminPinError}</p>}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <button onClick={submitAdminPin} style={{ background: text, color: bg, border: 'none', padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", fontWeight: '500', flex: 1 }}>Unlock</button>
+              <button onClick={() => { setAdminModal(null); setAdminPinInput(''); setAdminPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}>Cancel</button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Comment PIN modal */}
       {commentPinModal && (
         <>
@@ -321,9 +363,14 @@ export default function WriteupsPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '8px', flexWrap: 'wrap', gap: '12px' }}>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', letterSpacing: '-0.02em' }}>Writeups</h1>
           {view === 'feed' && (
-            <button onClick={() => { setView('new'); setEditTarget(null); setForm({ season_year: 2026, week: '', type: 'power_rankings', title: '', content: '', author_name: '', pin: '' }); setFormError(''); setFormSuccess('') }} style={{ background: text, color: bg, border: 'none', padding: '10px 20px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', marginBottom: '8px' }}>
-              + New Writeup
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+              {!adminUnlocked
+                ? <button onClick={() => { setAdminModal({}); setAdminPinInput(''); setAdminPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Admin</button>
+                : <button onClick={() => setAdminUnlocked(false)} style={{ background: 'none', border: `1px solid ${gold}`, color: gold, padding: '10px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Admin ✓</button>}
+              <button onClick={() => { setView('new'); setEditTarget(null); setForm({ season_year: 2026, week: '', type: 'power_rankings', title: '', content: '', author_name: '', pin: '' }); setFormError(''); setFormSuccess('') }} style={{ background: text, color: bg, border: 'none', padding: '10px 20px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>
+                + New Writeup
+              </button>
+            </div>
           )}
           {(view === 'new' || view === 'edit') && (
             <button onClick={() => { setView('feed'); setEditTarget(null); setFormError(''); setFormSuccess('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 16px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", marginBottom: '8px' }}>← Back</button>
@@ -348,6 +395,8 @@ export default function WriteupsPage() {
               </select>
             </div>
 
+            {lockError && <p style={{ fontSize: '12px', color: red, marginBottom: '16px' }}>{lockError}</p>}
+
             {loading && <p style={{ color: muted, fontSize: '14px' }}>Loading...</p>}
 
             {!loading && filteredWriteups.length === 0 && (
@@ -359,23 +408,43 @@ export default function WriteupsPage() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
               {filteredWriteups.map((w) => {
-                const isExpanded = expandedId === w.id
+                const sealed = !!w.is_locked && !adminUnlocked
+                const isExpanded = expandedId === w.id && !sealed
                 const wComments = comments[w.id] || []
                 const cf = commentForms[w.id] || { author_name: '', content: '', pin: '' }
                 return (
                   <div key={w.id} id={`writeup-${w.id}`} style={{ background: cardBg, border: `1px solid ${border}` }}>
-                    <div onClick={() => setExpandedId(isExpanded ? null : w.id)} style={{ padding: effectiveMobile ? '16px' : '20px 24px', cursor: 'pointer' }}>
+                    <div
+                      onClick={() => {
+                        if (sealed) { setAdminModal({ writeupId: w.id }); setAdminPinInput(''); setAdminPinError(''); return }
+                        setExpandedId(isExpanded ? null : w.id)
+                      }}
+                      style={{ padding: effectiveMobile ? '16px' : '20px 24px', cursor: 'pointer' }}
+                    >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: typeColor(w.type), border: `1px solid ${typeColor(w.type)}`, padding: '2px 6px', whiteSpace: 'nowrap' }}>{TYPE_LABELS[w.type] || w.type}</span>
                             <span style={{ fontSize: '11px', color: muted }}>{w.season_year}{weekLabel(w.week)}</span>
                             <span style={{ fontSize: '11px', color: muted }}>· {w.author_name}</span>
+                            {w.is_locked && (
+                              <span style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: gold, border: `1px solid ${gold}`, padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                                🔒 {adminUnlocked ? 'Locked' : 'Admin only'}
+                              </span>
+                            )}
                           </div>
                           <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '17px' : '20px', color: text, fontWeight: '400' }}>{w.title}</h3>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                           {wComments.length > 0 && <span style={{ fontSize: '11px', color: muted }}>{wComments.length} 💬</span>}
+                          {adminUnlocked && (
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleLock(w) }}
+                              style={{ background: 'none', border: `1px solid ${w.is_locked ? gold : border}`, color: w.is_locked ? gold : muted, padding: '4px 10px', cursor: 'pointer', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap' }}
+                            >
+                              {w.is_locked ? 'Unlock' : 'Lock'}
+                            </button>
+                          )}
                           <button
                             onClick={e => {
                               e.stopPropagation()
@@ -389,7 +458,7 @@ export default function WriteupsPage() {
                           >
                             {copiedId === w.id ? '✓' : '🔗'}
                           </button>
-                          <span style={{ fontSize: '11px', color: muted }}>{isExpanded ? '▲' : '▼'}</span>
+                          <span style={{ fontSize: '11px', color: sealed ? gold : muted }}>{sealed ? '🔒' : isExpanded ? '▲' : '▼'}</span>
                         </div>
                       </div>
                     </div>
