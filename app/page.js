@@ -16,6 +16,7 @@ export default function HomePage() {
     { label: 'Champions', href: '/champions', desc: 'Hall of fame, year by year' },
     { label: 'Power Rankings', href: '/power-rankings', desc: 'Weekly power rankings' },
     { label: 'LJ Index', href: '/lj-index', desc: 'Luck vs skill scatter plot' },
+    { label: 'Predictions', href: '/predictions', desc: 'Weekly lines & season futures' },
   ]
 
   return (

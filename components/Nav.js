@@ -7,6 +7,7 @@ const NAV_LINKS = [
   // Live / current
   ['2026-27', '/current-season'],
   ['Sportsbook', '/sportsbook'],
+  ['Predictions', '/predictions'],
   // Draft
   ['Drafts', '/drafts'],
   // Team & manager stats
