@@ -6,7 +6,7 @@ import { useLayout } from '../../hooks/useLayout'
 import {
   PLAYOFF_SPOTS, BYE_SPOTS,
   isPlayed, buildRatings, makeLine, simulateFutures,
-  projectedStarterPoints, fmtOdds, fmtSpread,
+  projectedStarterPoints, fmtOdds, fmtSpread, leagueBaseline,
 } from '../../lib/predictions'
 import { REG_SEASON_WEEKS, resolveSchedule } from '../../lib/schedule'
 export const dynamic = 'force-dynamic'
@@ -26,6 +26,7 @@ export default function PredictionsPage() {
   const [teams, setTeams] = useState([])
   const [matchups, setMatchups] = useState([])
   const [rosterProj, setRosterProj] = useState({})
+  const [baseline, setBaseline] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const [tab, setTab] = useState('week')
@@ -69,6 +70,9 @@ export default function PredictionsPage() {
       const t = (tRes.data || []).filter(x => x.season?.year === selectedYear)
       setTeams(t)
       setMatchups((mRes.data || []).filter(x => x.season?.year === selectedYear))
+      // Earlier seasons set the scoring scale for this one without saying
+      // anything about any individual team.
+      setBaseline(leagueBaseline((mRes.data || []).filter(x => x.season?.year < selectedYear)))
 
       if (t.length) {
         const { data } = await supabase.from('roster_entries')
@@ -126,8 +130,8 @@ export default function PredictionsPage() {
   // Everything on the page is "entering week N" — ratings use games before it.
   const ratings = useMemo(() => {
     if (!teams.length) return null
-    return buildRatings({ teams, matchups, throughWeek: week - 1, rosterProj })
-  }, [teams, matchups, week, rosterProj])
+    return buildRatings({ teams, matchups, throughWeek: week - 1, rosterProj, baseline })
+  }, [teams, matchups, week, rosterProj, baseline])
 
   const hasSignal = !!ratings && ratings.rows.some(r => r.rating > 0)
 
@@ -195,10 +199,19 @@ export default function PredictionsPage() {
     if (weekGames.length < 2) return []
     const byCloseness = [...weekGames].sort((x, y) => Math.abs(x.line.spread) - Math.abs(y.line.spread))
     const byTotal = [...weekGames].sort((x, y) => y.line.total - x.line.total)
+    const ranked = weekGames.every(x => x.a.powerRank && x.b.powerRank)
     const byPower = [...weekGames].sort((x, y) => (x.a.powerRank + x.b.powerRank) - (y.a.powerRank + y.b.powerRank))
     const g = byPower[0], close = byCloseness[0], blowout = byCloseness[byCloseness.length - 1], high = byTotal[0]
     const dogPick = blowout.line.spread < 0 ? blowout.b : blowout.a
     const dogOdds = blowout.line.spread < 0 ? blowout.line.mlB : blowout.line.mlA
+    // Openers are all pick'ems off a level field, so the angles that rank one
+    // game over another have nothing to work with yet.
+    if (!ranked) {
+      return [
+        ['Even Field', 'Every game a coin flip', 'No results on the board yet — nothing separates these teams', gold],
+        ['Shootout Watch', `${high.a.name} vs ${high.b.name}`, `Highest total on the board at ${high.line.total}`, green],
+      ]
+    }
     return [
       ['Game of the Week', `${g.a.name} vs ${g.b.name}`, `Power #${g.a.powerRank} meets #${g.b.powerRank} · total ${g.line.total}`, gold],
       ['Coin Flip', `${close.a.name} vs ${close.b.name}`, `Just ${Math.abs(close.line.spread)} points apart — tightest line of the week`, blue],
@@ -406,7 +419,7 @@ export default function PredictionsPage() {
                                 {a.name} <span style={{ color: muted, fontSize: '13px' }}>vs</span> {b.name}
                               </div>
                               <div style={{ fontSize: '11px', color: muted, marginTop: '3px' }}>
-                                {a.wins}-{a.losses} · PWR #{a.powerRank} &nbsp;|&nbsp; {b.wins}-{b.losses} · PWR #{b.powerRank}
+                                {a.wins}-{a.losses}{a.powerRank ? ` · PWR #${a.powerRank}` : ''} &nbsp;|&nbsp; {b.wins}-{b.losses}{b.powerRank ? ` · PWR #${b.powerRank}` : ''}
                               </div>
                             </div>
                             <div style={{ textAlign: 'right' }}>
@@ -613,7 +626,7 @@ export default function PredictionsPage() {
                     <th style={hStyle('center')}>W-L</th>
                     <th style={hStyle()}>Power</th>
                     <th style={hStyle()}>Avg PPG</th>
-                    <th style={hStyle()}>Roster Proj</th>
+                    <th style={hStyle()}>Roster PPG</th>
                     <th style={hStyle()}>Rating</th>
                     <th style={hStyle()}>Volatility</th>
                     <th style={hStyle()}>All-Play</th>
@@ -623,7 +636,7 @@ export default function PredictionsPage() {
                 <tbody>
                   {ratings.rows.map((r, i) => (
                     <tr key={r.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
-                      <td style={{ ...cStyle('center'), fontWeight: '700', color: i === 0 ? gold : muted }}>{r.powerRank}</td>
+                      <td style={{ ...cStyle('center'), fontWeight: '700', color: i === 0 ? gold : muted }}>{r.powerRank ?? '—'}</td>
                       <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
                         {r.name}
                         <div style={{ fontSize: '11px', color: muted, fontFamily: "'Inter', sans-serif" }}>{r.teamName}</div>

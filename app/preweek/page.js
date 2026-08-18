@@ -4,7 +4,7 @@ import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import {
-  isPlayed, buildRatings, makeLine,
+  isPlayed, buildRatings, makeLine, leagueBaseline,
   projectedStarterPoints, fmtOdds, fmtSpread,
 } from '../../lib/predictions'
 import { REG_SEASON_WEEKS, buildFixtures } from '../../lib/schedule'
@@ -30,6 +30,7 @@ export default function PreweekPage() {
   const [matchups, setMatchups] = useState([])
   const [allMatchups, setAllMatchups] = useState([])
   const [rosterProj, setRosterProj] = useState({})
+  const [baseline, setBaseline] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const [week, setWeek] = useState(1)
@@ -78,6 +79,9 @@ export default function PreweekPage() {
       const t = (tRes.data || []).filter(x => x.season?.year === selectedYear)
       setTeams(t)
       setMatchups((mRes.data || []).filter(x => x.season?.year === selectedYear))
+      // Earlier seasons set the scoring scale for this one without saying
+      // anything about any individual team.
+      setBaseline(leagueBaseline((mRes.data || []).filter(x => x.season?.year < selectedYear)))
       if (t.length) {
         const { data } = await supabase.from('roster_entries')
           .select('team_id, avg_pts, player:player_id(position)')
@@ -111,8 +115,8 @@ export default function PreweekPage() {
   )
 
   const ratings = useMemo(
-    () => (teams.length ? buildRatings({ teams, matchups, throughWeek: week - 1, rosterProj }) : null),
-    [teams, matchups, week, rosterProj],
+    () => (teams.length ? buildRatings({ teams, matchups, throughWeek: week - 1, rosterProj, baseline }) : null),
+    [teams, matchups, week, rosterProj, baseline],
   )
 
   const hasSignal = !!ratings && ratings.rows.some(r => r.rating > 0)
@@ -223,7 +227,7 @@ export default function PreweekPage() {
 
         {!loading && !hasSignal && (
           <p style={{ color: muted, fontSize: '13px' }}>
-            No results or roster data yet for {seasonLabel(selectedYear)} — stakes open up once there&rsquo;s something to model.
+            No teams on file for {seasonLabel(selectedYear)} yet.
           </p>
         )}
 
@@ -253,9 +257,9 @@ export default function PreweekPage() {
                           {c.a.name} <span style={{ fontSize: '13px', color: muted, fontFamily: "'Inter', sans-serif" }}>vs</span> {c.b.name}
                         </div>
                         <div style={{ fontSize: '11px', color: muted }}>
-                          {c.a.wins}-{c.a.losses} · PWR #{c.a.powerRank}
+                          {c.a.wins}-{c.a.losses}{c.a.powerRank ? ` · PWR #${c.a.powerRank}` : ''}
                           <span style={{ margin: '0 8px' }}>|</span>
-                          {c.b.wins}-{c.b.losses} · PWR #{c.b.powerRank}
+                          {c.b.wins}-{c.b.losses}{c.b.powerRank ? ` · PWR #${c.b.powerRank}` : ''}
                         </div>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
                           <Badge status={c.aStatus} who={c.a.name} />
@@ -345,7 +349,9 @@ export default function PreweekPage() {
                       <div>
                         <div style={{ ...micro, marginBottom: '4px' }}>Spread</div>
                         <div style={{ fontSize: '13px' }}>
-                          {c.line.spread <= 0 ? c.a.name : c.b.name} {fmtSpread(c.line.spread <= 0 ? c.line.spread : -c.line.spread)}
+                          {c.line.spread === 0
+                            ? 'PK'
+                            : `${c.line.spread < 0 ? c.a.name : c.b.name} ${fmtSpread(-Math.abs(c.line.spread))}`}
                           <span style={{ color: muted, fontSize: '11px' }}> -110</span>
                         </div>
                       </div>
@@ -372,8 +378,9 @@ export default function PreweekPage() {
             </div>
             <p style={{ fontSize: '11px', color: muted, marginTop: '12px', lineHeight: 1.7, maxWidth: '820px' }}>
               Stakes runs the rest of the season {SIMS.toLocaleString()} times and measures how far apart the two outcomes
-              leave the teams playing — playoff odds in full, bye odds at half weight. The scale is calibrated so an
-              opening-week game sits near 50 and a final-week game both teams must win to survive reaches 99.
+              leave the teams playing — playoff odds in full, bye odds at half weight. Only games already on the board
+              feed it, so in Week 1 every team is the same team and all five openers sit at 50; the field separates from
+              there. The scale is calibrated so a final-week game both teams must win to survive reaches 99.
             </p>
           </div>
         )}
