@@ -4,6 +4,7 @@ import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { projectedWeekLineup } from '../../lib/predictions'
+import { resolveSchedule } from '../../lib/schedule'
 export const dynamic = 'force-dynamic'
 
 const SEASON = '2026-27'
@@ -42,7 +43,20 @@ export default function CurrentSeasonPage() {
   const [rosterTeamId, setRosterTeamId] = useState(null)
   const [rosterWeek, setRosterWeek] = useState(1)
 
+  // ── this week (real NFL games) state ──
+  const [nflGames, setNflGames] = useState([])
+  const [nflWeek, setNflWeek] = useState(null)
+  const [nflLoading, setNflLoading] = useState(true)
+
   useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => {
+    fetch('/api/nfl-schedule')
+      .then(res => res.json())
+      .then(data => { setNflGames(data.games || []); setNflWeek(data.week ?? null) })
+      .catch(() => {})
+      .finally(() => setNflLoading(false))
+  }, [])
 
   useEffect(() => {
     supabase.from('matchups')
@@ -80,6 +94,27 @@ export default function CurrentSeasonPage() {
 
   // ── computed stats ──
   const weeks = [...new Set(matchups.map(m => m.week))].sort((a, b) => a - b)
+
+  // This week's fantasy matchups: real matchup rows once they exist, the
+  // fixed schedule filling in for weeks that haven't synced yet -- same
+  // fallback pattern the scoreboard page uses. "This week" follows whatever
+  // ESPN's real NFL week is, so it stays in sync without its own date math.
+  const thisWeekMatchups = (() => {
+    const wk = nflWeek || (weeks.length ? Math.max(...weeks) : 1)
+    const real = matchups.filter(m => m.week === wk)
+    const realPairs = new Set(real.map(m => `${m.home_team?.id}-${m.away_team?.id}`))
+    const fixed = teams.length ? resolveSchedule(teams).games : []
+    const fromFixed = fixed
+      .filter(g => g.week === wk && !realPairs.has(`${g.homeId}-${g.awayId}`))
+      .map(g => ({
+        id: `fixed-${g.homeId}-${g.awayId}`,
+        home_team: teams.find(t => t.id === g.homeId),
+        away_team: teams.find(t => t.id === g.awayId),
+        home_score: null, away_score: null,
+      }))
+      .filter(g => g.home_team && g.away_team)
+    return { week: wk, games: [...real, ...fromFixed] }
+  })()
 
   const computeTeamData = () => {
     const td = {}
@@ -332,6 +367,171 @@ export default function CurrentSeasonPage() {
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px,6vw,72px)', fontWeight: '400', letterSpacing: '-0.02em', marginBottom: '4px' }}>2026-27 Season</h1>
         <p style={{ color: muted, fontSize: '13px', marginBottom: '56px' }}>Live dashboard — updates as scores come in</p>
 
+        {/* ── SECTION: STANDINGS ── */}
+        {standings.length > 0 && (
+          <div style={{ marginBottom: '64px' }}>
+            <SectionLabel id="standings">Standings</SectionLabel>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                <thead>
+                  <tr style={{ background: cardBg }}>
+                    <th style={hStyle('center')}>Rk</th>
+                    <th style={hStyle()}>Manager</th>
+                    <th style={hStyle('center')}>W</th>
+                    <th style={hStyle('center')}>L</th>
+                    <th style={hStyle('right')}>PF</th>
+                    <th style={hStyle('right')}>PA</th>
+                    <th style={hStyle('right')}>Diff</th>
+                    <th style={hStyle('right')}>Avg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.map((r, i) => {
+                    const diff = parseFloat((r.pf - r.pa).toFixed(2))
+                    const playoff = i < 6
+                    const bubble = i === 5
+                    return (
+                      <tr key={r.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                        <td style={{ ...cStyle('center'), color: playoff ? (bubble ? gold : green) : muted, fontWeight: '600' }}>{ordinal(i + 1)}</td>
+                        <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            {r.name}
+                            {playoff && !bubble && <span style={{ fontSize: '9px', color: green, border: `1px solid ${green}`, padding: '1px 4px', letterSpacing: '0.1em' }}>IN</span>}
+                            {bubble && <span style={{ fontSize: '9px', color: gold, border: `1px solid ${gold}`, padding: '1px 4px', letterSpacing: '0.1em' }}>BUBBLE</span>}
+                          </span>
+                        </td>
+                        <td style={cStyle('center')}>{r.wins}</td>
+                        <td style={cStyle('center')}>{r.losses}</td>
+                        <td style={cStyle('right')}>{r.pf.toFixed(1)}</td>
+                        <td style={cStyle('right')}>{r.pa.toFixed(1)}</td>
+                        <td style={{ ...cStyle('right'), color: diff >= 0 ? green : red }}>{diff >= 0 ? '+' : ''}{diff.toFixed(1)}</td>
+                        <td style={cStyle('right')}>{r.avgScore.toFixed(1)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── SECTION: THIS WEEK'S MATCHUPS ── */}
+        {thisWeekMatchups.games.length > 0 && (
+          <div style={{ marginBottom: '64px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+              <SectionLabel>Week {thisWeekMatchups.week} Matchups</SectionLabel>
+              <a href="/scoreboard" style={{ fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textDecoration: 'none', border: `1px solid ${border}`, padding: '6px 14px' }}>
+                Live Scoreboard →
+              </a>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', background: border }}>
+              {thisWeekMatchups.games.map(g => {
+                const played = (g.home_score ?? 0) > 0 || (g.away_score ?? 0) > 0
+                return (
+                  <div key={g.id} style={{ background: cardBg, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: text }}>
+                      {g.home_team?.manager?.name || g.home_team?.team_name} <span style={{ color: muted, fontSize: '12px' }}>vs</span> {g.away_team?.manager?.name || g.away_team?.team_name}
+                    </span>
+                    <span style={{ fontSize: '13px', color: played ? text : muted, fontWeight: played ? '600' : '400' }}>
+                      {played ? `${g.home_score?.toFixed(1)} – ${g.away_score?.toFixed(1)}` : 'Not yet played'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── SECTION: BETTING LINES ── */}
+        {sbGames.length > 0 && (
+          <div style={{ marginBottom: '64px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+              <SectionLabel>Week {sbGames[0]?.week} Betting Lines</SectionLabel>
+              <a href="/sportsbook" style={{ fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textDecoration: 'none', border: `1px solid ${border}`, padding: '6px 14px' }}>
+                Full Sportsbook →
+              </a>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', background: border }}>
+              {sbGames.map(game => (
+                <div key={game.id} style={{ background: cardBg, padding: '16px 20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: text }}>
+                      {game.team_a} vs {game.team_b}
+                    </span>
+                    {game.is_locked && (
+                      <span style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, border: `1px solid ${border}`, padding: '2px 6px' }}>Locked</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                    {game.spread != null && (
+                      <div>
+                        <div style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Spread</div>
+                        <div style={{ fontSize: '13px', color: text }}>
+                          {game.team_a} {game.spread > 0 ? `+${game.spread}` : game.spread}
+                          <span style={{ color: muted, fontSize: '11px' }}> (-110)</span>
+                        </div>
+                        <div style={{ fontSize: '13px', color: text }}>
+                          {game.team_b} {game.spread < 0 ? `+${Math.abs(game.spread)}` : `-${game.spread}`}
+                          <span style={{ color: muted, fontSize: '11px' }}> (-110)</span>
+                        </div>
+                      </div>
+                    )}
+                    {game.over_under != null && (
+                      <div>
+                        <div style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Over / Under</div>
+                        <div style={{ fontSize: '13px', color: text }}>O {game.over_under}<span style={{ color: muted, fontSize: '11px' }}> (-110)</span></div>
+                        <div style={{ fontSize: '13px', color: text }}>U {game.over_under}<span style={{ color: muted, fontSize: '11px' }}> (-110)</span></div>
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Moneyline</div>
+                      <div style={{ fontSize: '13px', color: text }}>
+                        {game.team_a} <span style={{ color: game.ml_a > 0 ? green : red, fontWeight: '500' }}>{game.ml_a > 0 ? `+${game.ml_a}` : game.ml_a}</span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: text }}>
+                        {game.team_b} <span style={{ color: game.ml_b > 0 ? green : red, fontWeight: '500' }}>{game.ml_b > 0 ? `+${game.ml_b}` : game.ml_b}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── SECTION: NFL GAMES THIS WEEK ── */}
+        {(nflLoading || nflGames.length > 0) && (
+          <div style={{ marginBottom: '64px' }}>
+            <SectionLabel>{nflWeek ? `NFL Week ${nflWeek}` : 'NFL Games This Week'}</SectionLabel>
+            {nflLoading ? (
+              <p style={{ color: muted, fontSize: '13px' }}>Loading this week's NFL schedule…</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', background: border }}>
+                {nflGames.map(g => {
+                  const kickoff = g.date ? new Date(g.date) : null
+                  return (
+                    <div key={g.id} style={{ background: cardBg, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: text }}>
+                        {g.away?.abbreviation || g.away?.name} <span style={{ color: muted, fontSize: '12px' }}>@</span> {g.home?.abbreviation || g.home?.name}
+                      </span>
+                      <span style={{ fontSize: '12px', color: muted, textAlign: 'right' }}>
+                        {g.state === 'post' && g.home?.score != null
+                          ? `Final ${g.away?.score}–${g.home?.score}`
+                          : g.state === 'in'
+                          ? g.statusDetail || 'In progress'
+                          : kickoff
+                          ? kickoff.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                          : '—'}
+                        {g.broadcast && <span style={{ marginLeft: '8px' }}>· {g.broadcast}</span>}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── SECTION: ROSTERS ── */}
         {teams.length > 0 && (() => {
           const rosterPosColor = pos => ({ QB: '#4285F4', RB: '#34A853', WR: '#FBBC04', TE: '#EA4335', K: '#46BDC6', 'D/ST': '#7BAAF7' }[pos] || muted)
@@ -420,54 +620,6 @@ export default function CurrentSeasonPage() {
             </div>
           )
         })()}
-
-        {/* ── SECTION 2: STANDINGS ── */}
-        {standings.length > 0 && (
-          <div style={{ marginBottom: '64px' }}>
-            <SectionLabel id="standings">Standings</SectionLabel>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
-                <thead>
-                  <tr style={{ background: cardBg }}>
-                    <th style={hStyle('center')}>Rk</th>
-                    <th style={hStyle()}>Manager</th>
-                    <th style={hStyle('center')}>W</th>
-                    <th style={hStyle('center')}>L</th>
-                    <th style={hStyle('right')}>PF</th>
-                    <th style={hStyle('right')}>PA</th>
-                    <th style={hStyle('right')}>Diff</th>
-                    <th style={hStyle('right')}>Avg</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {standings.map((r, i) => {
-                    const diff = parseFloat((r.pf - r.pa).toFixed(2))
-                    const playoff = i < 6
-                    const bubble = i === 5
-                    return (
-                      <tr key={r.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
-                        <td style={{ ...cStyle('center'), color: playoff ? (bubble ? gold : green) : muted, fontWeight: '600' }}>{ordinal(i + 1)}</td>
-                        <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                            {r.name}
-                            {playoff && !bubble && <span style={{ fontSize: '9px', color: green, border: `1px solid ${green}`, padding: '1px 4px', letterSpacing: '0.1em' }}>IN</span>}
-                            {bubble && <span style={{ fontSize: '9px', color: gold, border: `1px solid ${gold}`, padding: '1px 4px', letterSpacing: '0.1em' }}>BUBBLE</span>}
-                          </span>
-                        </td>
-                        <td style={cStyle('center')}>{r.wins}</td>
-                        <td style={cStyle('center')}>{r.losses}</td>
-                        <td style={cStyle('right')}>{r.pf.toFixed(1)}</td>
-                        <td style={cStyle('right')}>{r.pa.toFixed(1)}</td>
-                        <td style={{ ...cStyle('right'), color: diff >= 0 ? green : red }}>{diff >= 0 ? '+' : ''}{diff.toFixed(1)}</td>
-                        <td style={cStyle('right')}>{r.avgScore.toFixed(1)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
 
         {/* ── SECTION 3: POWER RANKINGS ── */}
         {ranked.length > 0 && (
@@ -616,63 +768,6 @@ export default function CurrentSeasonPage() {
                 </pre>
               </div>
             )}
-          </div>
-        )}
-
-        {/* ── SECTION 7: WEEKLY BETTING LINES ── */}
-        {sbGames.length > 0 && (
-          <div style={{ marginBottom: '64px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-              <SectionLabel>Week {sbGames[0]?.week} Betting Lines</SectionLabel>
-              <a href="/sportsbook" style={{ fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textDecoration: 'none', border: `1px solid ${border}`, padding: '6px 14px' }}>
-                Full Sportsbook →
-              </a>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', background: border }}>
-              {sbGames.map(game => (
-                <div key={game.id} style={{ background: cardBg, padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                    <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: text }}>
-                      {game.team_a} vs {game.team_b}
-                    </span>
-                    {game.is_locked && (
-                      <span style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, border: `1px solid ${border}`, padding: '2px 6px' }}>Locked</span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                    {game.spread != null && (
-                      <div>
-                        <div style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Spread</div>
-                        <div style={{ fontSize: '13px', color: text }}>
-                          {game.team_a} {game.spread > 0 ? `+${game.spread}` : game.spread}
-                          <span style={{ color: muted, fontSize: '11px' }}> (-110)</span>
-                        </div>
-                        <div style={{ fontSize: '13px', color: text }}>
-                          {game.team_b} {game.spread < 0 ? `+${Math.abs(game.spread)}` : `-${game.spread}`}
-                          <span style={{ color: muted, fontSize: '11px' }}> (-110)</span>
-                        </div>
-                      </div>
-                    )}
-                    {game.over_under != null && (
-                      <div>
-                        <div style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Over / Under</div>
-                        <div style={{ fontSize: '13px', color: text }}>O {game.over_under}<span style={{ color: muted, fontSize: '11px' }}> (-110)</span></div>
-                        <div style={{ fontSize: '13px', color: text }}>U {game.over_under}<span style={{ color: muted, fontSize: '11px' }}> (-110)</span></div>
-                      </div>
-                    )}
-                    <div>
-                      <div style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '6px' }}>Moneyline</div>
-                      <div style={{ fontSize: '13px', color: text }}>
-                        {game.team_a} <span style={{ color: game.ml_a > 0 ? green : red, fontWeight: '500' }}>{game.ml_a > 0 ? `+${game.ml_a}` : game.ml_a}</span>
-                      </div>
-                      <div style={{ fontSize: '13px', color: text }}>
-                        {game.team_b} <span style={{ color: game.ml_b > 0 ? green : red, fontWeight: '500' }}>{game.ml_b > 0 ? `+${game.ml_b}` : game.ml_b}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 
