@@ -6,7 +6,7 @@ import { useLayout } from '../../hooks/useLayout'
 import {
   PLAYOFF_SPOTS, BYE_SPOTS,
   isPlayed, buildRatings, makeLine, simulateFutures,
-  projectedStarterPoints, fmtOdds, fmtSpread, leagueBaseline,
+  projectedStarterPoints, projectedWeekScore, fmtOdds, fmtSpread, leagueBaseline,
 } from '../../lib/predictions'
 import { REG_SEASON_WEEKS, resolveSchedule } from '../../lib/schedule'
 export const dynamic = 'force-dynamic'
@@ -25,7 +25,7 @@ export default function PredictionsPage() {
   const [selectedYear, setSelectedYear] = useState(null)
   const [teams, setTeams] = useState([])
   const [matchups, setMatchups] = useState([])
-  const [rosterProj, setRosterProj] = useState({})
+  const [entriesByTeam, setEntriesByTeam] = useState({})
   const [baseline, setBaseline] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -76,13 +76,13 @@ export default function PredictionsPage() {
 
       if (t.length) {
         const { data } = await supabase.from('roster_entries')
-          .select('team_id, avg_pts, player:player_id(position)')
+          .select('team_id, avg_pts, stats, player:player_id(position)')
           .in('team_id', t.map(x => x.id))
         const byTeam = {}
         ;(data || []).forEach(e => { (byTeam[e.team_id] ||= []).push(e) })
-        setRosterProj(Object.fromEntries(Object.entries(byTeam).map(([k, v]) => [k, projectedStarterPoints(v)])))
+        setEntriesByTeam(byTeam)
       } else {
-        setRosterProj({})
+        setEntriesByTeam({})
       }
       setLoading(false)
     })
@@ -127,11 +127,23 @@ export default function PredictionsPage() {
     else setWeek(1)
   }, [matchups, loading, weekTouched, regWeeks])
 
+  // Season-long roster makeup (for display) doesn't depend on week; the
+  // forward projection for the week being priced does, since it reads
+  // roster_entries.stats.proj[week] -- whatever's been uploaded for it.
+  const rosterProj = useMemo(
+    () => Object.fromEntries(Object.entries(entriesByTeam).map(([k, v]) => [k, projectedStarterPoints(v)])),
+    [entriesByTeam],
+  )
+  const weeklyProj = useMemo(
+    () => Object.fromEntries(Object.entries(entriesByTeam).map(([k, v]) => [k, projectedWeekScore(v, week)])),
+    [entriesByTeam, week],
+  )
+
   // Everything on the page is "entering week N" — ratings use games before it.
   const ratings = useMemo(() => {
     if (!teams.length) return null
-    return buildRatings({ teams, matchups, throughWeek: week - 1, rosterProj, baseline })
-  }, [teams, matchups, week, rosterProj, baseline])
+    return buildRatings({ teams, matchups, throughWeek: week - 1, rosterProj, weeklyProj, baseline })
+  }, [teams, matchups, week, rosterProj, weeklyProj, baseline])
 
   const hasSignal = !!ratings && ratings.rows.some(r => r.rating > 0)
 
