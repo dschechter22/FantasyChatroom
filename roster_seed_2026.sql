@@ -3,8 +3,11 @@
 -- roster_entries are cleared and reinserted per team.
 
 -- 1. Season row
-insert into seasons (year, season_number)
-select 2026, 12
+-- playoff_teams/reg_season_weeks are NOT NULL with no default on the real
+-- table; 6/14 match PLAYOFF_SPOTS in lib/predictions.js and REG_SEASON_WEEKS
+-- (SCHEDULE.length) in lib/schedule.js.
+insert into seasons (year, season_number, playoff_teams, reg_season_weeks, league_id)
+select 2026, 12, 6, 14, (select league_id from managers where league_id is not null limit 1)
 where not exists (select 1 from seasons where year = 2026);
 
 -- 2a. UNITED FRONT is now co-owned by JM and Cameron -- rename the existing
@@ -14,8 +17,8 @@ update managers set name = 'JM/Cameron', slug = 'jm' where name = 'JM';
 
 -- 2b. Managers (no-op if these names already exist -- they should, since
 -- schedule.js, matchups, and every other page already reference them)
-insert into managers (name, slug)
-select v.name, v.slug from (values
+insert into managers (name, slug, league_id)
+select v.name, v.slug, (select league_id from managers where league_id is not null limit 1) from (values
   ('Wally', 'wally'),
   ('Caden', 'caden'),
   ('Dan', 'dan'),
@@ -29,9 +32,28 @@ select v.name, v.slug from (values
 ) as v(name, slug)
 where not exists (select 1 from managers m where m.name = v.name);
 
--- 3. Teams for season 2026 (team_name updates if the team row already exists)
-insert into teams (season_id, manager_id, team_name)
-select s.id, m.id, v.team_name
+-- 3. Teams for season 2026. No unique constraint exists on (season_id,
+-- manager_id) on the real table, so this can't use ON CONFLICT -- update
+-- any existing row's team_name, then insert only the ones still missing.
+update teams t set team_name = v.team_name
+from (values
+  ('Wally', 'Team Wal'),
+  ('Caden', 'Greg''s Gang'),
+  ('Dan', 'The Dans'),
+  ('Big E', 'Run achane on her'),
+  ('Freed', 'Josh Allens'),
+  ('John', 'Team Ittounas'),
+  ('Reid', 'Bo Picks'),
+  ('JM/Cameron', 'UNITED FRONT'),
+  ('Braden', 'Kittle and Friends'),
+  ('Mamby/Tenner', 'Team Tenner n Mamby')
+) as v(manager_name, team_name)
+join managers m on m.name = v.manager_name
+join seasons s on s.year = 2026
+where t.manager_id = m.id and t.season_id = s.id;
+
+insert into teams (season_id, manager_id, team_name, league_id)
+select s.id, m.id, v.team_name, (select league_id from managers where league_id is not null limit 1)
 from (values
   ('Wally', 'Team Wal'),
   ('Caden', 'Greg''s Gang'),
@@ -46,7 +68,9 @@ from (values
 ) as v(manager_name, team_name)
 join managers m on m.name = v.manager_name
 cross join (select id from seasons where year = 2026) s
-on conflict (season_id, manager_id) do update set team_name = excluded.team_name;
+where not exists (
+  select 1 from teams t2 where t2.season_id = s.id and t2.manager_id = m.id
+);
 
 -- 4. Players (no-op if a player with this exact name already exists)
 insert into players (name, position)
@@ -221,8 +245,8 @@ delete from roster_entries where team_id in (
   where m.name in ('Wally', 'Caden', 'Dan', 'Big E', 'Freed', 'John', 'Reid', 'JM/Cameron', 'Braden', 'Mamby/Tenner')
 );
 
-insert into roster_entries (player_id, team_id)
-select p.id, t.id
+insert into roster_entries (player_id, team_id, season_id, league_id)
+select p.id, t.id, s.id, (select league_id from managers where league_id is not null limit 1)
 from (values
   ('Wally', 'Caleb Williams'),
   ('Wally', 'Omarion Hampton'),
