@@ -14,10 +14,10 @@ import { normalCdf } from '../lib/predictions.js'
 
 const TARGET_EXTREME = 99
 const SIMS = 40000
-const NAMES = ['John', 'Caden', 'Mamby/Tenner', 'Dan', 'Freed', 'JM', 'Reid', 'Big E', 'Braden', 'Wally']
+const NAMES = ['John', 'Caden', 'Mamby/Tenner', 'Dan', 'Freed', 'JM/Cameron', 'Reid', 'Big E', 'Braden', 'Wally']
 // Mid-season strengths for the Week 14 stress case only — thirteen games of
 // results have legitimately separated these teams by then.
-const RATING = { John: 118, Caden: 122, 'Mamby/Tenner': 116, Dan: 124, Freed: 108, JM: 104, Reid: 114, 'Big E': 102, Braden: 112, Wally: 110 }
+const RATING = { John: 118, Caden: 122, 'Mamby/Tenner': 116, Dan: 124, Freed: 108, 'JM/Cameron': 104, Reid: 114, 'Big E': 102, Braden: 112, Wally: 110 }
 const FLAT = 115 // what every team rates before a ball is snapped
 
 const idOf = n => 't' + NAMES.indexOf(n)
@@ -43,7 +43,7 @@ console.log('  median', median.toFixed(4), '· spread', (w1[w1.length - 1] - w1[
 // ── Week 14, last game: five teams are locked in, three are out, and the two
 // left are playing each other for the final spot.
 const IN = ['Dan', 'Caden', 'John', 'Mamby/Tenner', 'Reid']
-const OUT = ['JM', 'Wally', 'Braden']
+const OUT = ['JM/Cameron', 'Wally', 'Braden']
 const BUBBLE = ['Freed', 'Big E'] // these two meet in Week 14
 const record = {}
 IN.forEach(n => { record[n] = [11, 2] })

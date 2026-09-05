@@ -7,7 +7,12 @@ insert into seasons (year, season_number)
 select 2026, 12
 where not exists (select 1 from seasons where year = 2026);
 
--- 2. Managers (no-op if these names already exist -- they should, since
+-- 2a. UNITED FRONT is now co-owned by JM and Cameron -- rename the existing
+-- manager row in place (keeps its id, so career history stays attached)
+-- rather than inserting a new 'JM/Cameron' row alongside the old 'JM' one.
+update managers set name = 'JM/Cameron', slug = 'jm' where name = 'JM';
+
+-- 2b. Managers (no-op if these names already exist -- they should, since
 -- schedule.js, matchups, and every other page already reference them)
 insert into managers (name, slug)
 select v.name, v.slug from (values
@@ -18,7 +23,7 @@ select v.name, v.slug from (values
   ('Freed', 'freed'),
   ('John', 'john'),
   ('Reid', 'reid'),
-  ('JM', 'jm'),
+  ('JM/Cameron', 'jm'),
   ('Braden', 'braden'),
   ('Mamby/Tenner', 'mamby-tenner')
 ) as v(name, slug)
@@ -35,7 +40,7 @@ from (values
   ('Freed', 'Josh Allens'),
   ('John', 'Team Ittounas'),
   ('Reid', 'Bo Picks'),
-  ('JM', 'UNITED FRONT'),
+  ('JM/Cameron', 'UNITED FRONT'),
   ('Braden', 'Kittle and Friends'),
   ('Mamby/Tenner', 'Team Tenner n Mamby')
 ) as v(manager_name, team_name)
@@ -213,7 +218,7 @@ delete from roster_entries where team_id in (
   select t.id from teams t
   join seasons s on s.id = t.season_id and s.year = 2026
   join managers m on m.id = t.manager_id
-  where m.name in ('Wally', 'Caden', 'Dan', 'Big E', 'Freed', 'John', 'Reid', 'JM', 'Braden', 'Mamby/Tenner')
+  where m.name in ('Wally', 'Caden', 'Dan', 'Big E', 'Freed', 'John', 'Reid', 'JM/Cameron', 'Braden', 'Mamby/Tenner')
 );
 
 insert into roster_entries (player_id, team_id)
@@ -331,22 +336,22 @@ from (values
   ('Reid', 'Patrick Mahomes'),
   ('Reid', 'Tyjae Spears'),
   ('Reid', 'Chris Bell'),
-  ('JM', 'Jaxson Dart'),
-  ('JM', 'Jahmyr Gibbs'),
-  ('JM', 'Jeremiyah Love'),
-  ('JM', 'Drake London'),
-  ('JM', 'Carnell Tate'),
-  ('JM', 'Jake Ferguson'),
-  ('JM', 'Cam Skattebo'),
-  ('JM', 'Quinshon Judkins'),
-  ('JM', 'Eddy Pineiro'),
-  ('JM', 'Marvin Harrison Jr.'),
-  ('JM', 'Josh Jacobs'),
-  ('JM', 'Chris Godwin Jr.'),
-  ('JM', 'Makai Lemon'),
-  ('JM', 'Brock Purdy'),
-  ('JM', 'Malik Willis'),
-  ('JM', 'Dalton Kincaid'),
+  ('JM/Cameron', 'Jaxson Dart'),
+  ('JM/Cameron', 'Jahmyr Gibbs'),
+  ('JM/Cameron', 'Jeremiyah Love'),
+  ('JM/Cameron', 'Drake London'),
+  ('JM/Cameron', 'Carnell Tate'),
+  ('JM/Cameron', 'Jake Ferguson'),
+  ('JM/Cameron', 'Cam Skattebo'),
+  ('JM/Cameron', 'Quinshon Judkins'),
+  ('JM/Cameron', 'Eddy Pineiro'),
+  ('JM/Cameron', 'Marvin Harrison Jr.'),
+  ('JM/Cameron', 'Josh Jacobs'),
+  ('JM/Cameron', 'Chris Godwin Jr.'),
+  ('JM/Cameron', 'Makai Lemon'),
+  ('JM/Cameron', 'Brock Purdy'),
+  ('JM/Cameron', 'Malik Willis'),
+  ('JM/Cameron', 'Dalton Kincaid'),
   ('Braden', 'Joe Burrow'),
   ('Braden', 'Christian McCaffrey'),
   ('Braden', 'Kyren Williams'),
