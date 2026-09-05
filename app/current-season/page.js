@@ -6,8 +6,6 @@ import { useLayout } from '../../hooks/useLayout'
 import { projectedWeekLineup } from '../../lib/predictions'
 export const dynamic = 'force-dynamic'
 
-const ADMIN_PIN = '2910'
-const NUM_PICKS = 10
 const SEASON = '2026-27'
 const SEASON_YEAR = 2026
 
@@ -29,19 +27,7 @@ export default function CurrentSeasonPage() {
   // ── shared data ──
   const [matchups, setMatchups] = useState([])
   const [teams, setTeams] = useState([])
-  const [managers, setManagers] = useState([])
   const [mounted, setMounted] = useState(false)
-
-  // ── draft state ──
-  const [picks, setPicks] = useState([])
-  const [slots, setSlots] = useState(Array(NUM_PICKS).fill(''))
-  const [editing, setEditing] = useState(false)
-  const [pinModal, setPinModal] = useState(null)
-  const [clearTarget, setClearTarget] = useState(null)
-  const [pinInput, setPinInput] = useState('')
-  const [pinError, setPinError] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [saveError, setSaveError] = useState('')
 
   // ── recap generator state ──
   const [recapWeek, setRecapWeek] = useState(null)
@@ -59,8 +45,6 @@ export default function CurrentSeasonPage() {
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
-    supabase.from('managers').select('id, name').eq('league_id', LEAGUE_ID).order('name').then(({ data }) => setManagers(data || []))
-    supabase.from('draft_order').select('*').eq('season', SEASON).order('pick_number').then(({ data }) => setPicks(data || []))
     supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)
@@ -82,8 +66,6 @@ export default function CurrentSeasonPage() {
       })
   }, [])
 
-  const fetchDraft = () => supabase.from('draft_order').select('*').eq('season', SEASON).order('pick_number').then(({ data }) => setPicks(data || []))
-
   useEffect(() => {
     if (!teams.length) { setRosterEntries([]); return }
     supabase.from('roster_entries')
@@ -95,30 +77,6 @@ export default function CurrentSeasonPage() {
       setRosterTeamId(sorted[0]?.id || null)
     }
   }, [teams])
-
-  const handlePinSubmit = () => {
-    if (pinInput !== ADMIN_PIN) { setPinError('Incorrect PIN'); return }
-    setPinError(''); setPinInput('')
-    if (pinModal === 'edit') {
-      const current = Array(NUM_PICKS).fill('')
-      picks.forEach(p => { if (p.pick_number >= 1 && p.pick_number <= NUM_PICKS) current[p.pick_number - 1] = p.manager_name })
-      setSlots(current); setEditing(true); setPinModal(null)
-    } else if (pinModal === 'clear-one' && clearTarget) {
-      supabase.from('draft_order').delete().eq('id', clearTarget).then(() => { setClearTarget(null); setPinModal(null); fetchDraft() })
-    } else if (pinModal === 'clear-all') {
-      supabase.from('draft_order').delete().eq('season', SEASON).then(() => { setPinModal(null); fetchDraft() })
-    }
-  }
-
-  const handleSave = async () => {
-    if (slots.every(s => !s)) return setSaveError('Assign at least one pick.')
-    setSaveError(''); setSubmitting(true)
-    await supabase.from('draft_order').delete().eq('season', SEASON)
-    const inserts = slots.map((name, i) => name ? { pick_number: i + 1, manager_name: name, season: SEASON } : null).filter(Boolean)
-    const { error } = await supabase.from('draft_order').insert(inserts)
-    if (error) { setSaveError('Failed to save.'); setSubmitting(false); return }
-    setEditing(false); setSubmitting(false); fetchDraft()
-  }
 
   // ── computed stats ──
   const weeks = [...new Set(matchups.map(m => m.week))].sort((a, b) => a - b)
@@ -349,7 +307,6 @@ export default function CurrentSeasonPage() {
 
   if (!mounted) return null
 
-  const inp = { background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '100%' }
   const hStyle = (align = 'left') => ({ padding: '10px 14px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: align, borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' })
   const cStyle = (align = 'left') => ({ padding: '12px 14px', fontSize: '13px', textAlign: align, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
 
@@ -371,83 +328,9 @@ export default function CurrentSeasonPage() {
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
 
-      {/* PIN modal */}
-      {pinModal && (
-        <>
-          <div onClick={() => { setPinModal(null); setPinInput(''); setPinError('') }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '90vw' : '340px' }}>
-            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, marginBottom: '8px' }}>
-              {pinModal === 'edit' ? 'Edit Draft Order' : 'Clear Draft'}
-            </h3>
-            <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>Admin PIN required.</p>
-            <input type="password" placeholder="PIN" value={pinInput} onChange={e => { setPinInput(e.target.value); setPinError('') }} onKeyDown={e => e.key === 'Enter' && handlePinSubmit()} style={{ ...inp, marginBottom: '8px' }} />
-            {pinError && <p style={{ fontSize: '12px', color: red, marginBottom: '8px' }}>{pinError}</p>}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <button onClick={handlePinSubmit} style={{ background: pinModal === 'edit' ? text : red, color: pinModal === 'edit' ? bg : '#fff', border: 'none', padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", fontWeight: '500', flex: 1 }}>{pinModal === 'edit' ? 'Unlock' : 'Confirm'}</button>
-              <button onClick={() => { setPinModal(null); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}>Cancel</button>
-            </div>
-          </div>
-        </>
-      )}
-
       <div style={{ maxWidth: '1100px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px,6vw,72px)', fontWeight: '400', letterSpacing: '-0.02em', marginBottom: '4px' }}>2026-27 Season</h1>
         <p style={{ color: muted, fontSize: '13px', marginBottom: '56px' }}>Live dashboard — updates as scores come in</p>
-
-        {/* ── SECTION 1: DRAFT ORDER ── */}
-        <div style={{ marginBottom: '64px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-            <SectionLabel>Draft Order</SectionLabel>
-            {!editing && (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => { setPinModal('edit'); setPinInput(''); setPinError('') }} style={{ background: text, color: bg, border: 'none', padding: '8px 16px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>
-                  {picks.length > 0 ? 'Edit' : 'Set Order'}
-                </button>
-                {picks.length > 0 && (
-                  <button onClick={() => { setPinModal('clear-all'); setPinInput(''); setPinError('') }} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '8px 12px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }}>Clear</button>
-                )}
-              </div>
-            )}
-            {editing && <button onClick={() => { setEditing(false); setSaveError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 16px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }}>Cancel</button>}
-          </div>
-
-          {!editing && picks.length === 0 && (
-            <p style={{ color: muted, fontSize: '13px' }}>No draft order set yet.</p>
-          )}
-          {!editing && picks.length > 0 && (
-            <div style={{ border: `1px solid ${border}`, maxWidth: '400px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr', padding: '8px 14px', borderBottom: `1px solid ${border}`, background: cardBg }}>
-                <span style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted }}>Pick</span>
-                <span style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted }}>Manager</span>
-              </div>
-              {picks.map((pick, i) => (
-                <div key={pick.id} style={{ display: 'grid', gridTemplateColumns: '56px 1fr', alignItems: 'center', padding: '12px 14px', borderBottom: i < picks.length - 1 ? `1px solid ${border}` : 'none', background: i % 2 === 0 ? 'transparent' : (d ? '#080808' : '#e8e4dc') }}>
-                  <span style={{ fontSize: '20px', fontWeight: '700', color: gold, fontFamily: "'Playfair Display', serif" }}>{pick.pick_number}</span>
-                  <span style={{ fontSize: '15px', color: text, fontFamily: "'Playfair Display', serif" }}>{pick.manager_name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {editing && (
-            <div style={{ maxWidth: '400px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-                {slots.map((val, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '40px 1fr', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '18px', fontWeight: '700', color: gold, fontFamily: "'Playfair Display', serif", textAlign: 'right' }}>{i + 1}</span>
-                    <select value={val} onChange={e => setSlots(s => { const n = [...s]; n[i] = e.target.value; return n })} style={{ ...inp, cursor: 'pointer' }}>
-                      <option value="">— unassigned —</option>
-                      {managers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                    </select>
-                  </div>
-                ))}
-              </div>
-              {saveError && <p style={{ fontSize: '12px', color: red, marginBottom: '12px' }}>{saveError}</p>}
-              <button onClick={handleSave} disabled={submitting} style={{ background: text, color: bg, border: 'none', padding: '12px 24px', cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '12px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', opacity: submitting ? 0.6 : 1 }}>
-                {submitting ? 'Saving...' : 'Save Draft Order'}
-              </button>
-            </div>
-          )}
-        </div>
 
         {/* ── SECTION: ROSTERS ── */}
         {teams.length > 0 && (() => {
