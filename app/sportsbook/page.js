@@ -254,6 +254,71 @@ export default function SportsbookPage() {
   const betBtn = active => ({ background: active ? text : 'none', color: active ? bg : muted, border: `1px solid ${active ? text : border}`, padding: '5px 10px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap' })
   const weeks = Array.from({ length: 17 }, (_, i) => i + 1)
 
+  // Sign in / create an account before anything else in the sportsbook is
+  // usable -- same name+PIN system as before, now a gate instead of a small
+  // corner widget so "who's betting" is unambiguous from the start.
+  if (!playerName) {
+    return (
+      <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
+        <Nav />
+        <div style={{ maxWidth: '380px', margin: '0 auto', padding: effectiveMobile ? '100px 24px 80px' : '160px 24px 80px', textAlign: 'center' }}>
+          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : '48px', fontWeight: '400', letterSpacing: '-0.02em', marginBottom: '8px' }}>Sportsbook</h1>
+          <p style={{ fontSize: '13px', color: muted, marginBottom: '32px', lineHeight: 1.6 }}>
+            Sign in to bet Gimre Bucks. New here? Type a name and set a PIN to create an account.
+          </p>
+
+          {nameStep === 'name' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <input
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleNameNext()}
+                placeholder="Your name..."
+                autoFocus
+                style={{ ...inp, width: '100%', textAlign: 'center', padding: '12px' }}
+              />
+              <button
+                onClick={handleNameNext}
+                style={{ background: text, color: bg, border: 'none', padding: '12px 24px', cursor: 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}
+              >
+                Next
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <p style={{ fontSize: '13px', color: muted, margin: 0 }}>
+                {isNewAccount ? `Create account for ` : `Welcome back, `}
+                <strong style={{ color: text }}>{pendingName}</strong>
+                {' '}
+                <button onClick={() => { setNameStep('name'); setPinError('') }} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", textDecoration: 'underline', padding: 0 }}>change</button>
+              </p>
+              <input
+                type="password"
+                value={pinInput}
+                onChange={e => { setPinInput(e.target.value); setPinError('') }}
+                onKeyDown={e => e.key === 'Enter' && handlePinSubmit()}
+                placeholder={isNewAccount ? 'Set a PIN (4+ digits)' : 'PIN'}
+                autoFocus
+                style={{ ...inp, width: '100%', textAlign: 'center', padding: '12px' }}
+              />
+              {pinError && <p style={{ fontSize: '12px', color: red, margin: 0 }}>{pinError}</p>}
+              <button
+                onClick={handlePinSubmit}
+                style={{ background: text, color: bg, border: 'none', padding: '12px 24px', cursor: 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}
+              >
+                {isNewAccount ? 'Create Account' : 'Log In'}
+              </button>
+            </div>
+          )}
+
+          <p style={{ fontSize: '11px', color: muted, marginTop: '32px' }}>
+            Everyone starts with 1,000 Gimre Bucks. Year-end total sets next season's draft order.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
@@ -306,33 +371,8 @@ export default function SportsbookPage() {
             {myAccount && <p style={{ fontSize: '13px', color: gold, marginTop: '4px' }}>💰 {myAccount.balance.toLocaleString()} Gimre Bucks</p>}
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {!playerName ? (
-              nameStep === 'name' ? (
-                <>
-                  <input value={nameInput} onChange={e => setNameInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleNameNext()} placeholder="Your name..." style={{ ...inp, width: '140px' }} />
-                  <button onClick={handleNameNext} style={{ background: text, color: bg, border: 'none', padding: '8px 16px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>Next</button>
-                </>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', color: muted }}>{isNewAccount ? `Create account for ${pendingName}` : `Welcome back, ${pendingName}`}</span>
-                    <button onClick={() => { setNameStep('name'); setPinError('') }} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", textDecoration: 'underline', padding: 0 }}>change</button>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input type="password" value={pinInput} onChange={e => { setPinInput(e.target.value); setPinError('') }} onKeyDown={e => e.key === 'Enter' && handlePinSubmit()} placeholder={isNewAccount ? 'Set a PIN (4+ digits)' : 'PIN'} style={{ ...inp, width: '180px' }} />
-                    <button onClick={handlePinSubmit} style={{ background: text, color: bg, border: 'none', padding: '8px 16px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", fontWeight: '500', whiteSpace: 'nowrap' }}>
-                      {isNewAccount ? 'Create' : 'Login'}
-                    </button>
-                  </div>
-                  {pinError && <p style={{ fontSize: '11px', color: red, margin: 0 }}>{pinError}</p>}
-                </div>
-              )
-            ) : (
-              <>
-                <span style={{ fontSize: '12px', color: muted }}>Playing as <strong style={{ color: text }}>{playerName}</strong></span>
-                <button onClick={() => { setPlayerName(''); setNameInput(''); setNameStep('name') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 10px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Switch</button>
-              </>
-            )}
+            <span style={{ fontSize: '12px', color: muted }}>Playing as <strong style={{ color: text }}>{playerName}</strong></span>
+            <button onClick={() => { setPlayerName(''); setNameInput(''); setNameStep('name') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 10px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Switch</button>
             {!adminUnlocked
               ? <button onClick={() => setShowPinModal(true)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Admin</button>
               : <button onClick={() => setAdminUnlocked(false)} style={{ background: 'none', border: `1px solid ${gold}`, color: gold, padding: '8px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Admin ✓</button>
