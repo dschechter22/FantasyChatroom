@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-import { projectedWeekLineup } from '../../lib/predictions'
+import { projectedWeekLineup, lineupEfficiency } from '../../lib/predictions'
 import { resolveSchedule } from '../../lib/schedule'
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +26,16 @@ const median = (arr) => {
 const ordinal = (n) => {
   const s = ['th', 'st', 'nd', 'rd'], v = n % 100
   return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+
+// fpts/avg_pts are legacy season-cache columns that were never backfilled
+// for 2026-27 -- real per-week numbers live in stats.actual[week] from the
+// box-score seed files instead.
+const actualStatsFor = (e) => {
+  const actual = e.stats?.actual || {}
+  const weeksWithData = Object.keys(actual).map(Number)
+  const total = weeksWithData.reduce((s, w) => s + (actual[w] || 0), 0)
+  return { total, avg: weeksWithData.length ? total / weeksWithData.length : null, weeksPlayed: weeksWithData.length }
 }
 
 export default function CurrentSeasonPage() {
@@ -51,18 +61,25 @@ export default function CurrentSeasonPage() {
 
   // ── this week (real NFL games) state ──
   const [nflGames, setNflGames] = useState([])
-  const [nflWeek, setNflWeek] = useState(null)
+  const [nflWeek, setNflWeek] = useState(null) // ESPN's actual "current" week -- also the fallback for "this week's fantasy matchups" below
+  const [scheduleWeek, setScheduleWeek] = useState(null) // week shown in the NFL games section; the user can page through it
   const [nflLoading, setNflLoading] = useState(true)
 
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
-    fetch('/api/nfl-schedule')
+    setNflLoading(true)
+    const url = scheduleWeek ? `/api/nfl-schedule?week=${scheduleWeek}` : '/api/nfl-schedule'
+    fetch(url)
       .then(res => res.json())
-      .then(data => { setNflGames(data.games || []); setNflWeek(data.week ?? null) })
+      .then(data => {
+        setNflGames(data.games || [])
+        setNflWeek(prev => prev ?? data.week ?? null)
+        setScheduleWeek(prev => prev ?? data.week ?? prev)
+      })
       .catch(() => {})
       .finally(() => setNflLoading(false))
-  }, [])
+  }, [scheduleWeek])
 
   useEffect(() => {
     supabase.from('matchups')
@@ -124,7 +141,7 @@ export default function CurrentSeasonPage() {
 
   const computeTeamData = () => {
     const td = {}
-    teams.forEach(t => { td[t.id] = { name: t.manager?.name || '?', slug: t.manager?.slug, scores: [], wins: 0, losses: 0, pf: 0, pa: 0, allPlaySum: 0, gameLog: [] } })
+    teams.forEach(t => { td[t.id] = { id: t.id, name: t.manager?.name || '?', slug: t.manager?.slug, teamName: t.team_name, scores: [], wins: 0, losses: 0, pf: 0, pa: 0, allPlaySum: 0, gameLog: [] } })
     matchups.forEach(m => {
       const hId = m.home_team?.id, aId = m.away_team?.id
       if (td[hId]) { td[hId].scores.push(m.home_score); td[hId].pf += m.home_score; td[hId].pa += m.away_score; td[hId].gameLog.push({ week: m.week, score: m.home_score, oppScore: m.away_score, won: m.home_score > m.away_score }); if (m.home_score > m.away_score) td[hId].wins++; else if (m.home_score < m.away_score) td[hId].losses++ }
@@ -143,7 +160,35 @@ export default function CurrentSeasonPage() {
 
   const teamData = teams.length > 0 && matchups.length > 0 ? computeTeamData() : {}
 
-  const rows = Object.values(teamData).map(({ name, slug, scores, wins, losses, pf, pa, allPlaySum, gameLog }) => {
+  // Position rank across the whole league, by season-to-date average actual
+  // points (not total) -- players with no actual data on file yet aren't
+  // ranked rather than being placed arbitrarily at the bottom.
+  const posRankMap = (() => {
+    const byPos = {}
+    rosterEntries.forEach(e => {
+      const avg = actualStatsFor(e).avg
+      const pos = e.player?.position
+      if (avg == null || !pos) return
+      ;(byPos[pos] ||= []).push({ id: e.id, avg })
+    })
+    const map = {}
+    Object.values(byPos).forEach(arr => {
+      arr.sort((a, b) => b.avg - a.avg).forEach((x, i) => { map[x.id] = i + 1 })
+    })
+    return map
+  })()
+
+  // Season-to-date Start % per team (informational only -- see Power
+  // Rankings for the full explanation): average, across weeks with
+  // per-player stats on file, of real-starters points vs. best-possible-
+  // lineup points.
+  const startPctFor = (teamId) => {
+    const entries = rosterEntries.filter(e => e.team_id === teamId)
+    const pcts = weeks.map(wk => lineupEfficiency(entries, wk)).filter(Boolean).map(e => e.pct)
+    return pcts.length ? parseFloat((pcts.reduce((s, p) => s + p, 0) / pcts.length).toFixed(1)) : null
+  }
+
+  const rows = Object.values(teamData).map(({ id, name, slug, teamName, scores, wins, losses, pf, pa, allPlaySum, gameLog }) => {
     const games = wins + losses
     const winPct = games > 0 ? wins / games : 0
     const avgScore = scores.length > 0 ? pf / scores.length : 0
@@ -159,7 +204,7 @@ export default function CurrentSeasonPage() {
       else if (w === streakType) curStreak++
       else break
     }
-    return { name, slug, wins, losses, pf, pa, winPct, avgScore, medScore: med, allPlayWinPct, allPlaySum, luckRaw, std, streak: curStreak, streakWin: streakType, scores, gameLog: sortedLog }
+    return { id, name, slug, teamName, wins, losses, pf, pa, winPct, avgScore, medScore: med, allPlayWinPct, allPlaySum, luckRaw, std, streak: curStreak, streakWin: streakType, scores, gameLog: sortedLog, startPct: startPctFor(id) }
   })
 
   const maxWin = Math.max(...rows.map(r => r.winPct)) || 1
@@ -283,6 +328,9 @@ export default function CurrentSeasonPage() {
     const ljLeader = ljRanked[0]
     const luckiest = [...rows].sort((a, b) => b.luckRaw - a.luckRaw)[0]
     const unluckiest = [...rows].sort((a, b) => a.luckRaw - b.luckRaw)[0]
+    const withStartPct = rows.filter(r => r.startPct != null)
+    const bestStarter = withStartPct.length ? [...withStartPct].sort((a, b) => b.startPct - a.startPct)[0] : null
+    const worstStarter = withStartPct.length ? [...withStartPct].sort((a, b) => a.startPct - b.startPct)[0] : null
 
     let prRise = null, prDrop = null
     if (prevRanked.length) {
@@ -295,7 +343,7 @@ export default function CurrentSeasonPage() {
       })
     }
 
-    return { highScore, lowScore, highLoss, biggestWin, closestGame, medianMan, mostUnluckyWeek, mostLuckyWeek, leader, basement, hotStreak, coldStreak, mostVolatile, mostConsistent, mostPF, mostPA, prLeader, prRise, prDrop, ljLeader, luckiest, unluckiest }
+    return { highScore, lowScore, highLoss, biggestWin, closestGame, medianMan, mostUnluckyWeek, mostLuckyWeek, leader, basement, hotStreak, coldStreak, mostVolatile, mostConsistent, mostPF, mostPA, prLeader, prRise, prDrop, ljLeader, luckiest, unluckiest, bestStarter, worstStarter }
   })()
 
   const generateSummary = (wk) => {
@@ -388,7 +436,7 @@ export default function CurrentSeasonPage() {
   const StatCard = ({ label, value, sub, color }) => (
     <div style={{ background: cardBg, padding: '18px 20px', borderTop: `2px solid ${color || border}` }}>
       <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '8px' }}>{label}</div>
-      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: text, marginBottom: '4px', lineHeight: 1.3 }}>{value}</div>
+      <div style={{ fontFamily: "'Playfair Display', serif", fontWeight: '700', fontSize: '17px', color: text, marginBottom: '4px', lineHeight: 1.3 }}>{value}</div>
       {sub && <div style={{ fontSize: '11px', color: muted, lineHeight: 1.5 }}>{sub}</div>}
     </div>
   )
@@ -397,7 +445,7 @@ export default function CurrentSeasonPage() {
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
 
-      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px,6vw,72px)', fontWeight: '400', letterSpacing: '-0.02em', marginBottom: '4px' }}>2026-27 Season</h1>
         <p style={{ color: muted, fontSize: '13px', marginBottom: '56px' }}>Live dashboard — updates as scores come in</p>
 
@@ -573,40 +621,54 @@ export default function CurrentSeasonPage() {
           const activeTeam = teams.find(t => t.id === rosterTeamId) || sortedTeams[0]
           const entries = rosterEntries.filter(e => e.team_id === activeTeam?.id)
           const lineup = projectedWeekLineup(entries, rosterWeek)
-          const seasonFpts = arr => arr.reduce((s, e) => s + (e.fpts || 0), 0)
-          const seasonAvg = arr => arr.reduce((s, e) => s + (e.avg_pts || 0), 0)
+          const seasonFpts = arr => arr.reduce((s, e) => s + actualStatsFor(e).total, 0)
+          const seasonAvg = arr => arr.reduce((s, e) => s + (actualStatsFor(e).avg || 0), 0)
+          const weekPtsTotal = arr => arr.reduce((s, e) => s + (e.stats?.actual?.[rosterWeek] ?? 0), 0)
+
+          const gridCols = effectiveMobile ? '50px 1fr 50px' : '56px 1fr 55px 55px 70px 55px 60px'
 
           const rHeader = () => (
-            <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '50px 1fr 50px' : '56px 1fr 70px 80px 70px', padding: '8px 14px', borderBottom: `1px solid ${border}`, background: cardBg }}>
+            <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '8px 14px', borderBottom: `1px solid ${border}`, background: cardBg }}>
               <span style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted }}>Slot</span>
               <span style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted }}>Player</span>
               <span style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right' }}>Proj</span>
+              {!effectiveMobile && <span style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right' }}>Points</span>}
               {!effectiveMobile && <span style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right' }}>Season FPTS</span>}
               {!effectiveMobile && <span style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right' }}>Avg</span>}
+              {!effectiveMobile && <span style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right' }}>Pos Rk</span>}
             </div>
           )
 
-          const rRow = (e, i, slot) => (
-            <div key={e.id} style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '50px 1fr 50px' : '56px 1fr 70px 80px 70px', alignItems: 'center', padding: '9px 14px', borderBottom: `1px solid ${border}`, background: i % 2 === 0 ? 'transparent' : rowAlt }}>
-              <span style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.06em', color: rosterPosColor(slot === 'FLEX' ? e.player?.position : slot), background: rosterPosColor(slot === 'FLEX' ? e.player?.position : slot) + '18', padding: '2px 5px', textAlign: 'center', width: 'fit-content' }}>
-                {slot}
-              </span>
-              <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '13px', color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '8px' }}>
-                {e.player?.name || '—'}
-              </span>
-              <span style={{ fontSize: '12px', fontWeight: '500', color: text, textAlign: 'right' }}>{e.proj != null ? e.proj.toFixed(1) : '—'}</span>
-              {!effectiveMobile && <span style={{ fontSize: '12px', color: muted, textAlign: 'right' }}>{e.fpts != null ? e.fpts.toFixed(1) : '—'}</span>}
-              {!effectiveMobile && <span style={{ fontSize: '12px', color: muted, textAlign: 'right' }}>{e.avg_pts != null ? e.avg_pts.toFixed(1) : '—'}</span>}
-            </div>
-          )
+          const rRow = (e, i, slot) => {
+            const weekPts = e.stats?.actual?.[rosterWeek] ?? null
+            const stats = actualStatsFor(e)
+            const posRank = posRankMap[e.id]
+            return (
+              <div key={e.id} style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', padding: '9px 14px', borderBottom: `1px solid ${border}`, background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                <span style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.06em', color: rosterPosColor(slot === 'FLEX' ? e.player?.position : slot), background: rosterPosColor(slot === 'FLEX' ? e.player?.position : slot) + '18', padding: '2px 5px', textAlign: 'center', width: 'fit-content' }}>
+                  {slot}
+                </span>
+                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '13px', color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '8px' }}>
+                  {e.player?.name || '—'}
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: '500', color: text, textAlign: 'right' }}>{e.proj != null ? e.proj.toFixed(1) : '—'}</span>
+                {!effectiveMobile && <span style={{ fontSize: '12px', color: text, textAlign: 'right' }}>{weekPts != null ? weekPts.toFixed(1) : '—'}</span>}
+                {!effectiveMobile && <span style={{ fontSize: '12px', color: muted, textAlign: 'right' }}>{stats.weeksPlayed > 0 ? stats.total.toFixed(1) : '—'}</span>}
+                {!effectiveMobile && <span style={{ fontSize: '12px', color: muted, textAlign: 'right' }}>{stats.avg != null ? stats.avg.toFixed(1) : '—'}</span>}
+                {!effectiveMobile && <span style={{ fontSize: '12px', color: muted, textAlign: 'right' }}>{posRank ? `${e.player?.position}${posRank}` : '—'}</span>}
+              </div>
+            )
+          }
 
-          const rTotals = (label, projTotal, fptsTotal, avgTotal) => (
-            <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '50px 1fr 50px' : '56px 1fr 70px 80px 70px', alignItems: 'center', padding: '9px 14px', background: d ? 'rgba(255,255,255,0.03)' : 'rgba(13,33,82,0.04)' }}>
+          const rTotals = (label, projTotal, pointsTotal, fptsTotal, avgTotal) => (
+            <div style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', padding: '9px 14px', background: d ? 'rgba(255,255,255,0.03)' : 'rgba(13,33,82,0.04)' }}>
               <span />
               <span style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted }}>{label}</span>
               <span style={{ fontSize: '13px', fontWeight: '700', color: gold, textAlign: 'right' }}>{projTotal.toFixed(1)}</span>
+              {!effectiveMobile && <span style={{ fontSize: '12px', fontWeight: '600', color: text, textAlign: 'right' }}>{pointsTotal.toFixed(1)}</span>}
               {!effectiveMobile && <span style={{ fontSize: '12px', color: muted, textAlign: 'right' }}>{fptsTotal.toFixed(1)}</span>}
               {!effectiveMobile && <span style={{ fontSize: '12px', color: muted, textAlign: 'right' }}>{avgTotal.toFixed(1)}</span>}
+              {!effectiveMobile && <span />}
             </div>
           )
 
@@ -618,7 +680,7 @@ export default function CurrentSeasonPage() {
                   {sortedTeams.map(t => <option key={t.id} value={t.id}>{t.manager?.name || t.team_name}</option>)}
                 </select>
                 <select value={rosterWeek} onChange={e => setRosterWeek(parseInt(e.target.value))} style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }}>
-                  {Array.from({ length: 17 }, (_, i) => i + 1).map(w => <option key={w} value={w}>Week {w} Proj</option>)}
+                  {Array.from({ length: 17 }, (_, i) => i + 1).map(w => <option key={w} value={w}>Week {w}</option>)}
                 </select>
               </div>
 
@@ -633,7 +695,7 @@ export default function CurrentSeasonPage() {
                   ) : (
                     <>
                       {lineup.starters.map((e, i) => rRow(e, i, e.slot))}
-                      {rTotals('Starters Total', lineup.total, seasonFpts(lineup.starters), seasonAvg(lineup.starters))}
+                      {rTotals('Starters Total', lineup.total, weekPtsTotal(lineup.starters), seasonFpts(lineup.starters), seasonAvg(lineup.starters))}
 
                       <div style={{ padding: '10px 14px', fontSize: '11px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, background: cardBg, borderTop: `1px solid ${border}`, borderBottom: `1px solid ${border}` }}>
                         Bench
@@ -644,7 +706,7 @@ export default function CurrentSeasonPage() {
                       ) : (
                         <>
                           {lineup.bench.map((e, i) => rRow(e, i, e.player?.position))}
-                          {rTotals('Bench Total', lineup.bench.reduce((s, e) => s + (e.proj || 0), 0), seasonFpts(lineup.bench), seasonAvg(lineup.bench))}
+                          {rTotals('Bench Total', lineup.bench.reduce((s, e) => s + (e.proj || 0), 0), weekPtsTotal(lineup.bench), seasonFpts(lineup.bench), seasonAvg(lineup.bench))}
                         </>
                       )}
                     </>
@@ -665,10 +727,16 @@ export default function CurrentSeasonPage() {
                   <tr style={{ background: cardBg }}>
                     <th style={hStyle('center')}>Rk</th>
                     <th style={hStyle()}>Manager</th>
+                    {!effectiveMobile && <th style={hStyle()}>Team</th>}
                     <th style={hStyle('center')}>W-L</th>
-                    <th style={hStyle('right')}>Power</th>
+                    {!effectiveMobile && <th style={hStyle('right')}>PF</th>}
+                    {!effectiveMobile && <th style={hStyle('right')}>PA</th>}
+                    {!effectiveMobile && <th style={hStyle('right')}>Diff</th>}
                     <th style={hStyle('right')}>Avg PPG</th>
                     <th style={hStyle('right')}>All-Play %</th>
+                    {!effectiveMobile && <th style={hStyle('right')}>Luck</th>}
+                    {!effectiveMobile && <th style={hStyle('right')}>Start %</th>}
+                    <th style={hStyle('right')}>Power</th>
                     {!effectiveMobile && <th style={hStyle('right')}>Trend</th>}
                   </tr>
                 </thead>
@@ -676,14 +744,29 @@ export default function CurrentSeasonPage() {
                   {ranked.map((r, i) => {
                     const prev = prevRanked.findIndex(p => p.name === r.name)
                     const move = prev >= 0 ? prev - i : 0
+                    const diff = parseFloat((r.pf - r.pa).toFixed(2))
                     return (
                       <tr key={r.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                         <td style={{ ...cStyle('center'), fontWeight: '700', color: i === 0 ? gold : muted }}>{i + 1}</td>
                         <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{r.name}</td>
+                        {!effectiveMobile && <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{r.teamName}</td>}
                         <td style={cStyle('center')}>{r.wins}-{r.losses}</td>
-                        <td style={{ ...cStyle('right'), fontWeight: '600' }}>{r.powerScore.toFixed(1)}</td>
+                        {!effectiveMobile && <td style={cStyle('right')}>{r.pf.toFixed(2)}</td>}
+                        {!effectiveMobile && <td style={cStyle('right')}>{r.pa.toFixed(2)}</td>}
+                        {!effectiveMobile && (
+                          <td style={{ ...cStyle('right'), color: diff >= 0 ? green : red, fontWeight: '500' }}>
+                            {diff >= 0 ? '+' : ''}{diff}
+                          </td>
+                        )}
                         <td style={cStyle('right')}>{r.avgScore.toFixed(1)}</td>
                         <td style={cStyle('right')}>{(r.allPlayWinPct * 100).toFixed(1)}%</td>
+                        {!effectiveMobile && (
+                          <td style={{ ...cStyle('right'), color: r.luckRaw >= 0 ? green : red, fontWeight: '500' }}>
+                            {r.luckRaw >= 0 ? '+' : ''}{r.luckRaw}
+                          </td>
+                        )}
+                        {!effectiveMobile && <td style={cStyle('right')}>{r.startPct != null ? `${r.startPct}%` : '—'}</td>}
+                        <td style={{ ...cStyle('right'), fontWeight: '600' }}>{r.powerScore.toFixed(1)}</td>
                         {!effectiveMobile && (
                           <td style={{ ...cStyle('right'), color: move > 0 ? green : move < 0 ? red : muted, fontWeight: '500' }}>
                             {prev < 0 ? '—' : move > 0 ? `▲${move}` : move < 0 ? `▼${Math.abs(move)}` : '—'}
@@ -708,21 +791,23 @@ export default function CurrentSeasonPage() {
               const PAD = { top: 26, right: 20, bottom: 44, left: effectiveMobile ? 45 : 60 }
               const chartW = W - PAD.left - PAD.right
               const chartH = H - PAD.top - PAD.bottom
-              const xVals = ljPlotData.map(r => r.x)
-              const yVals = ljPlotData.map(r => r.y)
-              const xAbsMax = Math.max(...xVals.map(Math.abs), 5)
-              const yAbsMax = Math.max(...yVals.map(Math.abs), 5)
-              const xMax = xAbsMax + Math.max(5, xAbsMax * 0.35)
-              const yMax = yAbsMax + Math.max(5, yAbsMax * 0.35)
-              const toSvgX = x => PAD.left + ((x + xMax) / (2 * xMax)) * chartW
-              const toSvgY = y => PAD.top + ((yMax - y) / (2 * yMax)) * chartH
+              // Both axes are percentage-point values, fixed to -100%..100%
+              // rather than scaled to this season's data -- see the same fix
+              // on the standalone /lj-index page for why a data-driven scale
+              // pushed gridlines/labels outside the plotted area.
+              const AXIS_MAX = 100
+              const xMax = AXIS_MAX
+              const yMax = AXIS_MAX
+              const clamp = v => Math.max(-AXIS_MAX, Math.min(AXIS_MAX, v))
+              const toSvgX = x => PAD.left + ((clamp(x) + xMax) / (2 * xMax)) * chartW
+              const toSvgY = y => PAD.top + ((yMax - clamp(y)) / (2 * yMax)) * chartH
               const minBubble = effectiveMobile ? 7 : 10
               const maxBubble = effectiveMobile ? 16 : 22
               const axisColor = d ? 'rgba(255,255,255,0.2)' : 'rgba(13,33,82,0.25)'
               const gridColor = d ? 'rgba(255,255,255,0.06)' : 'rgba(13,33,82,0.08)'
-              const gridStep = xMax <= 15 ? 5 : xMax <= 30 ? 10 : 25
+              const gridStep = 25
               const gridLines = []
-              for (let v = -Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v <= Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v += gridStep) gridLines.push(v)
+              for (let v = -AXIS_MAX; v <= AXIS_MAX; v += gridStep) gridLines.push(v)
               return (
                 <div style={{ marginBottom: '24px', overflowX: 'auto' }}>
                   <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: `${W}px`, height: 'auto', display: 'block', overflow: 'visible' }}>
@@ -819,6 +904,8 @@ export default function CurrentSeasonPage() {
               <StatCard label="📉 PR Drop" value={superlatives.prDrop ? `${superlatives.prDrop.name}` : '—'} sub={superlatives.prDrop && superlatives.prDrop.move < 0 ? `Fell ${Math.abs(superlatives.prDrop.move)} spot${Math.abs(superlatives.prDrop.move) > 1 ? 's' : ''} (${ordinal(superlatives.prDrop.from)} → ${ordinal(superlatives.prDrop.to)})` : 'Needs 2+ weeks'} color={red} />
               <StatCard label="📈 PR Rise" value={superlatives.prRise ? `${superlatives.prRise.name}` : '—'} sub={superlatives.prRise && superlatives.prRise.move > 0 ? `Rose ${superlatives.prRise.move} spot${superlatives.prRise.move > 1 ? 's' : ''} (${ordinal(superlatives.prRise.from)} → ${ordinal(superlatives.prRise.to)})` : 'Needs 2+ weeks'} color={green} />
               <StatCard label="🧮 LJ Leader" value={superlatives.ljLeader?.name} sub={`${(superlatives.ljLeader?.allPlayWinPct * 100)?.toFixed(1)}% all-play · ${superlatives.ljLeader?.luckRaw > 0 ? '+' : ''}${superlatives.ljLeader?.luckRaw} luck`} color={blue} />
+              <StatCard label="🎯 Best Starter" value={superlatives.bestStarter?.name || '—'} sub={superlatives.bestStarter ? `${superlatives.bestStarter.startPct}% season Start %` : 'Needs per-player stats on file'} color={green} />
+              <StatCard label="🪑 Worst Starter" value={superlatives.worstStarter?.name || '—'} sub={superlatives.worstStarter ? `${superlatives.worstStarter.startPct}% season Start %` : 'Needs per-player stats on file'} color={red} />
             </div>
           </div>
         )}

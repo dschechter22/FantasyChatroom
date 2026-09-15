@@ -24,7 +24,10 @@ export default function LJIndexPage() {
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => {
-    supabase.from('seasons').select('year, season_number').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
+    supabase.from('seasons').select('year, season_number').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).then(({ data }) => {
+      setSeasons(data || [])
+      if (data?.length) setSelectedYear(data[0].year)
+    })
     supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
     supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
@@ -179,21 +182,22 @@ export default function LJIndexPage() {
   const PAD = { top: 30, right: 20, bottom: 50, left: effectiveMobile ? 45 : 65 }
   const chartW = W - PAD.left - PAD.right
   const chartH = H - PAD.top - PAD.bottom
-  const xVals = activeData.map(r => r.x)
-  const yVals = activeData.map(r => r.y)
-  const xAbsMax = xVals.length > 0 ? Math.max(...xVals.map(Math.abs)) : 20
-  const yAbsMax = yVals.length > 0 ? Math.max(...yVals.map(Math.abs)) : 20
-  const xPad = Math.max(5, xAbsMax * 0.35)
-  const yPad = Math.max(5, yAbsMax * 0.35)
-  const xMax = xAbsMax + xPad
-  const yMax = yAbsMax + yPad
-  const toSvgX = (x) => PAD.left + ((x + xMax) / (2 * xMax)) * chartW
-  const toSvgY = (y) => PAD.top + ((yMax - y) / (2 * yMax)) * chartH
+  // Both axes are percentage-point values, so both are fixed to the same
+  // -100%..100% domain rather than scaled to whatever this season's data
+  // happens to span -- a data-driven scale made the two axes disagree on
+  // where a given tick actually sits, pushing gridlines and labels outside
+  // the plotted area whenever luck's spread differed from all-play%'s.
+  const AXIS_MAX = 100
+  const xMax = AXIS_MAX
+  const yMax = AXIS_MAX
+  const clamp = v => Math.max(-AXIS_MAX, Math.min(AXIS_MAX, v))
+  const toSvgX = (x) => PAD.left + ((clamp(x) + xMax) / (2 * xMax)) * chartW
+  const toSvgY = (y) => PAD.top + ((yMax - clamp(y)) / (2 * yMax)) * chartH
   const minBubble = effectiveMobile ? 7 : 10
   const maxBubble = effectiveMobile ? 16 : 22
-  const gridStep = xMax <= 15 ? 5 : xMax <= 30 ? 10 : 25
+  const gridStep = 25
   const gridLines = []
-  for (let v = -Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v <= Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v += gridStep) {
+  for (let v = -AXIS_MAX; v <= AXIS_MAX; v += gridStep) {
     gridLines.push(v)
   }
   const axisColor = d ? 'rgba(255,255,255,0.2)' : 'rgba(13,33,82,0.25)'

@@ -57,6 +57,10 @@ export default function SportsbookPage() {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    db.from('sb_games').select('week').eq('season', SEASON).order('week', { ascending: false }).limit(1)
+      .then(({ data }) => { if (data?.length) setWeek(data[0].week) })
+  }, [])
   useEffect(() => { if (mounted) { fetchGames(); fetchAccounts() } }, [mounted, week])
 
   const showFlash = (msg, ok = true) => {

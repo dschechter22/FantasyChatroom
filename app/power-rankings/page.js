@@ -17,7 +17,10 @@ export default function PowerRankingsPage() {
   const [rosterEntries, setRosterEntries] = useState([])
 
   useEffect(() => {
-    supabase.from('seasons').select('year, season_number').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
+    supabase.from('seasons').select('year, season_number').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).then(({ data }) => {
+      setSeasons(data || [])
+      if (data?.length) setSelectedYear(data[0].year)
+    })
     supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
   }, [])
 
@@ -205,14 +208,14 @@ export default function PowerRankingsPage() {
   }
 
   const hStyle = (align = 'right') => ({
-    padding: effectiveMobile ? '8px 8px' : '10px 14px',
-    fontSize: '10px', letterSpacing: '0.14em', textTransform: 'uppercase',
+    padding: effectiveMobile ? '8px 8px' : '9px 8px',
+    fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase',
     color: muted, textAlign: align, borderBottom: `1px solid ${border}`,
     fontWeight: '500', whiteSpace: 'nowrap',
   })
 
   const cStyle = (align = 'right') => ({
-    padding: effectiveMobile ? '12px 8px' : '16px 14px',
+    padding: effectiveMobile ? '12px 8px' : '11px 8px',
     fontSize: effectiveMobile ? '12px' : '13px', textAlign: align,
     borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap',
   })
@@ -258,7 +261,7 @@ export default function PowerRankingsPage() {
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
-      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
 
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', marginBottom: '8px', letterSpacing: '-0.02em' }}>
           Power Rankings
@@ -289,11 +292,9 @@ export default function PowerRankingsPage() {
                 <thead>
                   <tr style={{ background: cardBg }}>
                     <th style={hStyle('center')}>Rank</th>
-                    <th style={hStyle('center')}>±</th>
                     <th style={hStyle('left')}>Manager</th>
                     <th style={hStyle('left')}>Team</th>
-                    <th style={hStyle('center')}>W</th>
-                    <th style={hStyle('center')}>L</th>
+                    <th style={hStyle('center')}>W-L</th>
                     <th style={hStyle()}>PF</th>
                     <th style={hStyle()}>PA</th>
                     <th style={hStyle()}>Diff</th>
@@ -312,16 +313,15 @@ export default function PowerRankingsPage() {
                     const diff = parseFloat((r.pf - r.pa).toFixed(2))
                     return (
                       <tr key={r.t.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
-                        <td style={{ ...cStyle('center'), fontFamily: "'Playfair Display', serif", fontSize: '20px', color: r.rank <= 3 ? gold : text }}>
-                          {r.rank}
-                        </td>
                         <td style={{ ...cStyle('center') }}>
-                          <DeltaBadge val={dRank} isRank />
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                            <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: r.rank <= 3 ? gold : text }}>{r.rank}</span>
+                            <DeltaBadge val={dRank} isRank />
+                          </div>
                         </td>
                         <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{r.t.manager?.name}</td>
                         <td style={{ ...cStyle('left'), color: muted, fontSize: '12px' }}>{r.t.team_name}</td>
-                        <td style={cStyle('center')}>{r.wins}</td>
-                        <td style={cStyle('center')}>{r.losses}</td>
+                        <td style={cStyle('center')}>{r.wins}-{r.losses}</td>
                         <td style={cStyle()}>{r.pf.toFixed(2)}</td>
                         <td style={cStyle()}>{r.pa.toFixed(2)}</td>
                         <td style={{ ...cStyle(), color: diff >= 0 ? green : red, fontWeight: '500' }}>
