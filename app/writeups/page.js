@@ -300,15 +300,40 @@ export default function WriteupsPage() {
       const tag = node.tagName?.toLowerCase()
       if (!tag || tag === 'style' || tag === 'script') return ''
       if (tag.includes(':')) return '' // skip Word-specific tags like <o:p>
+
+      // <li>s only know their own text, not their position -- number them
+      // here, at the <ol>/<ul> that actually has that context, rather than
+      // dropping the marker entirely like the generic path below would.
+      if (tag === 'ol' || tag === 'ul') {
+        let n = 0
+        const items = Array.from(node.children)
+          .filter(c => c.tagName?.toLowerCase() === 'li')
+          .map(li => {
+            const text = Array.from(li.childNodes).map(convert).join('').trim()
+            if (!text) return ''
+            n++
+            return (tag === 'ol' ? `${n}. ` : '- ') + text
+          })
+          .filter(Boolean)
+        return items.length ? items.join('\n') + '\n' : ''
+      }
+
       const style = node.style || {}
       const children = Array.from(node.childNodes).map(convert).join('')
       const trimmed = children.trim()
       if (!trimmed) return '' // skip empty elements so they don't leave orphan newlines
+      // A bold/italic run often carries its own leading/trailing space in the
+      // source HTML (e.g. Word puts the space before the next word inside
+      // the same <b>). Pull that whitespace out before wrapping in ** so it
+      // survives outside the markers instead of running the next word in.
+      const leadingWs = children.match(/^\s+/)?.[0] || ''
+      const trailingWs = children.match(/\s+$/)?.[0] || ''
       const isBold = tag === 'b' || tag === 'strong' || style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 700
       const isItalic = tag === 'i' || tag === 'em' || style.fontStyle === 'italic'
-      let result = trimmed
-      if (isItalic) result = `*${result}*`
-      if (isBold) result = `**${result}**`
+      let core = trimmed
+      if (isItalic) core = `*${core}*`
+      if (isBold) core = `**${core}**`
+      let result = leadingWs + core + trailingWs
       if (tag === 'p' || tag === 'div') result = result + '\n'
       if (tag === 'br') result = '\n'
       if (tag === 'li') result = result + '\n'
