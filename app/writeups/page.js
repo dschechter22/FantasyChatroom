@@ -72,6 +72,7 @@ const weekLabel = (week) => {
 export default function WriteupsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, green, red, gold } = useLayout()
   const contentRef = useRef(null)
+  const imageInputRef = useRef(null)
 
   const [writeups, setWriteups] = useState([])
   const [loading, setLoading] = useState(true)
@@ -91,6 +92,15 @@ export default function WriteupsPage() {
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [imageUploading, setImageUploading] = useState(false)
+
+  // trivia quiz (just for fun -- reuses SECURITY_QUESTIONS, unrelated to the gate)
+  const [quizOrder, setQuizOrder] = useState([])
+  const [quizIndex, setQuizIndex] = useState(0)
+  const [quizInput, setQuizInput] = useState('')
+  const [quizAnswered, setQuizAnswered] = useState(false)
+  const [quizCorrect, setQuizCorrect] = useState(false)
+  const [quizScore, setQuizScore] = useState(0)
 
   // comments
   const [comments, setComments] = useState({})
@@ -181,6 +191,49 @@ export default function WriteupsPage() {
     setGateInput('')
     setGateWrong(false)
     if (gatePendingId) { setExpandedId(gatePendingId); setGatePendingId(null) }
+  }
+
+  const shuffled = arr => {
+    const a = [...arr]
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[a[i], a[j]] = [a[j], a[i]]
+    }
+    return a
+  }
+
+  const startQuiz = () => {
+    setQuizOrder(shuffled(SECURITY_QUESTIONS.map((_, i) => i)))
+    setQuizIndex(0)
+    setQuizInput('')
+    setQuizAnswered(false)
+    setQuizCorrect(false)
+    setQuizScore(0)
+    setView('quiz')
+  }
+
+  const submitQuizAnswer = () => {
+    if (quizAnswered) return
+    const q = SECURITY_QUESTIONS[quizOrder[quizIndex]]
+    const correct = q.a.includes(normalizeAnswer(quizInput))
+    setQuizAnswered(true)
+    setQuizCorrect(correct)
+    if (correct) setQuizScore(s => s + 1)
+  }
+
+  const nextQuizQuestion = () => {
+    setQuizIndex(i => i + 1)
+    setQuizInput('')
+    setQuizAnswered(false)
+    setQuizCorrect(false)
+  }
+
+  const quizScoreMessage = (score, total) => {
+    const pct = score / total
+    if (pct === 1) return "Certified league historian. Nothing gets past you."
+    if (pct >= 0.7) return "Solid. You've clearly been paying attention."
+    if (pct >= 0.4) return 'Middling. Ask around at the next draft.'
+    return "Rough. Are you even in this league?"
   }
 
   const fetchWriteups = async () => {
@@ -283,6 +336,20 @@ export default function WriteupsPage() {
   }
 
   const handlePaste = (e) => {
+    // A screenshot or "copy image" paste usually carries no HTML at all,
+    // just an image File -- upload it the same way the toolbar button does.
+    const imageFile = Array.from(e.clipboardData.files || []).find(f => f.type.startsWith('image/'))
+    if (imageFile) {
+      e.preventDefault()
+      setFormError('')
+      setImageUploading(true)
+      uploadImage(imageFile).then(({ url, error }) => {
+        setImageUploading(false)
+        if (error) { setFormError(error); return }
+        insertAtCursor(`\n![pasted image](${url})\n`)
+      })
+      return
+    }
     const html = e.clipboardData.getData('text/html')
     if (!html) return
     e.preventDefault()
@@ -300,6 +367,17 @@ export default function WriteupsPage() {
       const tag = node.tagName?.toLowerCase()
       if (!tag || tag === 'style' || tag === 'script') return ''
       if (tag.includes(':')) return '' // skip Word-specific tags like <o:p>
+
+      // Only a real hosted image (http/https) becomes a markdown image --
+      // Word/Docs usually embed images as huge base64 data: URIs, which
+      // would bloat the stored text massively, so those are dropped rather
+      // than inlined. Use the toolbar's Image button for those instead.
+      if (tag === 'img') {
+        const src = node.getAttribute('src') || ''
+        if (!/^https?:\/\//i.test(src)) return ''
+        const alt = node.getAttribute('alt') || 'image'
+        return `\n![${alt}](${src})\n`
+      }
 
       // <li>s only know their own text, not their position -- number them
       // here, at the <ol>/<ul> that actually has that context, rather than
@@ -330,9 +408,11 @@ export default function WriteupsPage() {
       const trailingWs = children.match(/\s+$/)?.[0] || ''
       const isBold = tag === 'b' || tag === 'strong' || style.fontWeight === 'bold' || parseInt(style.fontWeight) >= 700
       const isItalic = tag === 'i' || tag === 'em' || style.fontStyle === 'italic'
+      const isStrike = tag === 's' || tag === 'strike' || tag === 'del' || (style.textDecoration || '').includes('line-through')
       let core = trimmed
       if (isItalic) core = `*${core}*`
       if (isBold) core = `**${core}**`
+      if (isStrike) core = `~~${core}~~`
       let result = leadingWs + core + trailingWs
       if (tag === 'p' || tag === 'div') result = result + '\n'
       if (tag === 'br') result = '\n'
@@ -354,13 +434,49 @@ export default function WriteupsPage() {
     const start = ta.selectionStart
     const end = ta.selectionEnd
     const selected = ta.value.substring(start, end)
-    const wrapper = tag === 'bold' ? '**' : '*'
+    const wrapper = tag === 'bold' ? '**' : tag === 'strike' ? '~~' : '*'
     const newVal = ta.value.substring(0, start) + wrapper + selected + wrapper + ta.value.substring(end)
     setForm(f => ({ ...f, content: newVal }))
     setTimeout(() => {
       ta.focus()
       ta.setSelectionRange(start + wrapper.length, end + wrapper.length)
     }, 0)
+  }
+
+  const insertAtCursor = (text) => {
+    const ta = contentRef.current
+    if (!ta) return
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const newVal = ta.value.substring(0, start) + text + ta.value.substring(end)
+    setForm(f => ({ ...f, content: newVal }))
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(start + text.length, start + text.length) }, 0)
+  }
+
+  const IMAGE_BUCKET = 'writeup-images'
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+  const uploadImage = async (file) => {
+    if (!file.type.startsWith('image/')) return { error: 'That file is not an image.' }
+    if (file.size > MAX_IMAGE_BYTES) return { error: 'Images must be under 5MB.' }
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabase.storage.from(IMAGE_BUCKET).upload(path, file)
+    if (error) return { error: `Upload failed: ${error.message}` }
+    const { data } = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(path)
+    return { url: data.publicUrl }
+  }
+
+  const handleImagePick = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow picking the same file again later
+    if (!file) return
+    setFormError('')
+    setImageUploading(true)
+    const { url, error } = await uploadImage(file)
+    setImageUploading(false)
+    if (error) { setFormError(error); return }
+    insertAtCursor(`\n![${file.name}](${url})\n`)
   }
 
   if (!mounted) return null
@@ -393,12 +509,19 @@ export default function WriteupsPage() {
     return map[type] || muted
   }
 
+  // Only http(s) and root-relative URLs render as an <img> -- anything else
+  // (javascript:, data:, etc.) is left as plain text instead of an image tag.
+  const isSafeImageUrl = url => /^(https?:\/\/|\/)/i.test(url || '')
+
   const renderContent = (content) => {
     if (!content) return ''
     return content.split('\n').map((line) => {
-      const bold = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      const withImages = line.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, url) =>
+        isSafeImageUrl(url) ? `<img src="${url}" alt="${alt}" style="max-width:100%;display:block;margin:10px 0" />` : m)
+      const bold = withImages.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       const italic = bold.replace(/\*(.*?)\*/g, '<em>$1</em>')
-      return `<p style="margin-bottom:10px;line-height:1.7">${italic || '&nbsp;'}</p>`
+      const struck = italic.replace(/~~(.*?)~~/g, '<del>$1</del>')
+      return `<p style="margin-bottom:10px;line-height:1.7">${struck || '&nbsp;'}</p>`
     }).join('')
   }
 
@@ -508,6 +631,7 @@ export default function WriteupsPage() {
               {!adminUnlocked
                 ? <button onClick={() => { setAdminModal({}); setAdminPinInput(''); setAdminPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Admin</button>
                 : <button onClick={() => setAdminUnlocked(false)} style={{ background: 'none', border: `1px solid ${gold}`, color: gold, padding: '10px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Admin ✓</button>}
+              <button onClick={startQuiz} style={{ background: 'none', border: `1px solid ${border}`, color: text, padding: '10px 14px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>🎮 Trivia Quiz</button>
               <button onClick={() => { setView('new'); setEditTarget(null); setForm({ season_year: 2026, week: '', type: 'power_rankings', title: '', content: '', author_name: '', pin: '' }); setFormError(''); setFormSuccess('') }} style={{ background: text, color: bg, border: 'none', padding: '10px 20px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>
                 + New Writeup
               </button>
@@ -515,6 +639,9 @@ export default function WriteupsPage() {
           )}
           {(view === 'new' || view === 'edit') && (
             <button onClick={() => { setView('feed'); setEditTarget(null); setFormError(''); setFormSuccess('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 16px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", marginBottom: '8px' }}>← Back</button>
+          )}
+          {view === 'quiz' && (
+            <button onClick={() => setView('feed')} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 16px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", marginBottom: '8px' }}>← Back</button>
           )}
         </div>
 
@@ -575,7 +702,7 @@ export default function WriteupsPage() {
                               </span>
                             )}
                           </div>
-                          <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '17px' : '20px', color: text, fontWeight: '400' }}>{w.title}</h3>
+                          <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '17px' : '20px', color: text, fontWeight: '400', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{w.title}</h3>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                           {wComments.length > 0 && <span style={{ fontSize: '11px', color: muted }}>{wComments.length} 💬</span>}
@@ -608,7 +735,7 @@ export default function WriteupsPage() {
                     {isExpanded && (
                       <div style={{ borderTop: `1px solid ${border}`, padding: effectiveMobile ? '16px' : '20px 24px' }}>
                         {/* Content */}
-                        <div style={{ fontSize: '14px', color: text, lineHeight: 1.7, marginBottom: '20px' }} dangerouslySetInnerHTML={{ __html: renderContent(w.content) }} />
+                        <div style={{ fontSize: '14px', color: text, lineHeight: 1.7, marginBottom: '20px', overflowWrap: 'anywhere', wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: renderContent(w.content) }} />
 
                         {/* Edit / Delete / Share */}
                         <div style={{ display: 'flex', gap: '8px', borderTop: `1px solid ${border}`, paddingTop: '16px', marginBottom: '28px' }}>
@@ -634,7 +761,7 @@ export default function WriteupsPage() {
                                     </div>
                                     <button onClick={() => { setCommentPinModal({ commentId: c.id, writeupId: w.id, pin: c.pin }); setCommentPinInput(''); setCommentPinError('') }} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '11px', padding: '0', lineHeight: 1 }}>✕</button>
                                   </div>
-                                  <p style={{ fontSize: '13px', color: text, lineHeight: 1.6, margin: 0 }}>{c.content}</p>
+                                  <p style={{ fontSize: '13px', color: text, lineHeight: 1.6, margin: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{c.content}</p>
                                 </div>
                               ))}
                             </div>
@@ -718,10 +845,20 @@ export default function WriteupsPage() {
               <div>
                 <label style={labelStyle}>Content</label>
                 {/* Toolbar */}
-                <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button type="button" onClick={() => applyFormat('bold')} style={{ background: 'none', border: `1px solid ${border}`, color: text, padding: '4px 10px', cursor: 'pointer', fontSize: '13px', fontFamily: "'Inter', sans-serif", fontWeight: '700' }}>B</button>
                   <button type="button" onClick={() => applyFormat('italic')} style={{ background: 'none', border: `1px solid ${border}`, color: text, padding: '4px 10px', cursor: 'pointer', fontSize: '13px', fontFamily: "'Playfair Display', serif", fontStyle: 'italic' }}>I</button>
-                  <span style={{ fontSize: '11px', color: muted, alignSelf: 'center', marginLeft: '6px' }}>Select text then click B or I</span>
+                  <button type="button" onClick={() => applyFormat('strike')} style={{ background: 'none', border: `1px solid ${border}`, color: text, padding: '4px 10px', cursor: 'pointer', fontSize: '13px', fontFamily: "'Inter', sans-serif", textDecoration: 'line-through' }}>S</button>
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={imageUploading}
+                    style={{ background: 'none', border: `1px solid ${border}`, color: text, padding: '4px 10px', cursor: imageUploading ? 'not-allowed' : 'pointer', fontSize: '13px', fontFamily: "'Inter', sans-serif", opacity: imageUploading ? 0.5 : 1 }}
+                  >
+                    {imageUploading ? 'Uploading…' : '🖼 Image'}
+                  </button>
+                  <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImagePick} style={{ display: 'none' }} />
+                  <span style={{ fontSize: '11px', color: muted, marginLeft: '6px' }}>Select text then click B/I/S, or paste/insert an image</span>
                 </div>
                 <textarea
                   id="writeup-content"
@@ -750,6 +887,57 @@ export default function WriteupsPage() {
                 {submitting ? 'Saving...' : view === 'edit' ? 'Save Changes' : 'Post Writeup'}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Trivia Quiz */}
+        {view === 'quiz' && (
+          <div>
+            <p style={{ color: muted, fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '32px' }}>Trivia Quiz · just for fun</p>
+            {quizIndex < quizOrder.length ? (
+              <div>
+                <p style={{ fontSize: '11px', color: muted, marginBottom: '20px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  Question {quizIndex + 1} of {quizOrder.length} · Score: {quizScore}
+                </p>
+                <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '22px', color: text, marginBottom: '24px', lineHeight: 1.4 }}>
+                  {SECURITY_QUESTIONS[quizOrder[quizIndex]].q}
+                </p>
+                <input
+                  autoFocus
+                  value={quizInput}
+                  onChange={e => setQuizInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && (quizAnswered ? nextQuizQuestion() : submitQuizAnswer())}
+                  disabled={quizAnswered}
+                  placeholder="Your answer"
+                  style={{ ...inputStyle, marginBottom: '12px' }}
+                />
+                {quizAnswered && (
+                  <p style={{ fontSize: '14px', color: quizCorrect ? green : red, marginBottom: '16px', fontWeight: '600' }}>
+                    {quizCorrect ? '✅ Correct!' : `❌ Nope — the answer was "${SECURITY_QUESTIONS[quizOrder[quizIndex]].a[0]}"`}
+                  </p>
+                )}
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {!quizAnswered ? (
+                    <button onClick={submitQuizAnswer} style={{ background: text, color: bg, border: 'none', padding: '10px 24px', cursor: 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>Submit</button>
+                  ) : (
+                    <button onClick={nextQuizQuestion} style={{ background: text, color: bg, border: 'none', padding: '10px 24px', cursor: 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>
+                      {quizIndex + 1 < quizOrder.length ? 'Next Question' : 'See Results'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p style={{ fontFamily: "'Playfair Display', serif", fontSize: '48px', color: gold, marginBottom: '8px' }}>
+                  {quizScore} / {quizOrder.length}
+                </p>
+                <p style={{ fontSize: '14px', color: text, marginBottom: '28px' }}>{quizScoreMessage(quizScore, quizOrder.length)}</p>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={startQuiz} style={{ background: text, color: bg, border: 'none', padding: '10px 24px', cursor: 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500' }}>Play Again</button>
+                  <button onClick={() => setView('feed')} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 24px', cursor: 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Back to Writeups</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
