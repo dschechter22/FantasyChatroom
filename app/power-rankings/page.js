@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import { lineupEfficiency } from '../../lib/predictions'
 
 export default function PowerRankingsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold, blue } = useLayout()
@@ -13,6 +14,7 @@ export default function PowerRankingsPage() {
   const [matchups, setMatchups] = useState([])
   const [teams, setTeams] = useState([])
   const [managers, setManagers] = useState([])
+  const [rosterEntries, setRosterEntries] = useState([])
 
   useEffect(() => {
     supabase.from('seasons').select('year, season_number').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).then(({ data }) => setSeasons(data || []))
@@ -37,6 +39,14 @@ export default function PowerRankingsPage() {
       .eq('league_id', LEAGUE_ID)
       .then(({ data }) => setTeams((data || []).filter(t => t.season?.year === selectedYear)))
   }, [selectedYear])
+
+  useEffect(() => {
+    if (!teams.length) { setRosterEntries([]); return }
+    supabase.from('roster_entries')
+      .select('*, player:player_id(id, name, position)')
+      .in('team_id', teams.map(t => t.id))
+      .then(({ data }) => setRosterEntries(data || []))
+  }, [teams])
 
   const weeks = useMemo(() => [...new Set(matchups.map(m => m.week))].sort((a, b) => a - b), [matchups])
 
@@ -103,6 +113,19 @@ export default function PowerRankingsPage() {
       return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2
     }
 
+    // Season-to-date Start % (informational only -- does not feed powerScore):
+    // the average, across weeks with per-player stats on file, of the points
+    // a team's real starters scored versus what its best possible lineup
+    // would have scored that week.
+    const startPct = (teamId) => {
+      const entries = rosterEntries.filter(e => e.team_id === teamId)
+      const pcts = weeksIncluded
+        .map(wk => lineupEfficiency(entries, wk))
+        .filter(Boolean)
+        .map(e => e.pct)
+      return pcts.length ? parseFloat((pcts.reduce((s, p) => s + p, 0) / pcts.length).toFixed(1)) : null
+    }
+
     const rows = Object.values(teamData).map(({ t, scores, wins, losses, pf, pa, allPlaySum }) => {
       const games = wins + losses
       const winPct = games > 0 ? wins / games : 0
@@ -110,7 +133,7 @@ export default function PowerRankingsPage() {
       const medianScore = median(scores)
       const allPlayWinPct = weeksIncluded.length > 0 ? allPlaySum / weeksIncluded.length : 0
       const luck = parseFloat((wins - allPlaySum).toFixed(2))
-      return { t, wins, losses, pf: parseFloat(pf.toFixed(2)), pa: parseFloat(pa.toFixed(2)), winPct, avgScore, medianScore, allPlayWinPct, luck, _allPlaySum: allPlaySum }
+      return { t, wins, losses, pf: parseFloat(pf.toFixed(2)), pa: parseFloat(pa.toFixed(2)), winPct, avgScore, medianScore, allPlayWinPct, luck, startPct: startPct(t.id), _allPlaySum: allPlaySum }
     })
 
     // Normalize power score within this week's snapshot
@@ -134,14 +157,14 @@ export default function PowerRankingsPage() {
   const currentRankings = useMemo(() => {
     if (!selectedWeek) return []
     return calcRankingsForWeek(selectedWeek)
-  }, [selectedWeek, teams, matchups])
+  }, [selectedWeek, teams, matchups, rosterEntries])
 
   const prevRankings = useMemo(() => {
     if (!selectedWeek || selectedWeek <= weeks[0]) return []
     const prevWeek = weeks[weeks.indexOf(selectedWeek) - 1]
     if (!prevWeek) return []
     return calcRankingsForWeek(prevWeek)
-  }, [selectedWeek, weeks, teams, matchups])
+  }, [selectedWeek, weeks, teams, matchups, rosterEntries])
 
   // Build delta maps from prev week
   const prevRankMap = useMemo(() => {
@@ -214,12 +237,13 @@ export default function PowerRankingsPage() {
             <DeltaBadge val={dScore} />
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
           {[
             ['Record', `${r.wins}-${r.losses}`],
             ['Luck', r.luck > 0 ? `+${r.luck}` : `${r.luck}`],
             ['PF', r.pf.toFixed(0)],
             ['Diff', `${diff >= 0 ? '+' : ''}${diff.toFixed(0)}`],
+            ['Start %', r.startPct != null ? `${r.startPct}%` : '—'],
           ].map(([label, val]) => (
             <div key={label}>
               <div style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '2px' }}>{label}</div>
@@ -276,6 +300,7 @@ export default function PowerRankingsPage() {
                     <th style={hStyle()}>Avg PPG</th>
                     <th style={hStyle()}>All-Play %</th>
                     <th style={hStyle()}>Luck</th>
+                    <th style={hStyle()}>Start %</th>
                     <th style={hStyle()}>Power Score</th>
                     <th style={hStyle()}>Score ±</th>
                   </tr>
@@ -307,6 +332,7 @@ export default function PowerRankingsPage() {
                         <td style={{ ...cStyle(), color: r.luck >= 0 ? green : red, fontWeight: '500' }}>
                           {r.luck >= 0 ? '+' : ''}{r.luck}
                         </td>
+                        <td style={cStyle()}>{r.startPct != null ? `${r.startPct}%` : '—'}</td>
                         <td style={{ ...cStyle(), fontWeight: '600', color: r.rank === 1 ? gold : text }}>
                           {r.powerScore}
                         </td>
@@ -331,6 +357,7 @@ export default function PowerRankingsPage() {
           <p style={{ color: muted, fontSize: '11px', marginTop: '24px', lineHeight: 1.6 }}>
             Power Score = cumulative Win%, Avg PPG, All-Play Win%, and Median Score through Week {selectedWeek}, normalized within the season.
             Luck = actual wins minus expected wins based on all-play performance.
+            Start % = the average, across weeks with per-player stats on file, of the points a team's real starters scored versus what its best possible lineup would have scored — informational only, it does not feed into Power Score.
             Δ columns reflect change from Week {weeks[weeks.indexOf(selectedWeek) - 1] ?? '—'}.
           </p>
         )}
