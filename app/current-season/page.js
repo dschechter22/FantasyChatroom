@@ -10,6 +10,12 @@ export const dynamic = 'force-dynamic'
 const SEASON = '2026-27'
 const SEASON_YEAR = 2026
 
+const MANAGER_COLORS = {
+  'dan': '#4285F4', 'wally': '#EA4335', 'john': '#FBBC04', 'braden': '#34A853',
+  'jm': '#FF6D00', 'big-e': '#46BDC6', 'mamby-tenner': '#7BAAF7', 'reid': '#F07B72',
+  'freed': '#FCD04F', 'caden': '#71C287', 'dav': '#aaaaaa', 'bern-tenner': '#cccccc',
+}
+
 const median = (arr) => {
   if (!arr.length) return 0
   const s = [...arr].sort((a, b) => a - b)
@@ -118,7 +124,7 @@ export default function CurrentSeasonPage() {
 
   const computeTeamData = () => {
     const td = {}
-    teams.forEach(t => { td[t.id] = { name: t.manager?.name || '?', scores: [], wins: 0, losses: 0, pf: 0, pa: 0, allPlaySum: 0, gameLog: [] } })
+    teams.forEach(t => { td[t.id] = { name: t.manager?.name || '?', slug: t.manager?.slug, scores: [], wins: 0, losses: 0, pf: 0, pa: 0, allPlaySum: 0, gameLog: [] } })
     matchups.forEach(m => {
       const hId = m.home_team?.id, aId = m.away_team?.id
       if (td[hId]) { td[hId].scores.push(m.home_score); td[hId].pf += m.home_score; td[hId].pa += m.away_score; td[hId].gameLog.push({ week: m.week, score: m.home_score, oppScore: m.away_score, won: m.home_score > m.away_score }); if (m.home_score > m.away_score) td[hId].wins++; else if (m.home_score < m.away_score) td[hId].losses++ }
@@ -137,7 +143,7 @@ export default function CurrentSeasonPage() {
 
   const teamData = teams.length > 0 && matchups.length > 0 ? computeTeamData() : {}
 
-  const rows = Object.values(teamData).map(({ name, scores, wins, losses, pf, pa, allPlaySum, gameLog }) => {
+  const rows = Object.values(teamData).map(({ name, slug, scores, wins, losses, pf, pa, allPlaySum, gameLog }) => {
     const games = wins + losses
     const winPct = games > 0 ? wins / games : 0
     const avgScore = scores.length > 0 ? pf / scores.length : 0
@@ -153,7 +159,7 @@ export default function CurrentSeasonPage() {
       else if (w === streakType) curStreak++
       else break
     }
-    return { name, wins, losses, pf, pa, winPct, avgScore, medScore: med, allPlayWinPct, allPlaySum, luckRaw, std, streak: curStreak, streakWin: streakType, scores, gameLog: sortedLog }
+    return { name, slug, wins, losses, pf, pa, winPct, avgScore, medScore: med, allPlayWinPct, allPlaySum, luckRaw, std, streak: curStreak, streakWin: streakType, scores, gameLog: sortedLog }
   })
 
   const maxWin = Math.max(...rows.map(r => r.winPct)) || 1
@@ -168,6 +174,34 @@ export default function CurrentSeasonPage() {
 
   const standings = [...rows].sort((a, b) => b.wins - a.wins || b.pf - a.pf)
   const ljRanked = [...rows].sort((a, b) => b.allPlayWinPct - a.allPlayWinPct)
+
+  // Same All-Play Win% vs Luck bubble plot as the dedicated /lj-index page,
+  // reused here so the 2026-27 tab doesn't only show the table.
+  const ljPlotData = (() => {
+    if (!rows.length) return []
+    const avgAp = rows.reduce((s, r) => s + r.allPlayWinPct, 0) / rows.length
+    const avgLuck = rows.reduce((s, r) => s + r.luckRaw, 0) / rows.length
+    const powerByName = Object.fromEntries(ranked.map(r => [r.name, r.powerScore]))
+    const powers = Object.values(powerByName)
+    const maxPower = Math.max(...powers)
+    const minPower = Math.min(...powers)
+    return rows.map(r => {
+      const games = Math.max(r.wins + r.losses, 1)
+      const power = powerByName[r.name] ?? 0
+      return {
+        name: r.name,
+        slug: r.slug,
+        wins: r.wins,
+        losses: r.losses,
+        x: parseFloat(((r.allPlayWinPct - avgAp) * 100).toFixed(1)),
+        y: parseFloat((((r.luckRaw - avgLuck) / games) * 100).toFixed(1)),
+        powerNorm: maxPower === minPower ? 0.5 : (power - minPower) / (maxPower - minPower),
+        allPlayWinPct: parseFloat((r.allPlayWinPct * 100).toFixed(1)),
+        luckRaw: r.luckRaw,
+        avgScore: parseFloat(r.avgScore.toFixed(1)),
+      }
+    })
+  })()
 
   // ── power ranking movement ──
   const prevRanked = (() => {
@@ -668,6 +702,65 @@ export default function CurrentSeasonPage() {
         {ljRanked.length > 0 && (
           <div style={{ marginBottom: '64px' }}>
             <SectionLabel id="lj-index">LJ Index — All-Play Win %</SectionLabel>
+            {ljPlotData.length > 0 && (() => {
+              const W = effectiveMobile ? 340 : 680
+              const H = effectiveMobile ? 280 : 440
+              const PAD = { top: 26, right: 20, bottom: 44, left: effectiveMobile ? 45 : 60 }
+              const chartW = W - PAD.left - PAD.right
+              const chartH = H - PAD.top - PAD.bottom
+              const xVals = ljPlotData.map(r => r.x)
+              const yVals = ljPlotData.map(r => r.y)
+              const xAbsMax = Math.max(...xVals.map(Math.abs), 5)
+              const yAbsMax = Math.max(...yVals.map(Math.abs), 5)
+              const xMax = xAbsMax + Math.max(5, xAbsMax * 0.35)
+              const yMax = yAbsMax + Math.max(5, yAbsMax * 0.35)
+              const toSvgX = x => PAD.left + ((x + xMax) / (2 * xMax)) * chartW
+              const toSvgY = y => PAD.top + ((yMax - y) / (2 * yMax)) * chartH
+              const minBubble = effectiveMobile ? 7 : 10
+              const maxBubble = effectiveMobile ? 16 : 22
+              const axisColor = d ? 'rgba(255,255,255,0.2)' : 'rgba(13,33,82,0.25)'
+              const gridColor = d ? 'rgba(255,255,255,0.06)' : 'rgba(13,33,82,0.08)'
+              const gridStep = xMax <= 15 ? 5 : xMax <= 30 ? 10 : 25
+              const gridLines = []
+              for (let v = -Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v <= Math.ceil(Math.max(xMax, yMax) / gridStep) * gridStep; v += gridStep) gridLines.push(v)
+              return (
+                <div style={{ marginBottom: '24px', overflowX: 'auto' }}>
+                  <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: `${W}px`, height: 'auto', display: 'block', overflow: 'visible' }}>
+                    <rect x={toSvgX(0)} y={PAD.top} width={chartW - (toSvgX(0) - PAD.left)} height={chartH / 2} fill={d ? 'rgba(110,231,183,0.04)' : 'rgba(13,110,63,0.03)'} />
+                    <rect x={PAD.left} y={PAD.top} width={toSvgX(0) - PAD.left} height={chartH / 2} fill={d ? 'rgba(147,197,253,0.04)' : 'rgba(30,58,138,0.03)'} />
+                    <rect x={toSvgX(0)} y={toSvgY(0)} width={chartW - (toSvgX(0) - PAD.left)} height={chartH / 2} fill={d ? 'rgba(252,211,77,0.04)' : 'rgba(146,64,14,0.03)'} />
+                    <rect x={PAD.left} y={toSvgY(0)} width={toSvgX(0) - PAD.left} height={chartH / 2} fill={d ? 'rgba(248,113,113,0.04)' : 'rgba(155,28,28,0.03)'} />
+                    {gridLines.map(v => (
+                      <g key={v}>
+                        <line x1={toSvgX(v)} y1={PAD.top} x2={toSvgX(v)} y2={PAD.top + chartH} stroke={v === 0 ? axisColor : gridColor} strokeWidth={v === 0 ? 1.5 : 1} />
+                        <line x1={PAD.left} y1={toSvgY(v)} x2={PAD.left + chartW} y2={toSvgY(v)} stroke={v === 0 ? axisColor : gridColor} strokeWidth={v === 0 ? 1.5 : 1} />
+                        <text x={toSvgX(v)} y={PAD.top + chartH + 16} textAnchor="middle" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif">{v}%</text>
+                        <text x={PAD.left - 6} y={toSvgY(v) + 4} textAnchor="end" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif">{v}%</text>
+                      </g>
+                    ))}
+                    <text x={PAD.left + chartW / 2} y={H - 4} textAnchor="middle" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif" letterSpacing="1.5">ALL-PLAY WIN %</text>
+                    <text x={10} y={PAD.top + chartH / 2} textAnchor="middle" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif" letterSpacing="1.5" transform={`rotate(-90, 10, ${PAD.top + chartH / 2})`}>LUCK</text>
+                    {ljPlotData.map((r, i) => {
+                      const cx = toSvgX(r.x), cy = toSvgY(r.y)
+                      const radius = minBubble + r.powerNorm * (maxBubble - minBubble)
+                      const color = MANAGER_COLORS[r.slug] || '#888'
+                      return (
+                        <g key={r.name || i}>
+                          <title>{`${r.name} — ${r.wins}-${r.losses} · All-Play ${r.allPlayWinPct}% · Luck ${r.luckRaw > 0 ? '+' : ''}${r.luckRaw} · Avg ${r.avgScore}`}</title>
+                          <circle cx={cx} cy={cy} r={radius} fill={color} fillOpacity={0.85} stroke={d ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'} strokeWidth={1.5} />
+                          {radius > 16 && (
+                            <text x={cx} y={cy + 4} textAnchor="middle" fontSize={effectiveMobile ? '8' : '9'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
+                              {r.name?.split('/')[0]?.split(' ')[0]}
+                            </text>
+                          )}
+                        </g>
+                      )
+                    })}
+                  </svg>
+                  <p style={{ color: muted, fontSize: '11px', marginTop: '8px' }}>All-Play Win% vs Luck · bubble size = power score · axes centered at league average</p>
+                </div>
+              )
+            })()}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                 <thead>
