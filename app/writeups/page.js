@@ -30,6 +30,36 @@ const WEEK_OPTIONS = [
 ]
 const YEARS = Array.from({ length: 12 }, (_, i) => 2015 + i) // 2015–2026
 
+const GATE_STORAGE_KEY = 'writeups_gate_ok'
+
+// League-trivia security questions -- answering any ONE correctly unlocks
+// the whole page for this browser (see GATE_STORAGE_KEY). Answers are
+// normalized (lowercased, punctuation/whitespace stripped) before matching,
+// and a question can accept more than one acceptable answer.
+const SECURITY_QUESTIONS = [
+  { q: 'Who bhattarded in gym class?', a: ['eshaan'] },
+  { q: 'Who was the 1.1 teacher at Daniel Wright? (last name: Buchberger — enter their first name)', a: ['tess'] },
+  { q: 'Who did JM lose his virginity to at 12 years old? (first name only)', a: ['meera'] },
+  { q: 'Which class trip did Freed repeatedly ask to "turn it on already?"', a: ['springfield'] },
+  { q: 'How much money was on the table for Braden to prove he was >6 inches?', a: ['200', '200dollars', 'twohundred', 'twohundreddollars'] },
+  { q: 'Which mom of the league made Caden want to get freaky with? (first name only)', a: ['lauren'] },
+  { q: 'Who claimed to be 8.5 inches? (last name only)', a: ['tenner'] },
+  { q: 'Who was the primary spreader of the rumor about Freed and his dog?', a: ['john', 'reid'] },
+  { q: "Who was Dan's female doppelganger? (first name + last initial)", a: ['oliviah'] },
+  { q: 'Who in the league hit puberty last?', a: ['braden'] },
+  { q: 'Who shot their sister with an aerosol gun in his basement?', a: ['wally'] },
+  { q: 'Who had minimal eyebrow hair in high school?', a: ['caden'] },
+  { q: 'Who is destined to end up in a loveless marriage with Emily Stec?', a: ['caden'] },
+  { q: 'Who leads the league in printer sales?', a: ['caden'] },
+  { q: 'Who has the brokest jumper in the league?', a: ['jm'] },
+  { q: 'What country did Mambrose lose his virginity in?', a: ['colombia'] },
+  { q: 'Who is the only person to have left and rejoined the league?', a: ['cameron'] },
+  { q: 'Who has never attended a Chatroom Draft on time?', a: ['jm'] },
+  { q: "Whose sister did Nick Stefanov lay pipe to? (last name only)", a: ['freed'] },
+]
+
+const normalizeAnswer = s => (s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+
 const weekLabel = (week) => {
   if (week === null || week === undefined || week === '') return ''
   const n = parseInt(week)
@@ -81,21 +111,54 @@ export default function WriteupsPage() {
   const [adminPinError, setAdminPinError] = useState('')
   const [lockError, setLockError] = useState('')
 
+  // security-question gate
+  const [gateUnlocked, setGateUnlocked] = useState(false)
+  const [gateOpen, setGateOpen] = useState(false)
+  const [gatePendingId, setGatePendingId] = useState(null) // writeup the user was trying to open when gated
+  const [gateAnswers, setGateAnswers] = useState({})
+  const [gateErrors, setGateErrors] = useState({})
+
   useEffect(() => { setMounted(true) }, [])
+  useEffect(() => {
+    try { if (localStorage.getItem(GATE_STORAGE_KEY) === '1') setGateUnlocked(true) } catch {}
+  }, [])
   useEffect(() => { fetchWriteups() }, [])
   useEffect(() => { if (expandedId) fetchComments(expandedId) }, [expandedId])
 
-  // On load, auto-expand writeup from URL hash
+  // On load, auto-expand writeup from URL hash (only once the gate's
+  // localStorage check above has had a chance to run)
   useEffect(() => {
     if (!mounted || !writeups.length) return
     const hash = window.location.hash.replace('#', '')
-    if (hash && writeups.some(w => w.id === hash && !w.is_locked)) {
-      setExpandedId(hash)
-      setTimeout(() => {
-        document.getElementById(`writeup-${hash}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
+    if (!hash || !writeups.some(w => w.id === hash && !w.is_locked)) return
+    if (!gateUnlocked) { setGatePendingId(hash); setGateOpen(true); return }
+    setExpandedId(hash)
+    setTimeout(() => {
+      document.getElementById(`writeup-${hash}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 100)
+  }, [mounted, writeups, gateUnlocked])
+
+  // Central "the user wants to read this writeup" entry point: gates on the
+  // first open per browser, then just toggles like normal.
+  const requestOpenWriteup = (id) => {
+    if (!gateUnlocked) { setGatePendingId(id); setGateOpen(true); return }
+    setExpandedId(expandedId === id ? null : id)
+  }
+
+  const submitGateAnswer = (qIndex) => {
+    const question = SECURITY_QUESTIONS[qIndex]
+    const given = normalizeAnswer(gateAnswers[qIndex])
+    if (!given || !question.a.includes(given)) {
+      setGateErrors(e => ({ ...e, [qIndex]: 'Not quite.' }))
+      return
     }
-  }, [mounted, writeups])
+    setGateUnlocked(true)
+    try { localStorage.setItem(GATE_STORAGE_KEY, '1') } catch {}
+    setGateOpen(false)
+    setGateAnswers({})
+    setGateErrors({})
+    if (gatePendingId) { setExpandedId(gatePendingId); setGatePendingId(null) }
+  }
 
   const fetchWriteups = async () => {
     setLoading(true)
@@ -359,6 +422,36 @@ export default function WriteupsPage() {
         </>
       )}
 
+      {/* Security-question gate */}
+      {gateOpen && (
+        <>
+          <div onClick={() => { setGateOpen(false); setGatePendingId(null) }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '92vw' : '480px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, marginBottom: '8px', flexShrink: 0 }}>Prove You Belong Here</h3>
+            <p style={{ fontSize: '12px', color: muted, marginBottom: '20px', flexShrink: 0 }}>Answer any ONE of these correctly to unlock writeups on this device.</p>
+            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '4px' }}>
+              {SECURITY_QUESTIONS.map((sq, i) => (
+                <div key={i}>
+                  <p style={{ fontSize: '13px', color: text, marginBottom: '6px', lineHeight: 1.4 }}>{sq.q}</p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      value={gateAnswers[i] || ''}
+                      onChange={e => { setGateAnswers(a => ({ ...a, [i]: e.target.value })); setGateErrors(er => ({ ...er, [i]: '' })) }}
+                      onKeyDown={e => e.key === 'Enter' && submitGateAnswer(i)}
+                      placeholder="Your answer"
+                      style={{ ...inputStyle, padding: '8px 12px', fontSize: '12px' }}
+                    />
+                    <button onClick={() => submitGateAnswer(i)} style={{ background: text, color: bg, border: 'none', padding: '8px 16px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", fontWeight: '500', flexShrink: 0 }}>Check</button>
+                  </div>
+                  {gateErrors[i] && <p style={{ fontSize: '11px', color: red, marginTop: '4px' }}>{gateErrors[i]}</p>}
+                </div>
+              ))}
+            </div>
+            <button onClick={() => { setGateOpen(false); setGatePendingId(null) }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", marginTop: '20px', flexShrink: 0 }}>Cancel</button>
+          </div>
+        </>
+      )}
+
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '8px', flexWrap: 'wrap', gap: '12px' }}>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', letterSpacing: '-0.02em' }}>Writeups</h1>
@@ -417,7 +510,8 @@ export default function WriteupsPage() {
                     <div
                       onClick={() => {
                         if (sealed) { setAdminModal({ writeupId: w.id }); setAdminPinInput(''); setAdminPinError(''); return }
-                        setExpandedId(isExpanded ? null : w.id)
+                        if (isExpanded) { setExpandedId(null); return }
+                        requestOpenWriteup(w.id)
                       }}
                       style={{ padding: effectiveMobile ? '16px' : '20px 24px', cursor: 'pointer' }}
                     >
