@@ -56,6 +56,16 @@ const SECURITY_QUESTIONS = [
   { q: 'Who is the only person to have left and rejoined the league?', a: ['cameron'] },
   { q: 'Who has never attended a Chatroom Draft on time?', a: ['jm'] },
   { q: "Whose sister did Nick Stefanov lay pipe to? (last name only)", a: ['freed'] },
+  { q: "Who was Mamby's Lifetime sweetheart? (first and last name)", a: ['nikkikolz'] },
+  { q: 'Fill in the blank — what did Phil say to John in the Lifetime locker room: "I\'m lowkey tryna see your ___"?', a: ['forest'] },
+  { q: "What was Mitch Armour's gamertag?", a: ['frbking84'] },
+  { q: 'Fill in the missing digits: Natebellamy___@gmail.com', a: ['357'] },
+  { q: 'What illness did Apple suffer from?', a: ['downsyndrome'] },
+  { q: 'Who got punched in the face by Brad Grover?', a: ['caden'] },
+  { q: 'What poker hand is "the Aimee Staemmer"?', a: ['29', '92'] },
+  { q: 'What poker hand is "Gronkowski/George Washington"?', a: ['69', '96'] },
+  { q: 'What poker hand is "Persian Carpet"?', a: ['79', '97'] },
+  { q: 'What poker hand is "the Austin Kody"?', a: ['j2', '2j', 'jack2', '2jack'] },
 ]
 
 const normalizeAnswer = s => (s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '')
