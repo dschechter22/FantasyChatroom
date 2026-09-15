@@ -111,12 +111,14 @@ export default function WriteupsPage() {
   const [adminPinError, setAdminPinError] = useState('')
   const [lockError, setLockError] = useState('')
 
-  // security-question gate
+  // security-question gate -- one question shown at a time, with a skip
+  // option and a taunt on a wrong answer.
   const [gateUnlocked, setGateUnlocked] = useState(false)
   const [gateOpen, setGateOpen] = useState(false)
   const [gatePendingId, setGatePendingId] = useState(null) // writeup the user was trying to open when gated
-  const [gateAnswers, setGateAnswers] = useState({})
-  const [gateErrors, setGateErrors] = useState({})
+  const [gateQIndex, setGateQIndex] = useState(null)
+  const [gateInput, setGateInput] = useState('')
+  const [gateWrong, setGateWrong] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => {
@@ -125,13 +127,34 @@ export default function WriteupsPage() {
   useEffect(() => { fetchWriteups() }, [])
   useEffect(() => { if (expandedId) fetchComments(expandedId) }, [expandedId])
 
+  const randomQIndex = (exclude) => {
+    if (SECURITY_QUESTIONS.length <= 1) return 0
+    let next
+    do { next = Math.floor(Math.random() * SECURITY_QUESTIONS.length) } while (next === exclude)
+    return next
+  }
+
+  const openGate = (pendingId) => {
+    setGatePendingId(pendingId)
+    setGateQIndex(randomQIndex())
+    setGateInput('')
+    setGateWrong(false)
+    setGateOpen(true)
+  }
+
+  const skipGateQuestion = () => {
+    setGateQIndex(prev => randomQIndex(prev))
+    setGateInput('')
+    setGateWrong(false)
+  }
+
   // On load, auto-expand writeup from URL hash (only once the gate's
   // localStorage check above has had a chance to run)
   useEffect(() => {
     if (!mounted || !writeups.length) return
     const hash = window.location.hash.replace('#', '')
     if (!hash || !writeups.some(w => w.id === hash && !w.is_locked)) return
-    if (!gateUnlocked) { setGatePendingId(hash); setGateOpen(true); return }
+    if (!gateUnlocked) { openGate(hash); return }
     setExpandedId(hash)
     setTimeout(() => {
       document.getElementById(`writeup-${hash}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -141,22 +164,22 @@ export default function WriteupsPage() {
   // Central "the user wants to read this writeup" entry point: gates on the
   // first open per browser, then just toggles like normal.
   const requestOpenWriteup = (id) => {
-    if (!gateUnlocked) { setGatePendingId(id); setGateOpen(true); return }
+    if (!gateUnlocked) { openGate(id); return }
     setExpandedId(expandedId === id ? null : id)
   }
 
-  const submitGateAnswer = (qIndex) => {
-    const question = SECURITY_QUESTIONS[qIndex]
-    const given = normalizeAnswer(gateAnswers[qIndex])
+  const submitGateAnswer = () => {
+    const question = SECURITY_QUESTIONS[gateQIndex]
+    const given = normalizeAnswer(gateInput)
     if (!given || !question.a.includes(given)) {
-      setGateErrors(e => ({ ...e, [qIndex]: 'Not quite.' }))
+      setGateWrong(true)
       return
     }
     setGateUnlocked(true)
     try { localStorage.setItem(GATE_STORAGE_KEY, '1') } catch {}
     setGateOpen(false)
-    setGateAnswers({})
-    setGateErrors({})
+    setGateInput('')
+    setGateWrong(false)
     if (gatePendingId) { setExpandedId(gatePendingId); setGatePendingId(null) }
   }
 
@@ -423,31 +446,31 @@ export default function WriteupsPage() {
       )}
 
       {/* Security-question gate */}
-      {gateOpen && (
+      {gateOpen && gateQIndex !== null && (
         <>
           <div onClick={() => { setGateOpen(false); setGatePendingId(null) }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '92vw' : '480px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, marginBottom: '8px', flexShrink: 0 }}>Prove You Belong Here</h3>
-            <p style={{ fontSize: '12px', color: muted, marginBottom: '20px', flexShrink: 0 }}>Answer any ONE of these correctly to unlock writeups on this device.</p>
-            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '4px' }}>
-              {SECURITY_QUESTIONS.map((sq, i) => (
-                <div key={i}>
-                  <p style={{ fontSize: '13px', color: text, marginBottom: '6px', lineHeight: 1.4 }}>{sq.q}</p>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      value={gateAnswers[i] || ''}
-                      onChange={e => { setGateAnswers(a => ({ ...a, [i]: e.target.value })); setGateErrors(er => ({ ...er, [i]: '' })) }}
-                      onKeyDown={e => e.key === 'Enter' && submitGateAnswer(i)}
-                      placeholder="Your answer"
-                      style={{ ...inputStyle, padding: '8px 12px', fontSize: '12px' }}
-                    />
-                    <button onClick={() => submitGateAnswer(i)} style={{ background: text, color: bg, border: 'none', padding: '8px 16px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", fontWeight: '500', flexShrink: 0 }}>Check</button>
-                  </div>
-                  {gateErrors[i] && <p style={{ fontSize: '11px', color: red, marginTop: '4px' }}>{gateErrors[i]}</p>}
-                </div>
-              ))}
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '92vw' : '440px' }}>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, marginBottom: '8px' }}>Prove You Belong Here</h3>
+            <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>Answer correctly to unlock writeups on this device. Don't know it? Skip to a different question.</p>
+            <p style={{ fontSize: '14px', color: text, marginBottom: '12px', lineHeight: 1.5 }}>{SECURITY_QUESTIONS[gateQIndex].q}</p>
+            <input
+              autoFocus
+              value={gateInput}
+              onChange={e => { setGateInput(e.target.value); setGateWrong(false) }}
+              onKeyDown={e => e.key === 'Enter' && submitGateAnswer()}
+              placeholder="Your answer"
+              style={{ ...inputStyle, marginBottom: '8px' }}
+            />
+            {gateWrong && (
+              <p style={{ fontSize: '12px', color: red, marginBottom: '8px' }}>Wronger than what Ceola did to Coburn, try again?</p>
+            )}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+              <button onClick={submitGateAnswer} style={{ background: text, color: bg, border: 'none', padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", fontWeight: '500', flex: 1 }}>
+                {gateWrong ? 'Try Again' : 'Submit'}
+              </button>
+              <button onClick={skipGateQuestion} style={{ background: 'none', border: `1px solid ${border}`, color: text, padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}>Skip</button>
+              <button onClick={() => { setGateOpen(false); setGatePendingId(null) }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}>Cancel</button>
             </div>
-            <button onClick={() => { setGateOpen(false); setGatePendingId(null) }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 20px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", marginTop: '20px', flexShrink: 0 }}>Cancel</button>
           </div>
         </>
       )}
