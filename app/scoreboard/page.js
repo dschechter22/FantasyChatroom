@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-import { lineupEfficiency } from '../../lib/predictions'
+import { lineupEfficiency, actualWeekLineup, projectedWeekLineup } from '../../lib/predictions'
 import { resolveSchedule, REG_SEASON_WEEKS } from '../../lib/schedule'
 export const dynamic = 'force-dynamic'
 
@@ -80,29 +80,47 @@ export default function ScoreboardPage() {
 
   const inp = { background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }
 
-  const TeamPlayers = ({ entries }) => {
-    const eff = lineupEfficiency(entries, week)
+  const TeamPlayers = ({ entries, played }) => {
+    // ESPN reports 0 (not missing) for a player who simply hasn't kicked off
+    // yet, so `actual` is never actually null once a week has synced --
+    // `played` (the matchup's own score, not any one player's) is what
+    // actually distinguishes "still projected" from "final."
+    const eff = played ? lineupEfficiency(entries, week) : null
     const withStats = entries.map(e => ({
       ...e,
       actual: e.stats?.actual?.[week] ?? null,
       proj: e.stats?.proj?.[week] ?? null,
       started: e.stats?.started?.[week] === true,
     }))
-    const sorted = [...withStats].sort((a, b) => {
-      if (a.started !== b.started) return a.started ? -1 : 1
-      return (b.actual ?? -1) - (a.actual ?? -1)
-    })
-    const hasAnyData = withStats.some(e => e.actual != null)
+
+    // A normal roster reads QB/RB/RB/WR/WR/TE/FLEX/FLEX/D-ST/K, not sorted
+    // by score -- run the real starters (not the whole roster) through the
+    // same slot-assignment lib/predictions.js uses elsewhere, so whichever
+    // RB/WR/TE ends up in a FLEX slot is at least a stable, sensible pick
+    // rather than DB order, then list the bench below by score.
+    const startedOnly = withStats.filter(e => e.started)
+    const benchOnly = withStats.filter(e => !e.started)
+    const lineup = played ? actualWeekLineup(startedOnly, week) : projectedWeekLineup(startedOnly, week)
+    const sorted = [
+      ...lineup.starters,
+      ...lineup.bench, // any started entries the 9 standard slots didn't have room for
+      ...[...benchOnly].sort((a, b) => (played ? (b.actual ?? -1) - (a.actual ?? -1) : (b.proj ?? -1) - (a.proj ?? -1))),
+    ]
+    const hasAnyData = withStats.some(e => e.proj != null || e.actual != null)
 
     return (
       <div style={{ flex: 1, background: cardBg }}>
         <div style={{ padding: '8px 16px', borderBottom: `1px solid ${border}`, fontSize: '11px', color: muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-          Start %: {eff ? (
-            <span style={{ color: eff.pct >= 90 ? green : eff.pct < 70 ? red : text, fontWeight: '600' }}>
-              {eff.pct}% <span style={{ color: muted, fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>({eff.actualTotal} of {eff.optimalTotal} possible)</span>
-            </span>
+          {played ? (
+            <>Start %: {eff ? (
+              <span style={{ color: eff.pct >= 90 ? green : eff.pct < 70 ? red : text, fontWeight: '600' }}>
+                {eff.pct}% <span style={{ color: muted, fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>({eff.actualTotal} of {eff.optimalTotal} possible)</span>
+              </span>
+            ) : (
+              <span style={{ color: muted }}>not enough data yet</span>
+            )}</>
           ) : (
-            <span style={{ color: muted }}>not enough data yet</span>
+            <span style={{ color: muted }}>Not yet played — showing projections</span>
           )}
         </div>
         {!hasAnyData ? (
@@ -111,17 +129,28 @@ export default function ScoreboardPage() {
           sorted.map((e, i) => (
             <div key={e.id} style={{ display: 'grid', gridTemplateColumns: '44px 1fr 44px 44px', alignItems: 'center', padding: '7px 16px', background: i % 2 === 0 ? 'transparent' : rowAlt, opacity: e.started ? 1 : 0.6 }}>
               <span style={{ fontSize: '9px', fontWeight: '700', color: e.started ? posColor(e.player?.position) : muted, background: (e.started ? posColor(e.player?.position) : muted) + '18', padding: '2px 4px', textAlign: 'center' }}>
-                {e.started ? (e.player?.position || '—') : 'BEN'}
+                {e.started ? (e.slot || e.player?.position || '—') : 'BEN'}
               </span>
               <span style={{ fontSize: '12px', color: text, paddingLeft: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {e.player?.name || '—'}
               </span>
-              <span style={{ fontSize: '12px', fontWeight: '500', color: text, textAlign: 'right' }}>
-                {e.actual != null ? e.actual.toFixed(1) : '—'}
-              </span>
-              <span style={{ fontSize: '11px', textAlign: 'right', color: e.actual != null && e.proj != null ? (e.actual >= e.proj ? green : red) : muted }}>
-                {e.actual != null && e.proj != null ? `${e.actual >= e.proj ? '+' : ''}${(e.actual - e.proj).toFixed(1)}` : '—'}
-              </span>
+              {played ? (
+                <>
+                  <span style={{ fontSize: '12px', fontWeight: '500', color: text, textAlign: 'right' }}>
+                    {e.actual != null ? e.actual.toFixed(1) : '—'}
+                  </span>
+                  <span style={{ fontSize: '11px', textAlign: 'right', color: e.actual != null && e.proj != null ? (e.actual >= e.proj ? green : red) : muted }}>
+                    {e.actual != null && e.proj != null ? `${e.actual >= e.proj ? '+' : ''}${(e.actual - e.proj).toFixed(1)}` : '—'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: '12px', fontWeight: '500', color: text, textAlign: 'right' }}>
+                    {e.proj != null ? e.proj.toFixed(1) : '—'}
+                  </span>
+                  <span style={{ fontSize: '10px', textAlign: 'right', color: muted }}>proj</span>
+                </>
+              )}
             </div>
           ))
         )}
@@ -192,7 +221,7 @@ export default function ScoreboardPage() {
                           <div style={{ padding: '10px 16px', background: cardBg, borderBottom: `1px solid ${border}`, fontFamily: "'Playfair Display', serif", fontSize: '14px', color: text }}>
                             {side.label}
                           </div>
-                          <TeamPlayers entries={side.entries} />
+                          <TeamPlayers entries={side.entries} played={played} />
                         </div>
                       ))}
                     </div>
