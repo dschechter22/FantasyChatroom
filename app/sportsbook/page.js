@@ -44,6 +44,7 @@ export default function SportsbookPage() {
   const [balanceAdjustAmount, setBalanceAdjustAmount] = useState('')
   const [deleteAccountId, setDeleteAccountId] = useState('')
   const [confirmResetProps, setConfirmResetProps] = useState(false)
+  const [confirmDeleteBetId, setConfirmDeleteBetId] = useState('')
   const [allPendingBets, setAllPendingBets] = useState([])
   const [allBets, setAllBets] = useState([])
   const [allParlays, setAllParlays] = useState([])
@@ -555,6 +556,38 @@ export default function SportsbookPage() {
     }
     await settleTouchedParlays([bet])
     logActivity('bet_overridden', 'Admin', `Admin marked ${bet.account?.manager_name || 'a'} bet as ${status}`)
+    fetchAccounts(); fetchAllPendingBets(); fetchActivityLog()
+    if (myAccount) fetchMyBets(myAccount.id)
+  }
+
+  // Fully removes a pending bet and refunds its stake -- for a bet placed
+  // against a line that turned out to be wrong (stale/mispriced), where
+  // "settle it Won/Lost/Push" doesn't apply because the bet itself
+  // shouldn't have existed at that price. A single's own wager is refunded
+  // directly; a parlay leg can't be pulled out on its own (the remaining
+  // legs' combined odds would no longer mean anything), so the whole parlay
+  // is voided and its full stake refunded instead. Also unblocks
+  // refreshUnbetPropLines, which otherwise leaves a prop's line alone
+  // forever once anyone's bet on it.
+  const deleteBet = async (bet) => {
+    if (bet.status !== 'pending') return
+    if (bet.parlay_id) {
+      const { data: parlay } = await db.from('sb_parlays').select('*').eq('id', bet.parlay_id).single()
+      await db.from('sb_bets').delete().eq('parlay_id', bet.parlay_id)
+      await db.from('sb_parlays').delete().eq('id', bet.parlay_id)
+      if (parlay) {
+        const { data: acc } = await db.from('gb_accounts').select('balance').eq('id', parlay.account_id).single()
+        await db.from('gb_accounts').update({ balance: acc.balance + parlay.amount }).eq('id', parlay.account_id)
+      }
+      logActivity('bet_deleted', 'Admin', `Admin deleted ${bet.account?.manager_name || 'a'} parlay (refunded ${parlay?.amount ?? 0} GB)`)
+    } else {
+      const { data: acc } = await db.from('gb_accounts').select('balance').eq('id', bet.account_id).single()
+      await db.from('gb_accounts').update({ balance: acc.balance + bet.amount }).eq('id', bet.account_id)
+      await db.from('sb_bets').delete().eq('id', bet.id)
+      logActivity('bet_deleted', 'Admin', `Admin deleted ${bet.account?.manager_name || 'a'} bet (refunded ${bet.amount} GB)`)
+    }
+    showFlash('Bet deleted and refunded')
+    setConfirmDeleteBetId('')
     fetchAccounts(); fetchAllPendingBets(); fetchActivityLog()
     if (myAccount) fetchMyBets(myAccount.id)
   }
@@ -2144,11 +2177,20 @@ export default function SportsbookPage() {
                             <div style={{ fontSize: '12px', color: text }}>{bet.account?.manager_name || '—'} · {desc}</div>
                             <div style={{ fontSize: '11px', color: muted }}>{bet.amount} GB · {fmtOdds(bet.odds)}{bet.parlay_id ? ' · parlay leg' : ''}</div>
                           </div>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            <button onClick={() => overrideBet(bet, 'won')} style={{ background: 'none', border: `1px solid ${green}`, color: green, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Won</button>
-                            <button onClick={() => overrideBet(bet, 'lost')} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Lost</button>
-                            <button onClick={() => overrideBet(bet, 'push')} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Push</button>
-                          </div>
+                          {confirmDeleteBetId === bet.id ? (
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                              <span style={{ fontSize: '10px', color: red }}>Refund {bet.parlay_id ? 'whole parlay' : `${bet.amount} GB`}?</span>
+                              <button onClick={() => deleteBet(bet)} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Confirm</button>
+                              <button onClick={() => setConfirmDeleteBetId('')} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Cancel</button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button onClick={() => overrideBet(bet, 'won')} style={{ background: 'none', border: `1px solid ${green}`, color: green, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Won</button>
+                              <button onClick={() => overrideBet(bet, 'lost')} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Lost</button>
+                              <button onClick={() => overrideBet(bet, 'push')} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Push</button>
+                              <button onClick={() => setConfirmDeleteBetId(bet.id)} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Delete</button>
+                            </div>
+                          )}
                         </div>
                       )
                     })}
