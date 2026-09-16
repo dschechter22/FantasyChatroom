@@ -22,6 +22,14 @@ const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 // be hit by a scheduled cron (see vercel.json) rather than the browser --
 // protected by CRON_SECRET so it can't be triggered by anyone with the URL.
 //
+// Also reconciles roster membership against ESPN's current roster for each
+// team (trades, waiver pickups/drops) rather than only updating stats on
+// whatever roster_entries happened to exist from the season's initial seed
+// -- a player who moved teams gets their existing row re-homed, and a
+// player who was never seeded (a free-agent pickup) gets a new players/
+// roster_entries row created. A newly-created player has no sleeper_id, so
+// they won't pick up Sleeper projections until/unless that's set by hand.
+//
 // Every ESPN/Supabase call here is best-effort and independently caught so
 // one feed's outage (or one bad team/player match) can't block the rest --
 // same posture the reference implementation (AMFFL) uses for its hourly
@@ -37,7 +45,10 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url)
   const week = parseInt(searchParams.get('week') || '') || (await fetchSleeperCurrentWeek()) || 1
 
-  const result = { week, matchupsSynced: 0, playersScored: 0, unmatchedPlayers: [], projectionsSynced: 0, errors: [] }
+  const result = {
+    week, matchupsSynced: 0, playersScored: 0, unmatchedPlayers: [],
+    rosterMoves: [], newRosterEntries: [], projectionsSynced: 0, errors: [],
+  }
 
   const { data: season } = await supabase.from('seasons').select('id').eq('year', SEASON_YEAR).single()
   if (!season) {
@@ -64,6 +75,12 @@ export async function GET(request) {
     .select('id, team_id, stats, player:player_id(name, sleeper_id)')
     .in('team_id', teams.map(t => t.id))
   const entryByTeamAndName = new Map((allEntries || []).map(e => [`${e.team_id}|${norm(e.player?.name)}`, e]))
+  // Season-wide (not team-scoped) name lookup, so a player who moved teams
+  // (trade/waiver) can be detected and re-homed instead of reported as
+  // unmatched. Ties (rare -- two same-named NFL players) resolve to
+  // whichever row was seen last; not worth a more careful merge for how
+  // infrequently that happens.
+  const entryByAnyTeamAndName = new Map((allEntries || []).map(e => [norm(e.player?.name), e]))
   const entriesBySleeperId = new Map()
   for (const e of allEntries || []) {
     const sid = e.player?.sleeper_id
@@ -102,7 +119,39 @@ export async function GET(request) {
     for (const line of playerLines) {
       const team = teamsByEspnId[line.espnTeamId]
       if (!team) continue
-      const entry = entryByTeamAndName.get(`${team.id}|${norm(line.playerName)}`)
+      const key = norm(line.playerName)
+      let entry = entryByTeamAndName.get(`${team.id}|${key}`)
+
+      // Not on this team's roster in our DB -- either they moved here from
+      // another of our tracked teams (trade/waiver claim), or they're new
+      // to the league entirely (a free-agent pickup we've never seeded).
+      if (!entry) {
+        const elsewhere = entryByAnyTeamAndName.get(key)
+        if (elsewhere && elsewhere.team_id !== team.id) {
+          await supabase.from('roster_entries').update({ team_id: team.id }).eq('id', elsewhere.id)
+          elsewhere.team_id = team.id
+          entry = elsewhere
+          result.rosterMoves.push(`${line.playerName} -> ${team.manager?.name || team.id}`)
+        } else if (!elsewhere) {
+          let { data: player } = await supabase.from('players').select('id').eq('name', line.playerName).maybeSingle()
+          if (!player) {
+            const { data: newPlayer, error: playerErr } = await supabase.from('players')
+              .insert({ name: line.playerName, position: line.position }).select('id').single()
+            if (playerErr) { result.errors.push(`Could not create player ${line.playerName}: ${playerErr.message}`); continue }
+            player = newPlayer
+          }
+          const { data: newEntry, error: entryErr } = await supabase.from('roster_entries')
+            .insert({ team_id: team.id, player_id: player.id, stats: {} }).select('id, stats').single()
+          if (entryErr) { result.errors.push(`Could not roster ${line.playerName}: ${entryErr.message}`); continue }
+          entry = { ...newEntry, team_id: team.id, player: { name: line.playerName } }
+          result.newRosterEntries.push(`${line.playerName} -> ${team.manager?.name || team.id}`)
+        }
+        if (entry) {
+          entryByTeamAndName.set(`${team.id}|${key}`, entry)
+          entryByAnyTeamAndName.set(key, entry)
+        }
+      }
+
       if (!entry) {
         result.unmatchedPlayers.push(`${line.playerName} (${team.manager?.name || team.id})`)
         continue
