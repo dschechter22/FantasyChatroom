@@ -877,11 +877,11 @@ export default function SportsbookPage() {
   const inp = { background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }
   const lbl = { fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, display: 'block', marginBottom: '4px' }
   const tabBtn = active => ({ background: active ? text : 'none', color: active ? bg : muted, border: `1px solid ${border}`, padding: '6px 14px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: active ? '600' : '400' })
-  const betBtn = active => ({ background: active ? text : 'none', color: active ? bg : muted, border: `1px solid ${active ? text : border}`, padding: '5px 10px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap' })
-  // A bolder, tinted, hover-reactive odds button for the futures markets --
-  // green-tinted for the "yes" side, red-tinted for "no", filled solid once
-  // selected, with a lift on hover so the row reads as clickable rather than
-  // a flat label.
+  // A bolder, tinted, hover-reactive odds button -- green-tinted for the
+  // "first"/yes/over side, red-tinted for the "second"/no/under side, filled
+  // solid once selected, with a lift on hover so every bet button on the
+  // page (lines, pick'em, futures, props) reads as clickable rather than a
+  // flat label.
   const oddsBtn = (key, tint, active) => {
     const hovered = hoveredBetKey === key
     return active
@@ -1372,15 +1372,27 @@ export default function SportsbookPage() {
                   {!game.is_locked && !game.is_settled && (
                     <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       {game.spread != null && <>
-                        <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'spread', pick: 'team_a', odds: -110, label: `Spread: ${game.team_a} ${game.spread > 0 ? `+${game.spread}` : game.spread}`, subLabel: `${game.team_a} vs ${game.team_b}` })} style={betBtn(inSlip('game', game.id, 'spread', 'team_a'))}>{game.team_a} {game.spread > 0 ? `+${game.spread}` : game.spread} <span style={{ color: muted, fontSize: '10px' }}>(-110)</span></button>
-                        <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'spread', pick: 'team_b', odds: -110, label: `Spread: ${game.team_b} ${game.spread < 0 ? `+${Math.abs(game.spread)}` : `-${game.spread}`}`, subLabel: `${game.team_a} vs ${game.team_b}` })} style={betBtn(inSlip('game', game.id, 'spread', 'team_b'))}>{game.team_b} {game.spread < 0 ? `+${Math.abs(game.spread)}` : `-${game.spread}`} <span style={{ color: muted, fontSize: '10px' }}>(-110)</span></button>
+                        <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'spread', pick: 'team_a', odds: -110, label: `Spread: ${game.team_a} ${game.spread > 0 ? `+${game.spread}` : game.spread}`, subLabel: `${game.team_a} vs ${game.team_b}` })}
+                          onMouseEnter={() => setHoveredBetKey(`g${game.id}-spread-a`)} onMouseLeave={() => setHoveredBetKey(null)}
+                          style={oddsBtn(`g${game.id}-spread-a`, green, inSlip('game', game.id, 'spread', 'team_a'))}>{game.team_a} {game.spread > 0 ? `+${game.spread}` : game.spread} (-110)</button>
+                        <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'spread', pick: 'team_b', odds: -110, label: `Spread: ${game.team_b} ${game.spread < 0 ? `+${Math.abs(game.spread)}` : `-${game.spread}`}`, subLabel: `${game.team_a} vs ${game.team_b}` })}
+                          onMouseEnter={() => setHoveredBetKey(`g${game.id}-spread-b`)} onMouseLeave={() => setHoveredBetKey(null)}
+                          style={oddsBtn(`g${game.id}-spread-b`, red, inSlip('game', game.id, 'spread', 'team_b'))}>{game.team_b} {game.spread < 0 ? `+${Math.abs(game.spread)}` : `-${game.spread}`} (-110)</button>
                       </>}
                       {game.over_under != null && <>
-                        <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'ou', pick: 'over', odds: -110, label: `O/U: Over ${game.over_under}`, subLabel: `${game.team_a} vs ${game.team_b}` })} style={betBtn(inSlip('game', game.id, 'ou', 'over'))}>Over {game.over_under} <span style={{ color: muted, fontSize: '10px' }}>(-110)</span></button>
-                        <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'ou', pick: 'under', odds: -110, label: `O/U: Under ${game.over_under}`, subLabel: `${game.team_a} vs ${game.team_b}` })} style={betBtn(inSlip('game', game.id, 'ou', 'under'))}>Under {game.over_under} <span style={{ color: muted, fontSize: '10px' }}>(-110)</span></button>
+                        <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'ou', pick: 'over', odds: -110, label: `O/U: Over ${game.over_under}`, subLabel: `${game.team_a} vs ${game.team_b}` })}
+                          onMouseEnter={() => setHoveredBetKey(`g${game.id}-ou-over`)} onMouseLeave={() => setHoveredBetKey(null)}
+                          style={oddsBtn(`g${game.id}-ou-over`, green, inSlip('game', game.id, 'ou', 'over'))}>Over {game.over_under} (-110)</button>
+                        <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'ou', pick: 'under', odds: -110, label: `O/U: Under ${game.over_under}`, subLabel: `${game.team_a} vs ${game.team_b}` })}
+                          onMouseEnter={() => setHoveredBetKey(`g${game.id}-ou-under`)} onMouseLeave={() => setHoveredBetKey(null)}
+                          style={oddsBtn(`g${game.id}-ou-under`, red, inSlip('game', game.id, 'ou', 'under'))}>Under {game.over_under} (-110)</button>
                       </>}
-                      <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'ml', pick: 'team_a', odds: game.ml_a, label: `ML: ${game.team_a}`, subLabel: `${game.team_a} vs ${game.team_b}` })} style={betBtn(inSlip('game', game.id, 'ml', 'team_a'))}>{game.team_a} ML <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(game.ml_a)}</span></button>
-                      <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'ml', pick: 'team_b', odds: game.ml_b, label: `ML: ${game.team_b}`, subLabel: `${game.team_a} vs ${game.team_b}` })} style={betBtn(inSlip('game', game.id, 'ml', 'team_b'))}>{game.team_b} ML <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(game.ml_b)}</span></button>
+                      <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'ml', pick: 'team_a', odds: game.ml_a, label: `ML: ${game.team_a}`, subLabel: `${game.team_a} vs ${game.team_b}` })}
+                        onMouseEnter={() => setHoveredBetKey(`g${game.id}-ml-a`)} onMouseLeave={() => setHoveredBetKey(null)}
+                        style={oddsBtn(`g${game.id}-ml-a`, green, inSlip('game', game.id, 'ml', 'team_a'))}>{game.team_a} ML {fmtOdds(game.ml_a)}</button>
+                      <button onClick={() => toggleBet({ family: 'game', refId: game.id, betType: 'ml', pick: 'team_b', odds: game.ml_b, label: `ML: ${game.team_b}`, subLabel: `${game.team_a} vs ${game.team_b}` })}
+                        onMouseEnter={() => setHoveredBetKey(`g${game.id}-ml-b`)} onMouseLeave={() => setHoveredBetKey(null)}
+                        style={oddsBtn(`g${game.id}-ml-b`, red, inSlip('game', game.id, 'ml', 'team_b'))}>{game.team_b} ML {fmtOdds(game.ml_b)}</button>
                     </div>
                   )}
                   {game.is_settled && (
@@ -1422,8 +1434,12 @@ export default function SportsbookPage() {
                       <span style={{ fontSize: '12px', color: muted }}>Locked — no pick submitted</span>
                     ) : (
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => setPickemPicks(p => ({ ...p, [game.id]: 'team_a' }))} style={betBtn(pickemPicks[game.id] === 'team_a')}>{game.team_a}</button>
-                        <button onClick={() => setPickemPicks(p => ({ ...p, [game.id]: 'team_b' }))} style={betBtn(pickemPicks[game.id] === 'team_b')}>{game.team_b}</button>
+                        <button onClick={() => setPickemPicks(p => ({ ...p, [game.id]: 'team_a' }))}
+                          onMouseEnter={() => setHoveredBetKey(`pk${game.id}-a`)} onMouseLeave={() => setHoveredBetKey(null)}
+                          style={oddsBtn(`pk${game.id}-a`, green, pickemPicks[game.id] === 'team_a')}>{game.team_a}</button>
+                        <button onClick={() => setPickemPicks(p => ({ ...p, [game.id]: 'team_b' }))}
+                          onMouseEnter={() => setHoveredBetKey(`pk${game.id}-b`)} onMouseLeave={() => setHoveredBetKey(null)}
+                          style={oddsBtn(`pk${game.id}-b`, red, pickemPicks[game.id] === 'team_b')}>{game.team_b}</button>
                       </div>
                     )}
                   </div>
@@ -1488,8 +1504,12 @@ export default function SportsbookPage() {
                       const name = teamLabel(wtTeam)
                       return (
                         <>
-                          <button onClick={() => addCustomFuture({ marketType: 'win_total', teamId: wtTeam, teamName: name, line: parseFloat(wtLine), fairP: p, pick: 'yes', label: `${name} Over ${wtLine} Wins`, subLabel: 'Win Total' })} style={betBtn(false)}>Over <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsYes)}</span></button>
-                          <button onClick={() => addCustomFuture({ marketType: 'win_total', teamId: wtTeam, teamName: name, line: parseFloat(wtLine), fairP: p, pick: 'no', label: `${name} Under ${wtLine} Wins`, subLabel: 'Win Total' })} style={betBtn(false)}>Under <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsNo)}</span></button>
+                          <button onClick={() => addCustomFuture({ marketType: 'win_total', teamId: wtTeam, teamName: name, line: parseFloat(wtLine), fairP: p, pick: 'yes', label: `${name} Over ${wtLine} Wins`, subLabel: 'Win Total' })}
+                            onMouseEnter={() => setHoveredBetKey('wt-over')} onMouseLeave={() => setHoveredBetKey(null)}
+                            style={oddsBtn('wt-over', green, false)}>Over {fmtOdds(oddsYes)}</button>
+                          <button onClick={() => addCustomFuture({ marketType: 'win_total', teamId: wtTeam, teamName: name, line: parseFloat(wtLine), fairP: p, pick: 'no', label: `${name} Under ${wtLine} Wins`, subLabel: 'Win Total' })}
+                            onMouseEnter={() => setHoveredBetKey('wt-under')} onMouseLeave={() => setHoveredBetKey(null)}
+                            style={oddsBtn('wt-under', red, false)}>Under {fmtOdds(oddsNo)}</button>
                         </>
                       )
                     })()}
@@ -1516,8 +1536,12 @@ export default function SportsbookPage() {
                       const name = teamLabel(seedTeam)
                       return (
                         <>
-                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: pWorse, pick: 'yes', label: `${name} Worse than Seed ${seedLine}`, subLabel: 'Final Seed' })} style={betBtn(false)}>Worse <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsWorse)}</span></button>
-                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: 1 - pWorse, pick: 'no', label: `${name} Better than Seed ${seedLine}`, subLabel: 'Final Seed' })} style={betBtn(false)}>Better <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsBetter)}</span></button>
+                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: pWorse, pick: 'yes', label: `${name} Worse than Seed ${seedLine}`, subLabel: 'Final Seed' })}
+                            onMouseEnter={() => setHoveredBetKey('seed-worse')} onMouseLeave={() => setHoveredBetKey(null)}
+                            style={oddsBtn('seed-worse', green, false)}>Worse {fmtOdds(oddsWorse)}</button>
+                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: 1 - pWorse, pick: 'no', label: `${name} Better than Seed ${seedLine}`, subLabel: 'Final Seed' })}
+                            onMouseEnter={() => setHoveredBetKey('seed-better')} onMouseLeave={() => setHoveredBetKey(null)}
+                            style={oddsBtn('seed-better', red, false)}>Better {fmtOdds(oddsBetter)}</button>
                         </>
                       )
                     })()}
@@ -1543,8 +1567,12 @@ export default function SportsbookPage() {
                       const nameA = teamLabel(aheadTeamA), nameB = teamLabel(aheadTeamB)
                       return (
                         <>
-                          <button onClick={() => addCustomFuture({ marketType: 'h2h_finish', teamId: aheadTeamA, oppTeamId: aheadTeamB, teamName: nameA, oppTeamName: nameB, fairP: p, pick: 'yes', label: `${nameA} finishes ahead of ${nameB}`, subLabel: 'Finishes Ahead Of' })} style={betBtn(false)}>{nameA} <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsYes)}</span></button>
-                          <button onClick={() => addCustomFuture({ marketType: 'h2h_finish', teamId: aheadTeamA, oppTeamId: aheadTeamB, teamName: nameA, oppTeamName: nameB, fairP: 1 - p, pick: 'no', label: `${nameB} finishes ahead of ${nameA}`, subLabel: 'Finishes Ahead Of' })} style={betBtn(false)}>{nameB} <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsNo)}</span></button>
+                          <button onClick={() => addCustomFuture({ marketType: 'h2h_finish', teamId: aheadTeamA, oppTeamId: aheadTeamB, teamName: nameA, oppTeamName: nameB, fairP: p, pick: 'yes', label: `${nameA} finishes ahead of ${nameB}`, subLabel: 'Finishes Ahead Of' })}
+                            onMouseEnter={() => setHoveredBetKey('ahead-a')} onMouseLeave={() => setHoveredBetKey(null)}
+                            style={oddsBtn('ahead-a', green, false)}>{nameA} {fmtOdds(oddsYes)}</button>
+                          <button onClick={() => addCustomFuture({ marketType: 'h2h_finish', teamId: aheadTeamA, oppTeamId: aheadTeamB, teamName: nameA, oppTeamName: nameB, fairP: 1 - p, pick: 'no', label: `${nameB} finishes ahead of ${nameA}`, subLabel: 'Finishes Ahead Of' })}
+                            onMouseEnter={() => setHoveredBetKey('ahead-b')} onMouseLeave={() => setHoveredBetKey(null)}
+                            style={oddsBtn('ahead-b', red, false)}>{nameB} {fmtOdds(oddsNo)}</button>
                         </>
                       )
                     })()}
@@ -1708,19 +1736,25 @@ export default function SportsbookPage() {
                     const opp = s?.nflTeam ? nflOppByAbbr[s.nflTeam] : null
                     const fmt1 = v => (v == null ? '—' : v.toFixed(1))
                     return (
-                    <div key={p.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div key={p.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                       <div>
                         <div style={{ fontSize: '13px', color: text }}>{p.player_name} <span style={{ color: muted, fontSize: '11px' }}>{p.position}{p.team_name ? ` · ${p.team_name}` : ''}</span></div>
                         <div style={{ fontSize: '11px', color: muted }}>Line: {p.line} pts</div>
-                        <div style={{ fontSize: '11px', color: muted, marginTop: '4px' }}>
+                      </div>
+                      <div style={{ textAlign: 'center', flex: '1 1 auto', minWidth: '180px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: text }}>
                           Avg {fmt1(s?.avgPts)} · Last Wk {fmt1(s?.lastWeekPts)} · L3 {fmt1(s?.l3Avg)}
                           {s?.posRank ? ` · ${p.position}${s.posRank}` : ''}
-                          {opp ? ` · ${s.nflTeam} ${opp.homeAway} ${opp.opp}` : ''}
                         </div>
+                        {opp && <div style={{ fontSize: '11px', color: muted, marginTop: '2px' }}>{s.nflTeam} {opp.homeAway} {opp.opp}</div>}
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'over', odds: p.odds_over, label: `${p.player_name} Over ${p.line}`, subLabel: `Week ${p.week} prop` })} style={betBtn(inSlip('prop', p.id, 'prop', 'over'))}>Over <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(p.odds_over)}</span></button>
-                        <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'under', odds: p.odds_under, label: `${p.player_name} Under ${p.line}`, subLabel: `Week ${p.week} prop` })} style={betBtn(inSlip('prop', p.id, 'prop', 'under'))}>Under <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(p.odds_under)}</span></button>
+                        <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'over', odds: p.odds_over, label: `${p.player_name} Over ${p.line}`, subLabel: `Week ${p.week} prop` })}
+                          onMouseEnter={() => setHoveredBetKey(`prop${p.id}-over`)} onMouseLeave={() => setHoveredBetKey(null)}
+                          style={oddsBtn(`prop${p.id}-over`, green, inSlip('prop', p.id, 'prop', 'over'))}>Over {fmtOdds(p.odds_over)}</button>
+                        <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'under', odds: p.odds_under, label: `${p.player_name} Under ${p.line}`, subLabel: `Week ${p.week} prop` })}
+                          onMouseEnter={() => setHoveredBetKey(`prop${p.id}-under`)} onMouseLeave={() => setHoveredBetKey(null)}
+                          style={oddsBtn(`prop${p.id}-under`, red, inSlip('prop', p.id, 'prop', 'under'))}>Under {fmtOdds(p.odds_under)}</button>
                       </div>
                     </div>
                     )
