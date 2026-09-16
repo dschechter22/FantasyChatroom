@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { fetchEspnWeek, parseEspnWeek } from '../../../lib/espnFantasy'
-import { fetchSleeperProjections, fetchSleeperCurrentWeek } from '../../../lib/sleeperProjections'
-import { scorePlayer } from '../../../lib/scoring'
+import { fetchSleeperCurrentWeek } from '../../../lib/sleeperProjections'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 const SEASON_YEAR = 2026
@@ -15,21 +14,21 @@ export const maxDuration = 60
 
 const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
-// Pulls the week's real ESPN scores/starters/actual points, plus that same
-// week's Sleeper projections (scored under this league's own rules), into
-// the same DB fields the rest of the app already reads: matchups.home_score/
-// away_score, and roster_entries.stats.actual/started/proj[week]. Meant to
-// be hit by a scheduled cron (see vercel.json) rather than the browser --
-// protected by CRON_SECRET so it can't be triggered by anyone with the URL.
+// Pulls the week's real ESPN scores, real starters, real actual points, and
+// ESPN's own per-player projection -- all from the same payload -- into the
+// same DB fields the rest of the app already reads: matchups.home_score/
+// away_score, and roster_entries.stats.actual/started/proj/teamId[week].
+// Meant to be hit by a scheduled cron (see vercel.json) rather than the
+// browser -- protected by CRON_SECRET so it can't be triggered by anyone
+// with the URL.
 //
 // Also reconciles roster membership against ESPN's current roster for each
 // team (trades, waiver pickups/drops) rather than only updating stats on
 // whatever roster_entries happened to exist from the season's initial seed
 // -- a player who moved teams gets their existing row re-homed, and a
 // player who was never seeded (a free-agent pickup) gets a new players/
-// roster_entries row created. A newly-created player has no sleeper_id, so
-// they won't pick up Sleeper projections until/unless that's set by hand.
-// This reconciliation ONLY happens when `week` is the actual current week;
+// roster_entries row created. This reconciliation ONLY happens when `week`
+// is the actual current week;
 // hit with an older `?week=N` (e.g. to backfill a week whose roster_entries
 // didn't exist yet at the time), it only fills in that week's stats for
 // whoever's already on file, and never touches team_id -- otherwise a
@@ -65,6 +64,8 @@ export async function GET(request) {
   const result = {
     week, isBackfill, matchupsSynced: 0, playersScored: 0, unmatchedPlayers: [],
     rosterMoves: [], newRosterEntries: [], projectionsSynced: 0, errors: [],
+    // ^ projectionsSynced counts players who got ESPN's own per-player
+    // projection for this week, from the same payload as everything else.
   }
 
   const { data: season } = await supabase.from('seasons').select('id').eq('year', SEASON_YEAR).single()
@@ -85,11 +86,9 @@ export async function GET(request) {
     result.errors.push('No team has espn_team_id set -- run espn_team_id_seed_2026.sql first')
   }
 
-  // One shared fetch of every roster row for this season, used by both the
-  // ESPN (name-within-team match) and Sleeper (sleeper_id match) sections
-  // below, instead of re-querying per team/player.
+  // One shared fetch of every roster row for this season.
   const { data: allEntries } = await supabase.from('roster_entries')
-    .select('id, team_id, player_id, stats, player:player_id(name, sleeper_id)')
+    .select('id, team_id, player_id, stats, player:player_id(name)')
     .in('team_id', teams.map(t => t.id))
   const entryByTeamAndName = new Map((allEntries || []).map(e => [`${e.team_id}|${norm(e.player?.name)}`, e]))
   // Season-wide (not team-scoped) name lookup, so a player who moved teams
@@ -98,15 +97,8 @@ export async function GET(request) {
   // whichever row was seen last; not worth a more careful merge for how
   // infrequently that happens.
   const entryByAnyTeamAndName = new Map((allEntries || []).map(e => [norm(e.player?.name), e]))
-  const entriesBySleeperId = new Map()
-  for (const e of allEntries || []) {
-    const sid = e.player?.sleeper_id
-    if (!sid || sid === 'SKIP') continue
-    if (!entriesBySleeperId.has(sid)) entriesBySleeperId.set(sid, [])
-    entriesBySleeperId.get(sid).push(e)
-  }
 
-  // -- ESPN: authoritative matchup scores, real starters, real actual points --
+  // -- ESPN: authoritative matchup scores, real starters, real actual points, real projections --
   try {
     const raw = await fetchEspnWeek(SEASON_YEAR, week)
     const { matchups, playerLines } = parseEspnWeek(raw, week)
@@ -198,31 +190,22 @@ export async function GET(request) {
         ...stats,
         actual: { ...(stats.actual || {}), [week]: line.actual },
         started: { ...(stats.started || {}), [week]: line.started },
+        // Immutable per-week ownership snapshot -- separate from team_id
+        // (which is allowed to change going forward). This is what lets a
+        // later trade move team_id without rewriting who owned this player
+        // in a week that's already happened.
+        teamId: { ...(stats.teamId || {}), [week]: team.id },
+      }
+      if (line.proj != null) {
+        nextStats.proj = { ...(stats.proj || {}), [week]: line.proj }
+        result.projectionsSynced++
       }
       await supabase.from('roster_entries').update({ stats: nextStats }).eq('id', entry.id)
-      entry.stats = nextStats // keep the in-memory copy current in case Sleeper touches the same row below
+      entry.stats = nextStats
       result.playersScored++
     }
   } catch (e) {
     result.errors.push(`ESPN sync failed: ${e.message}`)
-  }
-
-  // -- Sleeper: projections for the same week, scored under this league's own rules --
-  try {
-    const projByPlayerId = await fetchSleeperProjections(SEASON_YEAR, week)
-    for (const [sleeperId, rawStats] of Object.entries(projByPlayerId)) {
-      const entries = entriesBySleeperId.get(sleeperId)
-      if (!entries?.length) continue
-      const proj = parseFloat(scorePlayer(rawStats).toFixed(2))
-      for (const entry of entries) {
-        const stats = entry.stats || {}
-        const nextStats = { ...stats, proj: { ...(stats.proj || {}), [week]: proj } }
-        await supabase.from('roster_entries').update({ stats: nextStats }).eq('id', entry.id)
-        result.projectionsSynced++
-      }
-    }
-  } catch (e) {
-    result.errors.push(`Sleeper projections sync failed: ${e.message}`)
   }
 
   return Response.json(result)
