@@ -17,6 +17,7 @@ const SEASON = '2026-27'
 // from swinging a line to something absurd.
 const MAX_ACTION_SHIFT = 0.12
 const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K']
+const PICKEM_PRIZE = 10
 
 const toDecimal = o => o > 0 ? 1 + o / 100 : 1 + 100 / Math.abs(o)
 const toAmerican = d => d >= 2 ? Math.round((d - 1) * 100) : Math.round(-100 / (d - 1))
@@ -511,7 +512,7 @@ export default function SportsbookPage() {
 
   const overrideBet = async (bet, status) => {
     if (bet.status !== 'pending') return
-    const winAmt = status === 'won' ? (bet.bet_type === 'pickem' ? 20 : calcWin(bet.amount, bet.odds)) : 0
+    const winAmt = status === 'won' ? (bet.bet_type === 'pickem' ? PICKEM_PRIZE : calcWin(bet.amount, bet.odds)) : 0
     await db.from('sb_bets').update({ status, win_amount: winAmt }).eq('id', bet.id)
     if (status === 'won' || status === 'push') {
       const { data: acc } = await db.from('gb_accounts').select('balance').eq('id', bet.account_id).single()
@@ -854,7 +855,7 @@ export default function SportsbookPage() {
       if (bet.bet_type === 'pickem') {
         status = (bet.pick === 'team_a' ? sA > sB : sB > sA) ? 'won' : 'lost'
       }
-      const winAmt = status === 'won' ? (bet.bet_type === 'pickem' ? 20 : calcWin(bet.amount, bet.odds)) : 0
+      const winAmt = status === 'won' ? (bet.bet_type === 'pickem' ? PICKEM_PRIZE : calcWin(bet.amount, bet.odds)) : 0
       await db.from('sb_bets').update({ status, win_amount: winAmt }).eq('id', bet.id)
       const { data: a } = await db.from('gb_accounts').select('balance').eq('id', bet.account_id).single()
       if (status === 'won') await db.from('gb_accounts').update({ balance: a.balance + bet.amount + winAmt }).eq('id', bet.account_id)
@@ -895,6 +896,15 @@ export default function SportsbookPage() {
     if (f.market_type === 'seed_total') return `${f.team_name} ${pick === 'yes' ? 'Worse' : 'Better'} than Seed ${f.line}`
     if (f.market_type === 'h2h_finish') return pick === 'yes' ? `${f.team_name} finishes ahead of ${f.opp_team_name}` : `${f.opp_team_name} finishes ahead of ${f.team_name}`
     return `${f.team_name} — ${FUTURE_LABELS[f.market_type] || f.market_type} (${pick === 'yes' ? 'Yes' : 'No'})`
+  }
+
+  // A parlay leg's own bet_type (spread/ou/ml) has to be in the label --
+  // "Reid" alone doesn't say whether that's Reid's spread or Reid's
+  // moneyline, and a parlay can carry both on the same matchup.
+  const gameLegDesc = leg => {
+    const typeLabel = leg.bet_type === 'spread' ? 'Spread' : leg.bet_type === 'ou' ? 'O/U' : 'ML'
+    const sideLabel = leg.pick === 'team_a' ? leg.game.team_a : leg.pick === 'team_b' ? leg.game.team_b : leg.pick === 'over' ? 'Over' : leg.pick === 'under' ? 'Under' : leg.pick
+    return `${leg.game.team_a} vs ${leg.game.team_b} — ${typeLabel}: ${sideLabel}`
   }
 
   // ── the bet slip: shared across every tab. Desktop sits vertically
@@ -1406,7 +1416,7 @@ export default function SportsbookPage() {
                     {existingPick ? (
                       <div style={{ fontSize: '12px', display: 'flex', gap: '12px', alignItems: 'center' }}>
                         <span style={{ color: muted }}>Picked: <strong style={{ color: text }}>{existingPick.pick === 'team_a' ? game.team_a : game.team_b}</strong></span>
-                        {existingPick.status !== 'pending' && <span style={{ fontWeight: '600', color: existingPick.status === 'won' ? green : red }}>{existingPick.status === 'won' ? '+20 GB ✓' : 'Lost'}</span>}
+                        {existingPick.status !== 'pending' && <span style={{ fontWeight: '600', color: existingPick.status === 'won' ? green : red }}>{existingPick.status === 'won' ? `+${PICKEM_PRIZE} GB ✓` : 'Lost'}</span>}
                       </div>
                     ) : game.is_locked || game.is_settled ? (
                       <span style={{ fontSize: '12px', color: muted }}>Locked — no pick submitted</span>
@@ -1789,7 +1799,7 @@ export default function SportsbookPage() {
                         let legDesc = '—'
                         if (leg.bet_type === 'future' && leg.future) legDesc = futureLabel({ ...leg.future }, leg.pick)
                         else if (leg.bet_type === 'prop' && leg.prop) legDesc = `${leg.prop.player_name} ${leg.pick === 'over' ? 'Over' : 'Under'} ${leg.prop.line}`
-                        else if (leg.game) legDesc = `${leg.game.team_a} vs ${leg.game.team_b}: ${leg.pick === 'team_a' ? leg.game.team_a : leg.pick === 'team_b' ? leg.game.team_b : leg.pick}`
+                        else if (leg.game) legDesc = gameLegDesc(leg)
                         return (
                           <div key={i} style={{ fontSize: '11px', color: muted, paddingLeft: '8px', marginBottom: '2px' }}>
                             {legDesc}
@@ -1814,7 +1824,7 @@ export default function SportsbookPage() {
                         <div style={{ fontSize: '11px', color: muted }}>{bet.game?.team_a} vs {bet.game?.team_b} · Wk {bet.game?.week}</div>
                       </div>
                       <span style={{ fontSize: '12px', fontWeight: '600', color: bet.status === 'won' ? green : bet.status === 'lost' ? red : gold }}>
-                        {bet.status === 'won' ? '+20 GB' : bet.status === 'lost' ? 'Lost' : 'Pending'}
+                        {bet.status === 'won' ? `+${PICKEM_PRIZE} GB` : bet.status === 'lost' ? 'Lost' : 'Pending'}
                       </span>
                     </div>
                   ))}
@@ -1892,7 +1902,7 @@ export default function SportsbookPage() {
                           let legDesc = '—'
                           if (leg.bet_type === 'future' && leg.future) legDesc = futureLabel({ ...leg.future }, leg.pick)
                           else if (leg.bet_type === 'prop' && leg.prop) legDesc = `${leg.prop.player_name} ${leg.pick === 'over' ? 'Over' : 'Under'} ${leg.prop.line}`
-                          else if (leg.game) legDesc = `${leg.game.team_a} vs ${leg.game.team_b}: ${leg.pick === 'team_a' ? leg.game.team_a : leg.pick === 'team_b' ? leg.game.team_b : leg.pick}`
+                          else if (leg.game) legDesc = gameLegDesc(leg)
                           return (
                             <div key={i} style={{ fontSize: '11px', color: muted, paddingLeft: '8px', marginBottom: '2px' }}>
                               {legDesc}
@@ -1919,7 +1929,7 @@ export default function SportsbookPage() {
                         <div style={{ fontSize: '11px', color: muted }}>{bet.game?.team_a} vs {bet.game?.team_b} · Wk {bet.game?.week}</div>
                       </div>
                       <span style={{ fontSize: '12px', fontWeight: '600', color: bet.status === 'won' ? green : bet.status === 'lost' ? red : gold }}>
-                        {bet.status === 'won' ? '+20 GB' : bet.status === 'lost' ? 'Lost' : 'Pending'}
+                        {bet.status === 'won' ? `+${PICKEM_PRIZE} GB` : bet.status === 'lost' ? 'Lost' : 'Pending'}
                       </span>
                     </div>
                   ))}
