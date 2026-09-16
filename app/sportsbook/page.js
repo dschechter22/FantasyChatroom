@@ -43,6 +43,8 @@ export default function SportsbookPage() {
   const [balanceAdjustAmount, setBalanceAdjustAmount] = useState('')
   const [deleteAccountId, setDeleteAccountId] = useState('')
   const [allPendingBets, setAllPendingBets] = useState([])
+  const [allBets, setAllBets] = useState([])
+  const [allParlays, setAllParlays] = useState([])
   const [myBets, setMyBets] = useState([])
   const [myParlays, setMyParlays] = useState([])
   const [loading, setLoading] = useState(true)
@@ -84,6 +86,7 @@ export default function SportsbookPage() {
 
   const [adminUnlocked, setAdminUnlocked] = useState(false)
   const [showPinModal, setShowPinModal] = useState(false)
+  const [showHelpModal, setShowHelpModal] = useState(false)
   const [adminPinInput, setAdminPinInput] = useState('')
   const [adminPinError, setAdminPinError] = useState('')
 
@@ -114,6 +117,7 @@ export default function SportsbookPage() {
   }, [])
   useEffect(() => { if (mounted) { fetchGames(); fetchFutures(); fetchTeamSim(); fetchProps(); fetchAccounts() } }, [mounted, week])
   useEffect(() => { if (mounted) { fetchActivityLog(); fetchAllPendingBets(); fetchPendingPinResets() } }, [mounted])
+  useEffect(() => { if (mounted && tab === 'allbets') fetchAllBets() }, [mounted, tab])
 
   useEffect(() => {
     db.from('seasons').select('year').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).limit(1)
@@ -196,6 +200,26 @@ export default function SportsbookPage() {
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
     setAllPendingBets(data || [])
+  }
+
+  // Every bet and parlay across every account, any status -- the public
+  // "All Bets" tab. Unlike fetchAllPendingBets (admin override queue, pending
+  // only) this is a read-only activity feed anyone can see.
+  const fetchAllBets = async () => {
+    const { data: bets } = await db.from('sb_bets')
+      .select(`*,
+        account:account_id(manager_name),
+        game:game_id(team_a, team_b, week),
+        future:future_id(market_type, team_name, opp_team_name, line),
+        prop:prop_id(player_name, line, week)`)
+      .order('created_at', { ascending: false })
+      .limit(300)
+    const { data: parlays } = await db.from('sb_parlays')
+      .select('*, account:account_id(manager_name)')
+      .order('created_at', { ascending: false })
+      .limit(150)
+    setAllBets(bets || [])
+    setAllParlays(parlays || [])
   }
 
   const fetchPendingPinResets = async () => {
@@ -1004,6 +1028,47 @@ export default function SportsbookPage() {
         </>
       )}
 
+      {/* Help modal -- a plain-English explainer for anyone new to the book. */}
+      {showHelpModal && (
+        <>
+          <div onClick={() => setShowHelpModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, width: effectiveMobile ? '92vw' : '560px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, margin: 0 }}>How the Sportsbook Works</h3>
+              <button onClick={() => setShowHelpModal(false)} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '18px', padding: 0 }}>✕</button>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '20px', fontSize: '13px', lineHeight: 1.6, color: text }}>
+              <p style={{ marginBottom: '14px' }}>
+                Everyone plays with <strong>Gimre Bucks (GB)</strong> — fake money, no real cash involved. New accounts start with <strong>1,000 GB</strong>. Your year-end GB total sets next season's draft order (most GB picks first).
+              </p>
+
+              <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginTop: '18px', marginBottom: '6px' }}>Odds, Wager &amp; To Win</p>
+              <p style={{ marginBottom: '10px' }}>
+                Odds are American-style. A <strong>negative</strong> number (e.g. −150) is a favorite: bet 150 GB to win 100. A <strong>positive</strong> number (e.g. +150) is an underdog: bet 100 GB to win 150. <strong>Wager</strong> is what you're risking; <strong>To Win</strong> is the profit if it hits (your wager comes back on top of that).
+              </p>
+
+              <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginTop: '18px', marginBottom: '6px' }}>The Tabs</p>
+              <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                <li style={{ marginBottom: '8px' }}><strong>Lines</strong> — this week's real head-to-head matchups: moneyline (pick the winner), spread, and over/under.</li>
+                <li style={{ marginBottom: '8px' }}><strong>Pick'em</strong> — free, no wager required. Just pick the straight-up winner of each matchup for a flat prize.</li>
+                <li style={{ marginBottom: '8px' }}><strong>Futures</strong> — season-long bets: make the playoffs, get a bye, make the semis/finals, or win the title. Also lets you build a custom bet (a team's win total, final seed, or "finishes ahead of" another team) — pick the team(s) and line yourself and it prices the odds live.</li>
+                <li style={{ marginBottom: '8px' }}><strong>Props</strong> — player-level bets on this week's projected stats (over/under a specific player's points). Filter by matchup or position to narrow the list.</li>
+                <li style={{ marginBottom: '8px' }}><strong>Parlay</strong> — while building a bet slip, toggle "Parlay" to combine multiple legs (from any tab) into one bet with combined odds. Every leg has to hit for the parlay to pay out.</li>
+                <li style={{ marginBottom: '8px' }}><strong>My Bets</strong> — your own bet history and results.</li>
+                <li style={{ marginBottom: '8px' }}><strong>All Bets</strong> — everyone's bets across every account: what was bet, the odds, the wager, and the potential winnings.</li>
+                <li style={{ marginBottom: '8px' }}><strong>Leaderboard</strong> — everyone's current GB balance, ranked.</li>
+                <li style={{ marginBottom: '8px' }}><strong>Activity</strong> — a running log of account creation, bets placed, and admin actions.</li>
+              </ul>
+
+              <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginTop: '18px', marginBottom: '6px' }}>Accounts &amp; PIN</p>
+              <p style={{ margin: 0 }}>
+                Enter your name once to create an account (protected by a PIN you set) or log into an existing one — name matching isn't case-sensitive. Forgot your PIN? Use "Forgot PIN?" on the login screen to request a reset; an admin has to approve it before it takes effect.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Settle modal (games) */}
       {settleTarget && (
         <>
@@ -1072,7 +1137,10 @@ export default function SportsbookPage() {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px,6vw,64px)', fontWeight: '400', letterSpacing: '-0.02em' }}>Sportsbook</h1>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px,6vw,64px)', fontWeight: '400', letterSpacing: '-0.02em' }}>Sportsbook</h1>
+              <button onClick={() => setShowHelpModal(true)} title="How this works" style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'none', border: `1px solid ${border}`, color: muted, cursor: 'pointer', fontSize: '13px', fontFamily: "'Inter', sans-serif", fontWeight: '600', lineHeight: 1 }}>?</button>
+            </div>
             {myAccount && <p style={{ fontSize: '13px', color: gold, marginTop: '4px' }}>💰 {myAccount.balance.toLocaleString()} Gimre Bucks</p>}
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1087,7 +1155,7 @@ export default function SportsbookPage() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          {[['lines', 'Lines'], ['pickem', "Pick'em"], ['futures', 'Futures'], ['props', 'Props'], ['mybets', 'My Bets'], ['leaderboard', 'Leaderboard'], ['activity', 'Activity']].map(([t, label]) => (
+          {[['lines', 'Lines'], ['pickem', "Pick'em"], ['futures', 'Futures'], ['props', 'Props'], ['mybets', 'My Bets'], ['allbets', 'All Bets'], ['leaderboard', 'Leaderboard'], ['activity', 'Activity']].map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)} style={tabBtn(tab === t)}>{label}</button>
           ))}
         </div>
@@ -1571,6 +1639,111 @@ export default function SportsbookPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {myBets.filter(b => b.bet_type === 'pickem').map(bet => (
                     <div key={bet.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'center', padding: '12px 16px', background: cardBg, border: `1px solid ${border}` }}>
+                      <div>
+                        <div style={{ fontSize: '13px', color: text }}>Picked: {bet.pick === 'team_a' ? bet.game?.team_a : bet.game?.team_b}</div>
+                        <div style={{ fontSize: '11px', color: muted }}>{bet.game?.team_a} vs {bet.game?.team_b} · Wk {bet.game?.week}</div>
+                      </div>
+                      <span style={{ fontSize: '12px', fontWeight: '600', color: bet.status === 'won' ? green : bet.status === 'lost' ? red : gold }}>
+                        {bet.status === 'won' ? '+20 GB' : bet.status === 'lost' ? 'Lost' : 'Pending'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── ALL BETS (every account, read-only activity feed) ── */}
+        {tab === 'allbets' && (
+          <>
+            <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>Every bet placed across all accounts, with odds, wager, and potential winnings.</p>
+            {allBets.length === 0 && allParlays.length === 0 && <p style={{ color: muted, fontSize: '13px' }}>No bets yet.</p>}
+
+            {allBets.filter(b => !b.parlay_id && b.bet_type !== 'pickem').length > 0 && (
+              <>
+                <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Singles</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(80px,max-content) 1fr auto auto auto auto', gap: '12px', padding: '0 16px 4px' }}>
+                    {['Bettor', 'Bet', 'Odds', 'Wager', 'To Win', 'Status'].map(h => (
+                      <span key={h} style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted }}>{h}</span>
+                    ))}
+                  </div>
+                  {allBets.filter(b => !b.parlay_id && b.bet_type !== 'pickem').map(bet => {
+                    let desc = '—', sub = ''
+                    if (bet.bet_type === 'future' && bet.future) {
+                      desc = futureLabel({ ...bet.future }, bet.pick)
+                      sub = FUTURE_LABELS[bet.future.market_type] || bet.future.market_type
+                    } else if (bet.bet_type === 'prop' && bet.prop) {
+                      desc = `${bet.prop.player_name} ${bet.pick === 'over' ? 'Over' : 'Under'} ${bet.prop.line}`
+                      sub = `Week ${bet.prop.week} prop`
+                    } else if (bet.game) {
+                      desc = `${bet.bet_type === 'spread' ? 'Spread' : bet.bet_type === 'ou' ? 'O/U' : 'ML'}: ${bet.pick === 'team_a' ? bet.game.team_a : bet.pick === 'team_b' ? bet.game.team_b : bet.pick === 'over' ? 'Over' : 'Under'}`
+                      sub = `${bet.game.team_a} vs ${bet.game.team_b} · Wk ${bet.game.week}`
+                    }
+                    const toWin = bet.status === 'won' ? bet.win_amount : calcWin(bet.amount, bet.odds)
+                    return (
+                      <div key={bet.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(80px,max-content) 1fr auto auto auto auto', gap: '12px', alignItems: 'center', padding: '12px 16px', background: cardBg, border: `1px solid ${border}` }}>
+                        <span style={{ fontSize: '12px', color: text, fontWeight: '600' }}>{bet.account?.manager_name || '—'}</span>
+                        <div>
+                          <div style={{ fontSize: '13px', color: text }}>{desc}</div>
+                          <div style={{ fontSize: '11px', color: muted }}>{sub}</div>
+                        </div>
+                        <span style={{ fontSize: '12px', color: muted }}>{fmtOdds(bet.odds)}</span>
+                        <span style={{ fontSize: '12px', color: muted }}>{bet.amount} GB</span>
+                        <span style={{ fontSize: '12px', color: muted }}>{toWin} GB</span>
+                        <span style={{ fontSize: '12px', fontWeight: '600', color: bet.status === 'won' ? green : bet.status === 'lost' ? red : bet.status === 'push' ? muted : gold }}>
+                          {bet.status === 'won' ? 'Won' : bet.status === 'lost' ? 'Lost' : bet.status === 'push' ? 'Push' : 'Pending'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            {allParlays.length > 0 && (
+              <>
+                <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Parlays</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                  {allParlays.map(p => {
+                    const legs = allBets.filter(b => b.parlay_id === p.id)
+                    const toWin = p.status === 'won' ? p.win_amount : calcWin(p.amount, p.combined_odds)
+                    return (
+                      <div key={p.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                          <span style={{ fontSize: '12px', color: text, fontWeight: '600' }}>{p.account?.manager_name || '—'}</span>
+                          <span style={{ fontSize: '12px', color: muted }}>{legs.length || p.legs}-Leg Parlay · {fmtOdds(p.combined_odds)} · Wager {p.amount} GB · To win {toWin} GB</span>
+                          <span style={{ fontSize: '12px', fontWeight: '600', color: p.status === 'won' ? green : p.status === 'lost' ? red : gold }}>
+                            {p.status === 'won' ? `+${p.win_amount} GB` : p.status === 'lost' ? 'Lost' : 'Pending'}
+                          </span>
+                        </div>
+                        {legs.map((leg, i) => {
+                          let legDesc = '—'
+                          if (leg.bet_type === 'future' && leg.future) legDesc = futureLabel({ ...leg.future }, leg.pick)
+                          else if (leg.bet_type === 'prop' && leg.prop) legDesc = `${leg.prop.player_name} ${leg.pick === 'over' ? 'Over' : 'Under'} ${leg.prop.line}`
+                          else if (leg.game) legDesc = `${leg.game.team_a} vs ${leg.game.team_b}: ${leg.pick === 'team_a' ? leg.game.team_a : leg.pick === 'team_b' ? leg.game.team_b : leg.pick}`
+                          return (
+                            <div key={i} style={{ fontSize: '11px', color: muted, paddingLeft: '8px', marginBottom: '2px' }}>
+                              {legDesc}
+                              {' '}<span style={{ color: leg.status === 'won' ? green : leg.status === 'lost' ? red : muted }}>({leg.status})</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            {allBets.filter(b => b.bet_type === 'pickem').length > 0 && (
+              <>
+                <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Pick'em</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {allBets.filter(b => b.bet_type === 'pickem').map(bet => (
+                    <div key={bet.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(80px,max-content) 1fr auto', gap: '12px', alignItems: 'center', padding: '12px 16px', background: cardBg, border: `1px solid ${border}` }}>
+                      <span style={{ fontSize: '12px', color: text, fontWeight: '600' }}>{bet.account?.manager_name || '—'}</span>
                       <div>
                         <div style={{ fontSize: '13px', color: text }}>Picked: {bet.pick === 'team_a' ? bet.game?.team_a : bet.game?.team_b}</div>
                         <div style={{ fontSize: '11px', color: muted }}>{bet.game?.team_a} vs {bet.game?.team_b} · Wk {bet.game?.week}</div>
