@@ -4,6 +4,7 @@ import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { lineupEfficiency } from '../../lib/predictions'
+import { useSortableTable } from '../../hooks/useSortableTable'
 
 export default function PowerRankingsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold, blue } = useLayout()
@@ -162,6 +163,11 @@ export default function PowerRankingsPage() {
     return calcRankingsForWeek(selectedWeek)
   }, [selectedWeek, teams, matchups, rosterEntries])
 
+  const rankingsTable = useSortableTable(
+    currentRankings.map(r => ({ ...r, managerName: r.t.manager?.name || '', teamName: r.t.team_name || '', diff: parseFloat((r.pf - r.pa).toFixed(2)) })),
+    { defaultKey: 'rank', defaultDir: 'asc' },
+  )
+
   const prevRankings = useMemo(() => {
     if (!selectedWeek || selectedWeek <= weeks[0]) return []
     const prevWeek = weeks[weeks.indexOf(selectedWeek) - 1]
@@ -291,23 +297,23 @@ export default function PowerRankingsPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                 <thead>
                   <tr style={{ background: cardBg }}>
-                    <th style={hStyle('center')}>Rank</th>
-                    <th style={hStyle('left')}>Manager</th>
-                    <th style={hStyle('left')}>Team</th>
-                    <th style={hStyle('center')}>W-L</th>
-                    <th style={hStyle()}>PF</th>
-                    <th style={hStyle()}>PA</th>
-                    <th style={hStyle()}>Diff</th>
-                    <th style={hStyle()}>Avg PPG</th>
-                    <th style={hStyle()}>All-Play %</th>
-                    <th style={hStyle()}>Luck</th>
-                    <th style={hStyle()}>Correct Start %</th>
-                    <th style={hStyle()}>Power Score</th>
+                    <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('rank', 'Rank')} />
+                    <th style={{ ...hStyle('left'), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('managerName', 'Manager')} />
+                    <th style={{ ...hStyle('left'), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('teamName', 'Team')} />
+                    <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('wins', 'W-L')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('pf', 'PF')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('pa', 'PA')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('diff', 'Diff')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('avgScore', 'Avg PPG')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('allPlayWinPct', 'All-Play %')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('luck', 'Luck')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('startPct', 'Correct Start %')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...rankingsTable.thSort('powerScore', 'Power Score')} />
                     <th style={hStyle()}>Score ±</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {currentRankings.map((r, i) => {
+                  {rankingsTable.rows.map((r, i) => {
                     const dRank = deltaRank(r.t.id, r.rank)
                     const dScore = deltaScore(r.t.id, r.powerScore)
                     const diff = parseFloat((r.pf - r.pa).toFixed(2))
