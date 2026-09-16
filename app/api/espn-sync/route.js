@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { fetchEspnWeek, parseEspnWeek } from '../../../lib/espnFantasy'
 import { fetchSleeperCurrentWeek } from '../../../lib/sleeperProjections'
+import { generateWeekBoard, generateFutures, generateProps } from '../../../lib/sportsbookGen'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 const SEASON_YEAR = 2026
@@ -206,6 +207,31 @@ export async function GET(request) {
     }
   } catch (e) {
     result.errors.push(`ESPN sync failed: ${e.message}`)
+  }
+
+  // Auto-fill the sportsbook's board/futures/props from the same data this
+  // sync just refreshed -- current-week only, same reasoning as roster
+  // reconciliation above: a backfill of an old week has nothing useful to
+  // say about "now," so it never touches the book.
+  if (!isBackfill) {
+    try {
+      const sbSeason = `${SEASON_YEAR}-${String(SEASON_YEAR + 1).slice(2)}`
+      const [{ data: sbTeams }, { data: sbMatchupsRaw }, { data: sbRosterEntries }] = await Promise.all([
+        supabase.from('teams').select('id, team_name, manager:manager_id(name)').eq('season_id', season.id),
+        supabase.from('matchups').select('id, week, home_team_id, away_team_id, home_score, away_score').eq('season_id', season.id).eq('is_playoff', false),
+        supabase.from('roster_entries').select('team_id, player_id, stats, player:player_id(id, name, position)').in('team_id', teams.map(t => t.id)),
+      ])
+      const sbMatchups = (sbMatchupsRaw || []).map(m => ({ ...m, home_team: { id: m.home_team_id }, away_team: { id: m.away_team_id } }))
+      const genArgs = { season: sbSeason, week, teams: sbTeams || [], matchups: sbMatchups, rosterEntries: sbRosterEntries || [] }
+      const [board, futures, props] = await Promise.all([
+        generateWeekBoard(supabase, genArgs),
+        generateFutures(supabase, genArgs),
+        generateProps(supabase, genArgs),
+      ])
+      result.sportsbook = { board, futures, props }
+    } catch (e) {
+      result.errors.push(`Sportsbook auto-generation failed: ${e.message}`)
+    }
   }
 
   return Response.json(result)
