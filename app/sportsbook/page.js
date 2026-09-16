@@ -1311,7 +1311,7 @@ export default function SportsbookPage() {
                           {pct != null && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <div style={{ flex: 1, height: '5px', borderRadius: '3px', background: d ? '#1a1a1a' : '#e0dbd0', overflow: 'hidden' }}>
-                                <div style={{ width: `${pct}%`, height: '100%', background: pct >= 50 ? green : red, transition: 'width 0.3s ease' }} />
+                                <div style={{ width: `${pct}%`, height: '100%', background: green, transition: 'width 0.3s ease' }} />
                               </div>
                               <span style={{ fontSize: '10px', color: muted, minWidth: '30px', textAlign: 'right' }}>{pct}%</span>
                             </div>
