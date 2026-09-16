@@ -219,7 +219,7 @@ export async function GET(request) {
       const [{ data: sbTeams }, { data: sbMatchupsRaw }, { data: sbRosterEntries }] = await Promise.all([
         supabase.from('teams').select('id, team_name, manager:manager_id(name)').eq('season_id', season.id),
         supabase.from('matchups').select('id, week, home_team_id, away_team_id, home_score, away_score').eq('season_id', season.id).eq('is_playoff', false),
-        supabase.from('roster_entries').select('team_id, player_id, stats, player:player_id(id, name, position)').in('team_id', teams.map(t => t.id)),
+        supabase.from('roster_entries').select('id, team_id, player_id, stats, player:player_id(id, name, position)').in('team_id', teams.map(t => t.id)),
       ])
       const sbMatchups = (sbMatchupsRaw || []).map(m => ({ ...m, home_team: { id: m.home_team_id }, away_team: { id: m.away_team_id } }))
       const genArgs = { season: sbSeason, week, teams: sbTeams || [], matchups: sbMatchups, rosterEntries: sbRosterEntries || [] }

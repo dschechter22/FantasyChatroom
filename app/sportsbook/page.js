@@ -121,7 +121,7 @@ export default function SportsbookPage() {
       setLeagueMatchups((mRes.data || []).filter(x => x.season?.year === latestSeasonYear))
       if (t.length) {
         const { data } = await db.from('roster_entries')
-          .select('team_id, player_id, stats, player:player_id(id, name, position)')
+          .select('id, team_id, player_id, stats, player:player_id(id, name, position)')
           .in('team_id', t.map(x => x.id))
         setRosterEntries(data || [])
       }
@@ -177,12 +177,13 @@ export default function SportsbookPage() {
     setMyParlays((parlays || []).map(p => ({ ...p, legs: betList.filter(b => b.parlay_id === p.id) })))
   }
 
-  const myAccount = accounts.find(a => a.manager_name === playerName)
+  const sameName = (a, b) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase()
+  const myAccount = accounts.find(a => sameName(a.manager_name, playerName))
 
   const handleNameNext = () => {
     const name = nameInput.trim()
     if (!name) return
-    const existing = accounts.find(a => a.manager_name === name)
+    const existing = accounts.find(a => sameName(a.manager_name, name))
     setPendingName(name)
     setIsNewAccount(!existing)
     setPinInput(''); setPinError('')
@@ -207,9 +208,15 @@ export default function SportsbookPage() {
       await fetchAccounts()
       fetchMyBets(data.id)
     } else {
-      const { data } = await db.from('gb_accounts').select('*').eq('manager_name', pendingName).eq('season', SEASON).single()
+      // Case-insensitive lookup -- "Dan", "dan" and "DAN" are the same
+      // account. ilike also needs literal %/_ escaped since those are
+      // wildcards to it, unlike a plain eq.
+      const escaped = pendingName.replace(/[%_]/g, c => `\\${c}`)
+      const { data } = await db.from('gb_accounts').select('*').ilike('manager_name', escaped).eq('season', SEASON).maybeSingle()
       if (!data || data.pin !== pinInput) return setPinError('Incorrect PIN')
-      setPlayerName(pendingName)
+      // Use the account's actual stored casing, not whatever was typed this
+      // time, so every later `manager_name === playerName` match keeps working.
+      setPlayerName(data.manager_name)
       setNameStep('name'); setNameInput(''); setPinInput('')
       fetchMyBets(data.id)
     }
@@ -417,21 +424,20 @@ export default function SportsbookPage() {
     await db.from('sb_games').update({ ml_a: mlA, ml_b: mlB }).eq('id', gameId)
   }
 
-  const CUSTOM_MARKET_TYPES = new Set(['win_total', 'seed_total', 'h2h_finish'])
   const rebalanceFuture = async (futureId) => {
-    const { data: f } = await db.from('sb_futures').select('fair_p, market_type').eq('id', futureId).single()
+    const { data: f } = await db.from('sb_futures').select('fair_p').eq('id', futureId).single()
     if (!f || f.fair_p == null) return
     const { data: bets } = await db.from('sb_bets').select('pick, amount').eq('future_id', futureId).eq('status', 'pending')
     const amtYes = (bets || []).filter(b => b.pick === 'yes').reduce((s, b) => s + b.amount, 0)
     const amtNo = (bets || []).filter(b => b.pick === 'no').reduce((s, b) => s + b.amount, 0)
     const total = amtYes + amtNo
     const imbalance = total ? (amtYes - amtNo) / total : 0
-    // fair_p already has any temper (finishes-ahead-of) or generation-time
-    // tempering (playoffs/etc) baked in from when it was first computed --
-    // action only ever nudges from there, never re-applies it. Custom
-    // markets keep their heavier hold + underdog cap on every reprice too.
+    // fair_p already has any temper (finishes-ahead-of) baked in from when
+    // it was first computed -- action only ever nudges from there, never
+    // re-applies it. Every future (fixed or custom) shares the same heavier
+    // hold + underdog cap on every reprice, same as at generation time.
     const adjP = clampP(f.fair_p - MAX_ACTION_SHIFT * imbalance)
-    const [oddsYes, oddsNo] = CUSTOM_MARKET_TYPES.has(f.market_type) ? priceCustomMarket(adjP) : priceTwoWay(adjP)
+    const [oddsYes, oddsNo] = priceCustomMarket(adjP)
     await db.from('sb_futures').update({ odds_yes: oddsYes, odds_no: oddsNo }).eq('id', futureId)
   }
 
