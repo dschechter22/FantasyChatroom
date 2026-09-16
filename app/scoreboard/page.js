@@ -112,7 +112,7 @@ export default function ScoreboardPage() {
       <div style={{ flex: 1, background: cardBg }}>
         <div style={{ padding: '8px 16px', borderBottom: `1px solid ${border}`, fontSize: '11px', color: muted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           {played ? (
-            <>Start %: {eff ? (
+            <>Correct Start %: {eff ? (
               <span style={{ color: eff.pct >= 90 ? green : eff.pct < 70 ? red : text, fontWeight: '600' }}>
                 {eff.pct}% <span style={{ color: muted, fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>({eff.actualTotal} of {eff.optimalTotal} possible)</span>
               </span>
@@ -167,7 +167,7 @@ export default function ScoreboardPage() {
         </h1>
         <p style={{ color: muted, fontSize: '13px', marginBottom: '8px', maxWidth: '640px', lineHeight: 1.6 }}>
           Final scores from the league's own records. Click a matchup to see each player's actual points against
-          their projection, and that week's Start % — the points your real starters scored versus what the best
+          their projection, and that week's Correct Start % — the points your real starters scored versus what the best
           possible lineup would have scored.
         </p>
 

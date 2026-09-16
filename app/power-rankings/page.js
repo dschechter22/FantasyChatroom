@@ -246,7 +246,7 @@ export default function PowerRankingsPage() {
             ['Luck', r.luck > 0 ? `+${r.luck}` : `${r.luck}`],
             ['PF', r.pf.toFixed(0)],
             ['Diff', `${diff >= 0 ? '+' : ''}${diff.toFixed(0)}`],
-            ['Start %', r.startPct != null ? `${r.startPct}%` : '—'],
+            ['Correct Start %', r.startPct != null ? `${r.startPct}%` : '—'],
           ].map(([label, val]) => (
             <div key={label}>
               <div style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '2px' }}>{label}</div>
@@ -301,7 +301,7 @@ export default function PowerRankingsPage() {
                     <th style={hStyle()}>Avg PPG</th>
                     <th style={hStyle()}>All-Play %</th>
                     <th style={hStyle()}>Luck</th>
-                    <th style={hStyle()}>Start %</th>
+                    <th style={hStyle()}>Correct Start %</th>
                     <th style={hStyle()}>Power Score</th>
                     <th style={hStyle()}>Score ±</th>
                   </tr>
@@ -357,7 +357,7 @@ export default function PowerRankingsPage() {
           <p style={{ color: muted, fontSize: '11px', marginTop: '24px', lineHeight: 1.6 }}>
             Power Score = cumulative Win%, Avg PPG, All-Play Win%, and Median Score through Week {selectedWeek}, normalized within the season.
             Luck = actual wins minus expected wins based on all-play performance.
-            Start % = the average, across weeks with per-player stats on file, of the points a team's real starters scored versus what its best possible lineup would have scored — informational only, it does not feed into Power Score.
+            Correct Start % = the average, across weeks with per-player stats on file, of the points a team's real starters scored versus what its best possible lineup would have scored — informational only, it does not feed into Power Score.
             Δ columns reflect change from Week {weeks[weeks.indexOf(selectedWeek) - 1] ?? '—'}.
           </p>
         )}

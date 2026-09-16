@@ -754,7 +754,7 @@ export default function CurrentSeasonPage() {
                     {!effectiveMobile && <th style={hStyle('right')}>Max Avg</th>}
                     <th style={hStyle('right')}>All-Play %</th>
                     {!effectiveMobile && <th style={hStyle('right')}>Luck</th>}
-                    {!effectiveMobile && <th style={hStyle('right')}>Start %</th>}
+                    {!effectiveMobile && <th style={hStyle('right')}>Correct Start %</th>}
                     <th style={hStyle('right')}>Power</th>
                     {!effectiveMobile && <th style={hStyle('right')}>Trend</th>}
                   </tr>
@@ -925,8 +925,8 @@ export default function CurrentSeasonPage() {
               <StatCard label="📉 PR Drop" value={superlatives.prDrop ? `${superlatives.prDrop.name}` : '—'} sub={superlatives.prDrop && superlatives.prDrop.move < 0 ? `Fell ${Math.abs(superlatives.prDrop.move)} spot${Math.abs(superlatives.prDrop.move) > 1 ? 's' : ''} (${ordinal(superlatives.prDrop.from)} → ${ordinal(superlatives.prDrop.to)})` : 'Needs 2+ weeks'} color={red} />
               <StatCard label="📈 PR Rise" value={superlatives.prRise ? `${superlatives.prRise.name}` : '—'} sub={superlatives.prRise && superlatives.prRise.move > 0 ? `Rose ${superlatives.prRise.move} spot${superlatives.prRise.move > 1 ? 's' : ''} (${ordinal(superlatives.prRise.from)} → ${ordinal(superlatives.prRise.to)})` : 'Needs 2+ weeks'} color={green} />
               <StatCard label="🧮 LJ Leader" value={superlatives.ljLeader?.name} sub={`${(superlatives.ljLeader?.allPlayWinPct * 100)?.toFixed(1)}% all-play · ${superlatives.ljLeader?.luckRaw > 0 ? '+' : ''}${superlatives.ljLeader?.luckRaw} luck`} color={blue} />
-              <StatCard label="🎯 Best Starter" value={superlatives.bestStarter?.name || '—'} sub={superlatives.bestStarter ? `${superlatives.bestStarter.startPct}% season Start %` : 'Needs per-player stats on file'} color={green} />
-              <StatCard label="🪑 Worst Starter" value={superlatives.worstStarter?.name || '—'} sub={superlatives.worstStarter ? `${superlatives.worstStarter.startPct}% season Start %` : 'Needs per-player stats on file'} color={red} />
+              <StatCard label="🎯 Best Starter" value={superlatives.bestStarter?.name || '—'} sub={superlatives.bestStarter ? `${superlatives.bestStarter.startPct}% season Correct Start %` : 'Needs per-player stats on file'} color={green} />
+              <StatCard label="🪑 Worst Starter" value={superlatives.worstStarter?.name || '—'} sub={superlatives.worstStarter ? `${superlatives.worstStarter.startPct}% season Correct Start %` : 'Needs per-player stats on file'} color={red} />
             </div>
           </div>
         )}
