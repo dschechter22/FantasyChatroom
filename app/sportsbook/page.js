@@ -1036,7 +1036,6 @@ export default function SportsbookPage() {
           <input type="checkbox" checked={keepSlipAfterBet} onChange={e => setKeepSlipAfterBet(e.target.checked)} />
           Keep picks in slip after placing a bet
         </label>
-        {flash.msg && <p style={{ fontSize: '12px', color: flash.ok ? green : red, marginTop: '10px' }}>{flash.msg}</p>}
         <button
           onClick={isParlay ? placeParlay : placeSingles}
           disabled={submitting || !myAccount || stakeTotal <= 0 || overBalance || (isParlay && sameTeamConflict)}
@@ -1228,6 +1227,17 @@ export default function SportsbookPage() {
       <Nav />
       <SlipPanel />
       <TeamSnapshotPanel />
+
+      {/* Global flash banner -- feedback for every action on the page (admin
+      generate/sync/settle buttons included), not just bet placement. This
+      used to only render inside the bet slip's own content, which meant
+      anything outside of placing a bet (every admin button) showed no
+      feedback at all. */}
+      {flash.msg && (
+        <div style={{ position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)', zIndex: 300, background: flash.ok ? green : red, color: '#000', padding: '10px 20px', fontSize: '13px', fontWeight: '600', fontFamily: "'Inter', sans-serif", boxShadow: '0 4px 16px rgba(0,0,0,0.3)', maxWidth: '90vw', textAlign: 'center' }}>
+          {flash.msg}
+        </div>
+      )}
 
       {/* Admin PIN modal */}
       {showPinModal && (
@@ -1513,10 +1523,7 @@ export default function SportsbookPage() {
               })}
             </div>
             {Object.keys(pickemPicks).some(id => !myBets.some(b => b.bet_type === 'pickem' && b.game_id === id)) && (
-              <>
-                {flash.msg && <p style={{ fontSize: '12px', color: flash.ok ? green : red, marginBottom: '8px' }}>{flash.msg}</p>}
-                <button onClick={submitPickem} disabled={submitting} style={{ background: text, color: bg, border: 'none', padding: '12px 24px', cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', opacity: submitting ? 0.6 : 1 }}>Submit Picks</button>
-              </>
+              <button onClick={submitPickem} disabled={submitting} style={{ background: text, color: bg, border: 'none', padding: '12px 24px', cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', opacity: submitting ? 0.6 : 1 }}>Submit Picks</button>
             )}
           </>
         )}
