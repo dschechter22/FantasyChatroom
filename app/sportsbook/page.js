@@ -110,7 +110,15 @@ export default function SportsbookPage() {
     if (!pinInput || pinInput.length < 4) return setPinError('PIN must be 4+ digits')
     if (isNewAccount) {
       const { data, error } = await db.from('gb_accounts').insert({ manager_name: pendingName, season: SEASON, balance: 1000, pin: pinInput }).select().single()
-      if (error) return setPinError('Name already taken — try logging in')
+      if (error) {
+        // 23505 is Postgres's real unique-violation code (this table is
+        // unique on manager_name+season) -- anything else is a different
+        // failure (RLS, a missing column, etc.) and showing the same "taken"
+        // message for it just hides what's actually wrong.
+        if (error.code === '23505') return setPinError('Name already taken — try logging in')
+        console.error('gb_accounts insert failed:', error)
+        return setPinError(`Couldn't create account: ${error.message}`)
+      }
       setPlayerName(pendingName)
       setNameStep('name'); setNameInput(''); setPinInput('')
       await fetchAccounts()
