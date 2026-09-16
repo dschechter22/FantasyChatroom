@@ -582,6 +582,38 @@ export default function SportsbookPage() {
     setGenerating(false)
   }
 
+  // ESPN revises its own per-player projection all week (injury reports,
+  // depth-chart news, matchup context), but generateProps never overwrites
+  // a prop's line once it exists -- by design, so a line can't move under a
+  // bet that's already been placed on it. That leaves genuinely stale lines
+  // with no way back to current short of hand-editing SQL. This refreshes
+  // every OPEN prop's line to whatever roster_entries.stats.proj now says,
+  // skipping any prop that already has a bet on it (those stay exactly as
+  // the bettor saw them).
+  const refreshUnbetPropLines = async () => {
+    setGenerating(true)
+    const { data: openProps } = await db.from('sb_props').select('*').eq('season', SEASON).eq('week', week).eq('is_settled', false)
+    if (!openProps?.length) { showFlash('No open props for this week', false); setGenerating(false); return }
+
+    const { data: betRows } = await db.from('sb_bets').select('prop_id').in('prop_id', openProps.map(p => p.id))
+    const betPropIds = new Set((betRows || []).map(b => b.prop_id))
+
+    let refreshed = 0, skipped = 0
+    for (const prop of openProps) {
+      if (betPropIds.has(prop.id)) { skipped++; continue }
+      const entry = rosterEntries.find(e => e.player_id === prop.player_id)
+      const freshProj = entry?.stats?.proj?.[week]
+      if (freshProj == null) continue
+      const freshLine = parseFloat(freshProj.toFixed(1))
+      if (freshLine === prop.line) continue
+      await db.from('sb_props').update({ line: freshLine, odds_over: -110, odds_under: -110 }).eq('id', prop.id)
+      refreshed++
+    }
+    showFlash(refreshed ? `Refreshed ${refreshed} line(s)${skipped ? ` -- skipped ${skipped} with bets already placed` : ''}` : `Already current${skipped ? ` -- skipped ${skipped} with bets already placed` : ''}`)
+    fetchProps()
+    setGenerating(false)
+  }
+
   // Undoes autoSettleProps/manual settlement for this week -- reverses every
   // affected bet (and, if it finished a parlay, that parlay too) back to
   // pending and claws back whatever balance the settlement paid out, then
@@ -1683,8 +1715,9 @@ export default function SportsbookPage() {
               automatically from the daily sync as soon as that week's projections are in.
             </p>
             {adminUnlocked && (
-              <div style={{ marginBottom: '12px' }}>
+              <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button onClick={runGenerateProps} disabled={generating} style={adminBtn}>{generating ? 'Working…' : `Generate Week ${week} Props Now`}</button>
+                <button onClick={refreshUnbetPropLines} disabled={generating} style={adminBtn}>{generating ? 'Working…' : 'Refresh Unbet Lines to Current ESPN Proj'}</button>
               </div>
             )}
             <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
