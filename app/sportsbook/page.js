@@ -38,6 +38,11 @@ export default function SportsbookPage() {
   const [teamSim, setTeamSim] = useState([])
   const [props, setProps] = useState([])
   const [accounts, setAccounts] = useState([])
+  const [activityLog, setActivityLog] = useState([])
+  const [balanceAdjustAccountId, setBalanceAdjustAccountId] = useState('')
+  const [balanceAdjustAmount, setBalanceAdjustAmount] = useState('')
+  const [deleteAccountId, setDeleteAccountId] = useState('')
+  const [allPendingBets, setAllPendingBets] = useState([])
   const [myBets, setMyBets] = useState([])
   const [myParlays, setMyParlays] = useState([])
   const [loading, setLoading] = useState(true)
@@ -103,6 +108,7 @@ export default function SportsbookPage() {
       .then(({ data }) => { if (data?.length) setWeek(data[0].week) })
   }, [])
   useEffect(() => { if (mounted) { fetchGames(); fetchFutures(); fetchTeamSim(); fetchProps(); fetchAccounts() } }, [mounted, week])
+  useEffect(() => { if (mounted) { fetchActivityLog(); fetchAllPendingBets() } }, [mounted])
 
   useEffect(() => {
     db.from('seasons').select('year').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).limit(1)
@@ -161,6 +167,32 @@ export default function SportsbookPage() {
     setAccounts(data || [])
   }
 
+  // Best-effort audit trail -- never blocks the action it's logging if the
+  // insert itself fails (e.g. before the migration's run).
+  const logActivity = async (eventType, actor, description) => {
+    try { await db.from('sb_activity_log').insert({ season: SEASON, event_type: eventType, actor, description }) }
+    catch { /* logging is a courtesy, not a dependency */ }
+  }
+
+  const fetchActivityLog = async () => {
+    const { data } = await db.from('sb_activity_log').select('*').eq('season', SEASON).order('created_at', { ascending: false }).limit(200)
+    setActivityLog(data || [])
+  }
+
+  // Every pending bet across every account, for the admin override list --
+  // "My Bets" only ever shows the logged-in admin's own bets.
+  const fetchAllPendingBets = async () => {
+    const { data } = await db.from('sb_bets')
+      .select(`*,
+        account:account_id(manager_name),
+        game:game_id(team_a, team_b, week),
+        future:future_id(market_type, team_name, opp_team_name, line),
+        prop:prop_id(player_name, line, week)`)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+    setAllPendingBets(data || [])
+  }
+
   const fetchMyBets = async (accountId) => {
     const { data: bets } = await db.from('sb_bets')
       .select(`*,
@@ -208,6 +240,7 @@ export default function SportsbookPage() {
       setNameStep('name'); setNameInput(''); setPinInput('')
       await fetchAccounts()
       fetchMyBets(data.id)
+      logActivity('account_created', pendingName, `${pendingName} created an account`)
     } else {
       // Case-insensitive lookup -- "Dan", "dan" and "DAN" are the same
       // account. ilike also needs literal %/_ escaped since those are
@@ -317,6 +350,43 @@ export default function SportsbookPage() {
         await db.from('gb_accounts').update({ balance: acc.balance + p.amount + winAmt }).eq('id', p.account_id)
       }
     }
+  }
+
+  // ── admin: manual account/bet controls ──
+  const adjustBalance = async (acc) => {
+    const delta = parseInt(balanceAdjustAmount)
+    if (!delta) return showFlash('Enter a non-zero amount', false)
+    await db.from('gb_accounts').update({ balance: acc.balance + delta }).eq('id', acc.id)
+    logActivity('balance_adjusted', 'Admin', `Admin ${delta > 0 ? 'added' : 'removed'} ${Math.abs(delta)} GB ${delta > 0 ? 'to' : 'from'} ${acc.manager_name}`)
+    setBalanceAdjustAmount(''); setBalanceAdjustAccountId('')
+    showFlash(`${acc.manager_name}'s balance ${delta > 0 ? '+' : ''}${delta} GB`)
+    fetchAccounts(); fetchActivityLog()
+  }
+
+  const deleteAccountAction = async (acc) => {
+    // sb_bets/sb_parlays both cascade on gb_accounts.id, so their bet
+    // history goes with them -- that's the point of the confirm step.
+    await db.from('gb_accounts').delete().eq('id', acc.id)
+    logActivity('account_deleted', 'Admin', `Admin deleted ${acc.manager_name}'s account (${acc.balance} GB, all bet history)`)
+    setDeleteAccountId('')
+    showFlash(`${acc.manager_name}'s account deleted`)
+    fetchAccounts(); fetchActivityLog()
+    if (myAccount?.id === acc.id) { setPlayerName(''); setNameInput(''); setNameStep('name') }
+  }
+
+  const overrideBet = async (bet, status) => {
+    if (bet.status !== 'pending') return
+    const winAmt = status === 'won' ? (bet.bet_type === 'pickem' ? 20 : calcWin(bet.amount, bet.odds)) : 0
+    await db.from('sb_bets').update({ status, win_amount: winAmt }).eq('id', bet.id)
+    if (status === 'won' || status === 'push') {
+      const { data: acc } = await db.from('gb_accounts').select('balance').eq('id', bet.account_id).single()
+      const back = status === 'won' ? bet.amount + winAmt : bet.amount
+      await db.from('gb_accounts').update({ balance: acc.balance + back }).eq('id', bet.account_id)
+    }
+    await settleTouchedParlays([bet])
+    logActivity('bet_overridden', 'Admin', `Admin marked ${bet.account?.manager_name || 'a'} bet as ${status}`)
+    fetchAccounts(); fetchAllPendingBets(); fetchActivityLog()
+    if (myAccount) fetchMyBets(myAccount.id)
   }
 
   const settleFuture = async (future, result) => {
@@ -514,6 +584,7 @@ export default function SportsbookPage() {
     if (!keepSlipAfterBet) { setSlip([]); setSlipAmounts({}) }
     showFlash(`${slip.length} bet${slip.length > 1 ? 's' : ''} placed!`)
     fetchAccounts(); fetchMyBets(myAccount.id); refreshBoards()
+    logActivity('bet_placed', playerName, `${playerName} placed ${slip.length} bet${slip.length > 1 ? 's' : ''} totaling ${total} GB`)
     setSubmitting(false)
   }
 
@@ -533,6 +604,7 @@ export default function SportsbookPage() {
     if (!keepSlipAfterBet) { setSlip([]); setParlayAmt(''); setIsParlay(false) }
     showFlash(`Parlay placed! ${fmtOdds(combinedOdds)}`)
     fetchAccounts(); fetchMyBets(myAccount.id); refreshBoards()
+    logActivity('parlay_placed', playerName, `${playerName} placed a ${slip.length}-leg parlay for ${amt} GB (${fmtOdds(combinedOdds)})`)
     setSubmitting(false)
   }
 
@@ -544,6 +616,7 @@ export default function SportsbookPage() {
     await db.from('sb_bets').insert(newPicks.map(([gameId, pick]) => ({ account_id: myAccount.id, game_id: gameId, bet_type: 'pickem', pick, amount: 0, odds: 0, status: 'pending' })))
     showFlash('Picks submitted!')
     fetchMyBets(myAccount.id)
+    logActivity('pickem_submitted', playerName, `${playerName} submitted ${newPicks.length} pick'em pick${newPicks.length > 1 ? 's' : ''}`)
     setSubmitting(false)
   }
 
@@ -952,7 +1025,7 @@ export default function SportsbookPage() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          {[['lines', 'Lines'], ['pickem', "Pick'em"], ['futures', 'Futures'], ['props', 'Props'], ['mybets', 'My Bets'], ['leaderboard', 'Leaderboard']].map(([t, label]) => (
+          {[['lines', 'Lines'], ['pickem', "Pick'em"], ['futures', 'Futures'], ['props', 'Props'], ['mybets', 'My Bets'], ['leaderboard', 'Leaderboard'], ['activity', 'Activity']].map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)} style={tabBtn(tab === t)}>{label}</button>
           ))}
         </div>
@@ -1458,15 +1531,89 @@ export default function SportsbookPage() {
             {accounts.length === 0 && <p style={{ color: muted, fontSize: '13px' }}>No accounts yet. Place a bet or make a pick to start.</p>}
             <div style={{ border: `1px solid ${border}` }}>
               {accounts.map((acc, i) => (
-                <div key={acc.id} style={{ display: 'grid', gridTemplateColumns: '56px 1fr auto', alignItems: 'center', padding: '14px 16px', borderBottom: i < accounts.length - 1 ? `1px solid ${border}` : 'none', background: acc.manager_name === playerName ? (d ? 'rgba(255,255,255,0.04)' : 'rgba(13,33,82,0.04)') : 'transparent' }}>
-                  <span style={{ fontSize: i < 3 ? '18px' : '13px', fontWeight: '700', color: i === 0 ? gold : i === 1 ? '#aaa' : i === 2 ? '#cd7f32' : muted }}>
-                    {i + 1}{['st','nd','rd'][i] ?? 'th'}
-                  </span>
-                  <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', color: text }}>{acc.manager_name}</span>
-                  <span style={{ fontSize: '15px', fontWeight: '700', color: gold }}>{acc.balance.toLocaleString()} GB</span>
+                <div key={acc.id} style={{ borderBottom: i < accounts.length - 1 ? `1px solid ${border}` : 'none', background: acc.manager_name === playerName ? (d ? 'rgba(255,255,255,0.04)' : 'rgba(13,33,82,0.04)') : 'transparent' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: adminUnlocked ? '56px 1fr auto auto' : '56px 1fr auto', alignItems: 'center', padding: '14px 16px', gap: '10px' }}>
+                    <span style={{ fontSize: i < 3 ? '18px' : '13px', fontWeight: '700', color: i === 0 ? gold : i === 1 ? '#aaa' : i === 2 ? '#cd7f32' : muted }}>
+                      {i + 1}{['st','nd','rd'][i] ?? 'th'}
+                    </span>
+                    <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', color: text }}>{acc.manager_name}</span>
+                    <span style={{ fontSize: '15px', fontWeight: '700', color: gold }}>{acc.balance.toLocaleString()} GB</span>
+                    {adminUnlocked && (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => { setBalanceAdjustAccountId(id => id === acc.id ? '' : acc.id); setDeleteAccountId('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>±GB</button>
+                        <button onClick={() => { setDeleteAccountId(id => id === acc.id ? '' : acc.id); setBalanceAdjustAccountId('') }} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Delete</button>
+                      </div>
+                    )}
+                  </div>
+                  {balanceAdjustAccountId === acc.id && (
+                    <div style={{ padding: '0 16px 14px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input type="number" value={balanceAdjustAmount} onChange={e => setBalanceAdjustAmount(e.target.value)} placeholder="+/- amount" style={{ ...inp, width: '140px' }} />
+                      <button onClick={() => adjustBalance(acc)} style={{ background: gold, color: '#000', border: 'none', padding: '8px 14px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", fontWeight: '600' }}>Apply</button>
+                      <span style={{ fontSize: '11px', color: muted }}>e.g. -100 or 250</span>
+                    </div>
+                  )}
+                  {deleteAccountId === acc.id && (
+                    <div style={{ padding: '0 16px 14px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', color: red }}>Delete {acc.manager_name}'s account and all bet history? This can't be undone.</span>
+                      <button onClick={() => deleteAccountAction(acc)} style={{ background: red, color: '#fff', border: 'none', padding: '6px 12px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", fontWeight: '600' }}>Confirm Delete</button>
+                      <button onClick={() => setDeleteAccountId('')} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '6px 12px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }}>Cancel</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
+          </>
+        )}
+
+        {/* ── ACTIVITY ── */}
+        {tab === 'activity' && (
+          <>
+            <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>Everything that's happened in the sportsbook — accounts created, bets and parlays placed, picks submitted, and admin actions.</p>
+
+            {adminUnlocked && (
+              <div style={{ marginBottom: '28px' }}>
+                <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Pending Bets — Override</p>
+                {allPendingBets.length === 0 ? (
+                  <p style={{ fontSize: '12px', color: muted }}>No pending bets.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {allPendingBets.map(bet => {
+                      let desc = '—'
+                      if (bet.bet_type === 'future' && bet.future) desc = futureLabel(bet.future, bet.pick)
+                      else if (bet.bet_type === 'prop' && bet.prop) desc = `${bet.prop.player_name} ${bet.pick === 'over' ? 'Over' : 'Under'} ${bet.prop.line} (Wk ${bet.prop.week})`
+                      else if (bet.game) desc = `${bet.bet_type === 'spread' ? 'Spread' : bet.bet_type === 'ou' ? 'O/U' : bet.bet_type === 'pickem' ? "Pick'em" : 'ML'}: ${bet.pick === 'team_a' ? bet.game.team_a : bet.pick === 'team_b' ? bet.game.team_b : bet.pick} (Wk ${bet.game.week})`
+                      return (
+                        <div key={bet.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                          <div>
+                            <div style={{ fontSize: '12px', color: text }}>{bet.account?.manager_name || '—'} · {desc}</div>
+                            <div style={{ fontSize: '11px', color: muted }}>{bet.amount} GB · {fmtOdds(bet.odds)}{bet.parlay_id ? ' · parlay leg' : ''}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button onClick={() => overrideBet(bet, 'won')} style={{ background: 'none', border: `1px solid ${green}`, color: green, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Won</button>
+                            <button onClick={() => overrideBet(bet, 'lost')} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Lost</button>
+                            <button onClick={() => overrideBet(bet, 'push')} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Push</button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Feed</p>
+            {activityLog.length === 0 ? (
+              <p style={{ fontSize: '13px', color: muted }}>No activity yet.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', background: border }}>
+                {activityLog.map(a => (
+                  <div key={a.id} style={{ background: cardBg, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '13px', color: text }}>{a.description}</span>
+                    <span style={{ fontSize: '11px', color: muted, whiteSpace: 'nowrap' }}>{new Date(a.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
