@@ -6,7 +6,7 @@ import { useLayout } from '../../hooks/useLayout'
 import { LEAGUE_ID } from '../../lib/supabase'
 import { priceTwoWay, actualWeekLineup, projectedWeekLineup } from '../../lib/predictions'
 import { buildFixtures, REG_SEASON_WEEKS } from '../../lib/schedule'
-import { generateWeekBoard, generateFutures, getOrCreateFuture, priceCustomMarket, temperProb } from '../../lib/sportsbookGen'
+import { generateWeekBoard, generateFutures, generateProps, getOrCreateFuture, priceCustomMarket, temperProb } from '../../lib/sportsbookGen'
 export const dynamic = 'force-dynamic'
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -443,6 +443,21 @@ export default function SportsbookPage() {
     if (errors?.length) { console.error('generateFutures errors:', errors); showFlash(`Failed: ${errors[0]}`, false) }
     else showFlash(`Futures updated — ${added} new, ${updated} refreshed`)
     fetchFutures(); fetchTeamSim()
+    setGenerating(false)
+  }
+
+  // Manual override for the daily cron's own generateProps -- lets a fix to
+  // that logic (or a fresh ESPN sync) take effect on an already-generated
+  // week immediately, instead of waiting for the next scheduled cron tick.
+  // Only ever adds props for players who don't already have one this week
+  // (see generateProps itself), so it can't move a line under a live bet.
+  const runGenerateProps = async () => {
+    if (!leagueTeams.length) return showFlash('No model data yet', false)
+    setGenerating(true)
+    const { added, errors } = await generateProps(db, genArgs())
+    if (errors?.length) { console.error('generateProps errors:', errors); showFlash(`Failed: ${errors[0]}`, false) }
+    else showFlash(added ? `Added ${added} prop(s) for Week ${week}` : 'No new props to add -- everyone already has one, or nobody has a real ESPN projection yet')
+    fetchProps()
     setGenerating(false)
   }
 
@@ -1622,6 +1637,11 @@ export default function SportsbookPage() {
               Over/under a player's own weekly fantasy-point projection, straight from ESPN — no simulation, so these fill in
               automatically from the daily sync as soon as that week's projections are in.
             </p>
+            {adminUnlocked && (
+              <div style={{ marginBottom: '12px' }}>
+                <button onClick={runGenerateProps} disabled={generating} style={adminBtn}>{generating ? 'Working…' : `Generate Week ${week} Props Now`}</button>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: '11px', color: muted, letterSpacing: '0.1em', textTransform: 'uppercase', marginRight: '4px' }}>Week</span>
               {weeks.map(w => <button key={w} onClick={() => setWeek(w)} style={{ background: week === w ? text : 'none', color: week === w ? bg : muted, border: `1px solid ${border}`, padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }}>{w}</button>)}
