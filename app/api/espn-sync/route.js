@@ -72,7 +72,7 @@ export async function GET(request) {
   // ESPN (name-within-team match) and Sleeper (sleeper_id match) sections
   // below, instead of re-querying per team/player.
   const { data: allEntries } = await supabase.from('roster_entries')
-    .select('id, team_id, stats, player:player_id(name, sleeper_id)')
+    .select('id, team_id, player_id, stats, player:player_id(name, sleeper_id)')
     .in('team_id', teams.map(t => t.id))
   const entryByTeamAndName = new Map((allEntries || []).map(e => [`${e.team_id}|${norm(e.player?.name)}`, e]))
   // Season-wide (not team-scoped) name lookup, so a player who moved teams
@@ -128,10 +128,15 @@ export async function GET(request) {
       if (!entry) {
         const elsewhere = entryByAnyTeamAndName.get(key)
         if (elsewhere && elsewhere.team_id !== team.id) {
+          const fromTeamId = elsewhere.team_id
           await supabase.from('roster_entries').update({ team_id: team.id }).eq('id', elsewhere.id)
           elsewhere.team_id = team.id
           entry = elsewhere
           result.rosterMoves.push(`${line.playerName} -> ${team.manager?.name || team.id}`)
+          await supabase.from('roster_moves').insert({
+            season_id: season.id, week, player_id: elsewhere.player_id,
+            from_team_id: fromTeamId, to_team_id: team.id, move_type: 'moved',
+          })
         } else if (!elsewhere) {
           let { data: player } = await supabase.from('players').select('id').eq('name', line.playerName).maybeSingle()
           if (!player) {
@@ -143,8 +148,12 @@ export async function GET(request) {
           const { data: newEntry, error: entryErr } = await supabase.from('roster_entries')
             .insert({ team_id: team.id, player_id: player.id, stats: {} }).select('id, stats').single()
           if (entryErr) { result.errors.push(`Could not roster ${line.playerName}: ${entryErr.message}`); continue }
-          entry = { ...newEntry, team_id: team.id, player: { name: line.playerName } }
+          entry = { ...newEntry, team_id: team.id, player_id: player.id, player: { name: line.playerName } }
           result.newRosterEntries.push(`${line.playerName} -> ${team.manager?.name || team.id}`)
+          await supabase.from('roster_moves').insert({
+            season_id: season.id, week, player_id: player.id,
+            from_team_id: null, to_team_id: team.id, move_type: 'added',
+          })
         }
         if (entry) {
           entryByTeamAndName.set(`${team.id}|${key}`, entry)
