@@ -62,6 +62,7 @@ export default function SportsbookPage() {
   const [keepSlipAfterBet, setKeepSlipAfterBet] = useState(false)
 
   const [pickemPicks, setPickemPicks] = useState({})
+  const [hoveredBetKey, setHoveredBetKey] = useState(null)
   const [propMatchupFilter, setPropMatchupFilter] = useState('all')
   const [propPositionFilter, setPropPositionFilter] = useState('all')
   const [wtTeam, setWtTeam] = useState('')
@@ -604,6 +605,16 @@ export default function SportsbookPage() {
   const lbl = { fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, display: 'block', marginBottom: '4px' }
   const tabBtn = active => ({ background: active ? text : 'none', color: active ? bg : muted, border: `1px solid ${border}`, padding: '6px 14px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: active ? '600' : '400' })
   const betBtn = active => ({ background: active ? text : 'none', color: active ? bg : muted, border: `1px solid ${active ? text : border}`, padding: '5px 10px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap' })
+  // A bolder, tinted, hover-reactive odds button for the futures markets --
+  // green-tinted for the "yes" side, red-tinted for "no", filled solid once
+  // selected, with a lift on hover so the row reads as clickable rather than
+  // a flat label.
+  const oddsBtn = (key, tint, active) => {
+    const hovered = hoveredBetKey === key
+    return active
+      ? { background: tint, border: `1px solid ${tint}`, color: bg, padding: '9px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap', boxShadow: `0 2px 10px ${tint}50` }
+      : { background: hovered ? tint + '28' : tint + '14', border: `1px solid ${hovered ? tint : tint + '45'}`, color: tint, padding: '9px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap', transition: 'transform 0.12s ease, background 0.12s ease', transform: hovered ? 'translateY(-1px)' : 'none' }
+  }
   const adminBtn = { background: 'none', border: `1px solid ${gold}`, color: gold, padding: '8px 16px', cursor: generating ? 'not-allowed' : 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", opacity: generating ? 0.6 : 1 }
   const weeks = Array.from({ length: 17 }, (_, i) => i + 1)
 
@@ -681,6 +692,50 @@ export default function SportsbookPage() {
         >
           {!myAccount ? 'Log in first' : submitting ? 'Placing...' : isParlay ? 'Place Parlay' : 'Place Bets'}
         </button>
+      </div>
+    )
+  }
+
+  // Record/PF/playoff odds/this-week projection per team, plus a click into
+  // the full matchup projections popup -- a compact card list rather than a
+  // wide table so it fits the gutter beside the futures list on desktop.
+  const TeamSnapshotList = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {leagueTeams.map(t => {
+        const rec = teamRecord[t.id] || { wins: 0, losses: 0, pf: 0, gp: 0 }
+        const playoffFuture = futures.find(f => f.team_id === t.id && f.market_type === 'playoffs' && !f.is_settled)
+        const playoffPct = playoffFuture?.fair_p != null ? Math.round(playoffFuture.fair_p * 100) : null
+        const projPts = weekProjByTeam[t.id]
+        return (
+          <div
+            key={t.id}
+            onClick={() => setProjModalTeamId(t.id)}
+            style={{ background: cardBg, border: `1px solid ${border}`, borderLeft: `3px solid ${playoffPct != null ? (playoffPct >= 50 ? green : red) : border}`, borderRadius: '4px', padding: '10px 12px', cursor: 'pointer' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+              <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '14px', color: text }}>{teamLabel(t.id)}</span>
+              <span style={{ fontSize: '11px', color: muted }}>{rec.wins}-{rec.losses}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: muted, gap: '6px' }}>
+              <span>{rec.gp ? `${(rec.pf / rec.gp).toFixed(1)} PF` : '— PF'}</span>
+              <span>{playoffPct != null ? `${playoffPct}% playoffs` : '—'}</span>
+              <span>{projPts != null ? `${projPts.toFixed(1)} proj` : '—'}</span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  // Desktop-only: mirrors the bet slip's placement in the right gutter, just
+  // on the left, so it's out of the vertical flow entirely instead of
+  // pushing the market list down the page.
+  const TeamSnapshotPanel = () => {
+    if (effectiveMobile || tab !== 'futures' || !leagueTeams.length) return null
+    return (
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-774px, -50%)', zIndex: 90, width: '300px', maxHeight: '80vh', overflowY: 'auto', paddingRight: '4px' }}>
+        <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Team Snapshot</p>
+        <TeamSnapshotList />
       </div>
     )
   }
@@ -792,6 +847,7 @@ export default function SportsbookPage() {
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
       <SlipPanel />
+      <TeamSnapshotPanel />
 
       {/* Admin PIN modal */}
       {showPinModal && (
@@ -1035,45 +1091,14 @@ export default function SportsbookPage() {
               <button onClick={runGenerateFutures} disabled={generating} style={{ ...adminBtn, marginBottom: '20px' }}>{generating ? 'Working…' : 'Generate / Refresh Season Futures'}</button>
             )}
 
-            {/* ── Team Snapshot: record/PF/playoff odds/this-week projection
-            at a glance, plus a button into the full projections popup --
-            context for the Build a Bet form below. ── */}
-            {leagueTeams.length > 0 && (
+            {/* Team Snapshot lives in the left gutter on desktop (see
+            TeamSnapshotPanel near the bet slip) so it doesn't compete with
+            the markets below for vertical space; on mobile, where there's no
+            gutter to use, it renders inline here instead. */}
+            {effectiveMobile && leagueTeams.length > 0 && (
               <div style={{ marginBottom: '32px' }}>
                 <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Team Snapshot</p>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
-                    <thead>
-                      <tr style={{ background: cardBg }}>
-                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'left', borderBottom: `1px solid ${border}` }}>Team</th>
-                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'center', borderBottom: `1px solid ${border}` }}>Record</th>
-                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right', borderBottom: `1px solid ${border}` }}>Avg PF</th>
-                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right', borderBottom: `1px solid ${border}` }}>Playoff %</th>
-                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right', borderBottom: `1px solid ${border}` }}>Proj Wk {week}</th>
-                        <th style={{ padding: '8px 12px', borderBottom: `1px solid ${border}` }} />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {leagueTeams.map((t, i) => {
-                        const rec = teamRecord[t.id] || { wins: 0, losses: 0, pf: 0, gp: 0 }
-                        const playoffFuture = futures.find(f => f.team_id === t.id && f.market_type === 'playoffs' && !f.is_settled)
-                        const projPts = weekProjByTeam[t.id]
-                        return (
-                          <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
-                            <td style={{ padding: '10px 12px', fontSize: '13px', color: text, fontFamily: "'Playfair Display', serif" }}>{teamLabel(t.id)}</td>
-                            <td style={{ padding: '10px 12px', fontSize: '12px', color: text, textAlign: 'center' }}>{rec.wins}-{rec.losses}</td>
-                            <td style={{ padding: '10px 12px', fontSize: '12px', color: muted, textAlign: 'right' }}>{rec.gp ? (rec.pf / rec.gp).toFixed(1) : '—'}</td>
-                            <td style={{ padding: '10px 12px', fontSize: '12px', color: text, textAlign: 'right' }}>{playoffFuture ? `${Math.round(playoffFuture.fair_p * 100)}%` : '—'}</td>
-                            <td style={{ padding: '10px 12px', fontSize: '12px', color: text, textAlign: 'right' }}>{projPts != null ? projPts.toFixed(1) : '—'}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                              <button onClick={() => setProjModalTeamId(t.id)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 10px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap' }}>Matchup</button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <TeamSnapshotList />
               </div>
             )}
 
@@ -1173,32 +1198,54 @@ export default function SportsbookPage() {
             {futures.length === 0 && <p style={{ color: muted, fontSize: '13px' }}>No futures on the board yet{adminUnlocked ? ' — generate them above.' : '.'}</p>}
 
             {['playoffs', 'bye', 'semis', 'finals', 'title'].map(mt => {
-              const rows = futures.filter(f => f.market_type === mt && !f.is_settled)
+              const rows = [...futures.filter(f => f.market_type === mt && !f.is_settled)].sort((a, b) => (b.fair_p ?? 0) - (a.fair_p ?? 0))
               if (!rows.length) return null
               const heading = FUTURE_LABELS[mt]
               return (
                 <div key={mt} style={{ marginBottom: '28px' }}>
                   <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>{heading}</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {rows.map(f => (
-                      <div key={f.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                        <div style={{ fontSize: '13px', color: text }}>{f.team_name}</div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <button onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'yes', odds: f.odds_yes, label: futureLabel(f, 'yes'), subLabel: heading })} style={betBtn(inSlip('future', f.id, 'future', 'yes'))}>
-                            Yes <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(f.odds_yes)}</span>
-                          </button>
-                          <button onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'no', odds: f.odds_no, label: futureLabel(f, 'no'), subLabel: heading })} style={betBtn(inSlip('future', f.id, 'future', 'no'))}>
-                            No <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(f.odds_no)}</span>
-                          </button>
-                          {adminUnlocked && (
-                            <div style={{ display: 'flex', gap: '4px', marginLeft: '4px' }}>
-                              <button onClick={() => settleFuture(f, 'yes')} disabled={generating} style={{ background: 'none', border: `1px solid ${green}`, color: green, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Settle Yes</button>
-                              <button onClick={() => settleFuture(f, 'no')} disabled={generating} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Settle No</button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {rows.map(f => {
+                      const pct = f.fair_p != null ? Math.round(f.fair_p * 100) : null
+                      const yesKey = `future-${f.id}-yes`, noKey = `future-${f.id}-no`
+                      return (
+                        <div key={f.id} style={{ background: cardBg, border: `1px solid ${border}`, borderLeft: `3px solid ${pct != null && pct >= 50 ? green : pct != null ? red : border}`, borderRadius: '4px', padding: '14px 16px', boxShadow: d ? '0 1px 3px rgba(0,0,0,0.3)' : '0 1px 3px rgba(0,0,0,0.06)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: pct != null ? '10px' : 0 }}>
+                            <div style={{ fontSize: '15px', color: text, fontFamily: "'Playfair Display', serif" }}>{f.team_name}</div>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'yes', odds: f.odds_yes, label: futureLabel(f, 'yes'), subLabel: heading })}
+                                onMouseEnter={() => setHoveredBetKey(yesKey)} onMouseLeave={() => setHoveredBetKey(null)}
+                                style={oddsBtn(yesKey, green, inSlip('future', f.id, 'future', 'yes'))}
+                              >
+                                Yes {fmtOdds(f.odds_yes)}
+                              </button>
+                              <button
+                                onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'no', odds: f.odds_no, label: futureLabel(f, 'no'), subLabel: heading })}
+                                onMouseEnter={() => setHoveredBetKey(noKey)} onMouseLeave={() => setHoveredBetKey(null)}
+                                style={oddsBtn(noKey, red, inSlip('future', f.id, 'future', 'no'))}
+                              >
+                                No {fmtOdds(f.odds_no)}
+                              </button>
+                              {adminUnlocked && (
+                                <div style={{ display: 'flex', gap: '4px', marginLeft: '4px' }}>
+                                  <button onClick={() => settleFuture(f, 'yes')} disabled={generating} style={{ background: 'none', border: `1px solid ${green}`, color: green, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Settle Yes</button>
+                                  <button onClick={() => settleFuture(f, 'no')} disabled={generating} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Settle No</button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {pct != null && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ flex: 1, height: '5px', borderRadius: '3px', background: d ? '#1a1a1a' : '#e0dbd0', overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: pct >= 50 ? green : red, transition: 'width 0.3s ease' }} />
+                              </div>
+                              <span style={{ fontSize: '10px', color: muted, minWidth: '30px', textAlign: 'right' }}>{pct}%</span>
                             </div>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               )
