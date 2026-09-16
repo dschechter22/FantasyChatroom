@@ -6,7 +6,7 @@ import { useLayout } from '../../hooks/useLayout'
 import { LEAGUE_ID } from '../../lib/supabase'
 import { priceTwoWay } from '../../lib/predictions'
 import { buildFixtures } from '../../lib/schedule'
-import { generateWeekBoard, generateFutures } from '../../lib/sportsbookGen'
+import { generateWeekBoard, generateFutures, getOrCreateFuture } from '../../lib/sportsbookGen'
 export const dynamic = 'force-dynamic'
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -35,6 +35,7 @@ export default function SportsbookPage() {
   const [week, setWeek] = useState(1)
   const [games, setGames] = useState([])
   const [futures, setFutures] = useState([])
+  const [teamSim, setTeamSim] = useState([])
   const [props, setProps] = useState([])
   const [accounts, setAccounts] = useState([])
   const [myBets, setMyBets] = useState([])
@@ -63,6 +64,12 @@ export default function SportsbookPage() {
   const [pickemPicks, setPickemPicks] = useState({})
   const [propMatchupFilter, setPropMatchupFilter] = useState('all')
   const [propPositionFilter, setPropPositionFilter] = useState('all')
+  const [wtTeam, setWtTeam] = useState('')
+  const [wtLine, setWtLine] = useState('')
+  const [seedTeam, setSeedTeam] = useState('')
+  const [seedLine, setSeedLine] = useState('')
+  const [aheadTeamA, setAheadTeamA] = useState('')
+  const [aheadTeamB, setAheadTeamB] = useState('')
 
   const [adminUnlocked, setAdminUnlocked] = useState(false)
   const [showPinModal, setShowPinModal] = useState(false)
@@ -94,7 +101,7 @@ export default function SportsbookPage() {
     db.from('sb_games').select('week').eq('season', SEASON).order('week', { ascending: false }).limit(1)
       .then(({ data }) => { if (data?.length) setWeek(data[0].week) })
   }, [])
-  useEffect(() => { if (mounted) { fetchGames(); fetchFutures(); fetchProps(); fetchAccounts() } }, [mounted, week])
+  useEffect(() => { if (mounted) { fetchGames(); fetchFutures(); fetchTeamSim(); fetchProps(); fetchAccounts() } }, [mounted, week])
 
   useEffect(() => {
     db.from('seasons').select('year').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).limit(1)
@@ -136,6 +143,11 @@ export default function SportsbookPage() {
   const fetchFutures = async () => {
     const { data } = await db.from('sb_futures').select('*').eq('season', SEASON).order('created_at')
     setFutures(data || [])
+  }
+
+  const fetchTeamSim = async () => {
+    const { data } = await db.from('sb_team_sim').select('*').eq('season', SEASON)
+    setTeamSim(data || [])
   }
 
   const fetchProps = async () => {
@@ -221,8 +233,9 @@ export default function SportsbookPage() {
   const runGenerateWeekBoard = async () => {
     if (!leagueTeams.length) return showFlash('No model data yet -- check back once teams/matchups are on file', false)
     setGenerating(true)
-    const { added } = await generateWeekBoard(db, genArgs())
-    showFlash(added ? `Added ${added} game(s) to the board` : 'No new games to add -- board already generated, or no matchups this week', !!added)
+    const { added, errors } = await generateWeekBoard(db, genArgs())
+    if (errors?.length) { console.error('generateWeekBoard errors:', errors); showFlash(`Failed: ${errors[0]}`, false) }
+    else showFlash(added ? `Added ${added} game(s) to the board` : 'No new games to add -- board already generated, or no matchups this week', !!added)
     fetchGames()
     setGenerating(false)
   }
@@ -230,9 +243,10 @@ export default function SportsbookPage() {
   const runGenerateFutures = async () => {
     if (!leagueTeams.length) return showFlash('No model data yet', false)
     setGenerating(true)
-    const { added, updated } = await generateFutures(db, genArgs())
-    showFlash(`Futures updated — ${added} new, ${updated} refreshed`)
-    fetchFutures()
+    const { added, updated, errors } = await generateFutures(db, genArgs())
+    if (errors?.length) { console.error('generateFutures errors:', errors); showFlash(`Failed: ${errors[0]}`, false) }
+    else showFlash(`Futures updated — ${added} new, ${updated} refreshed`)
+    fetchFutures(); fetchTeamSim()
     setGenerating(false)
   }
 
@@ -393,6 +407,37 @@ export default function SportsbookPage() {
     return Promise.resolve()
   }
   const refreshBoards = () => { fetchGames(); fetchFutures(); fetchProps() }
+
+  // ── custom futures: win total, final seed, and "finishes ahead of" are
+  // priced live from the cached simulation (sb_team_sim) for whatever
+  // team(s)/line a bettor picks, rather than only a fixed pre-generated
+  // one -- getOrCreateFuture() materializes the actual sb_futures row the
+  // first time anyone picks that exact combination. ──
+  const simFor = teamId => teamSim.find(t => t.team_id === teamId)
+  const teamLabel = teamId => { const t = leagueTeams.find(x => x.id === teamId); return t?.manager?.name || t?.team_name || '?' }
+  const winOverProb = (teamId, line) => {
+    const t = simFor(teamId)
+    if (!t) return null
+    return Object.entries(t.win_tally || {}).reduce((s, [w, p]) => s + (parseFloat(w) > line ? p : 0), 0)
+  }
+  const seedOverProb = (teamId, line) => {
+    const t = simFor(teamId)
+    if (!t) return null
+    const pUnder = Object.entries(t.seed_probs || {}).reduce((s, [seed, p]) => s + (parseFloat(seed) < line ? p : 0), 0)
+    return 1 - pUnder
+  }
+  const aheadProbOf = (teamId, oppId) => {
+    const t = simFor(teamId)
+    if (!t) return null
+    return t.ahead_probs?.[oppId] ?? null
+  }
+
+  const addCustomFuture = async ({ marketType, teamId, oppTeamId = null, teamName, oppTeamName = null, line = null, fairP, pick, label, subLabel }) => {
+    const { future, error } = await getOrCreateFuture(db, { season: SEASON, marketType, teamId, oppTeamId, teamName, oppTeamName, line, fairP: clampP(fairP) })
+    if (error || !future) return showFlash(`Failed: ${error || 'unknown error'}`, false)
+    toggleBet({ family: 'future', refId: future.id, betType: 'future', pick, odds: pick === 'yes' ? future.odds_yes : future.odds_no, label, subLabel })
+    fetchFutures()
+  }
 
   const placeSingles = async () => {
     if (!myAccount) return showFlash('Log in first', false)
@@ -885,27 +930,111 @@ export default function SportsbookPage() {
             {adminUnlocked && (
               <button onClick={runGenerateFutures} disabled={generating} style={{ ...adminBtn, marginBottom: '20px' }}>{generating ? 'Working…' : 'Generate / Refresh Season Futures'}</button>
             )}
+
+            {/* ── Build a Bet: win total / final seed / finishes ahead of are
+            priced live from the cached simulation for whatever team(s) and
+            line you pick, instead of a fixed pre-generated market. ── */}
+            <div style={{ marginBottom: '32px' }}>
+              <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Build a Bet</p>
+              {!teamSim.length && <p style={{ fontSize: '12px', color: muted, marginBottom: '12px' }}>No simulation data yet{adminUnlocked ? ' — generate futures above first.' : '.'}</p>}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Win Total */}
+                <div style={{ background: cardBg, border: `1px solid ${border}`, padding: '14px 16px' }}>
+                  <div style={{ fontSize: '11px', color: muted, marginBottom: '8px' }}>Win Total</div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <select value={wtTeam} onChange={e => setWtTeam(e.target.value)} style={inp}>
+                      <option value="">Team…</option>
+                      {leagueTeams.map(t => <option key={t.id} value={t.id}>{teamLabel(t.id)}</option>)}
+                    </select>
+                    <input type="number" step="0.5" value={wtLine} onChange={e => setWtLine(e.target.value)} placeholder="Line (e.g. 7.5)" style={{ ...inp, width: '130px' }} />
+                    {wtTeam && wtLine !== '' && (() => {
+                      const p = winOverProb(wtTeam, parseFloat(wtLine))
+                      if (p == null) return <span style={{ fontSize: '12px', color: muted }}>No sim data for this team yet</span>
+                      const [oddsYes, oddsNo] = priceTwoWay(clampP(p))
+                      const name = teamLabel(wtTeam)
+                      return (
+                        <>
+                          <button onClick={() => addCustomFuture({ marketType: 'win_total', teamId: wtTeam, teamName: name, line: parseFloat(wtLine), fairP: p, pick: 'yes', label: `${name} Over ${wtLine} Wins`, subLabel: 'Win Total' })} style={betBtn(false)}>Over <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsYes)}</span></button>
+                          <button onClick={() => addCustomFuture({ marketType: 'win_total', teamId: wtTeam, teamName: name, line: parseFloat(wtLine), fairP: p, pick: 'no', label: `${name} Under ${wtLine} Wins`, subLabel: 'Win Total' })} style={betBtn(false)}>Under <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsNo)}</span></button>
+                        </>
+                      )
+                    })()}
+                  </div>
+                </div>
+
+                {/* Final Seed */}
+                <div style={{ background: cardBg, border: `1px solid ${border}`, padding: '14px 16px' }}>
+                  <div style={{ fontSize: '11px', color: muted, marginBottom: '8px' }}>Final Regular-Season Seed</div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <select value={seedTeam} onChange={e => setSeedTeam(e.target.value)} style={inp}>
+                      <option value="">Team…</option>
+                      {leagueTeams.map(t => <option key={t.id} value={t.id}>{teamLabel(t.id)}</option>)}
+                    </select>
+                    <input type="number" step="0.5" value={seedLine} onChange={e => setSeedLine(e.target.value)} placeholder="Line (e.g. 4.5)" style={{ ...inp, width: '130px' }} />
+                    {seedTeam && seedLine !== '' && (() => {
+                      const pOver = seedOverProb(seedTeam, parseFloat(seedLine))
+                      if (pOver == null) return <span style={{ fontSize: '12px', color: muted }}>No sim data for this team yet</span>
+                      const [oddsOver, oddsUnder] = priceTwoWay(clampP(pOver))
+                      const name = teamLabel(seedTeam)
+                      return (
+                        <>
+                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: pOver, pick: 'yes', label: `${name} Over Seed ${seedLine}`, subLabel: 'Final Seed' })} style={betBtn(false)}>Over <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsOver)}</span></button>
+                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: 1 - pOver, pick: 'no', label: `${name} Under Seed ${seedLine}`, subLabel: 'Final Seed' })} style={betBtn(false)}>Under <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsUnder)}</span></button>
+                        </>
+                      )
+                    })()}
+                  </div>
+                </div>
+
+                {/* Finishes Ahead Of */}
+                <div style={{ background: cardBg, border: `1px solid ${border}`, padding: '14px 16px' }}>
+                  <div style={{ fontSize: '11px', color: muted, marginBottom: '8px' }}>Finishes Ahead Of</div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <select value={aheadTeamA} onChange={e => setAheadTeamA(e.target.value)} style={inp}>
+                      <option value="">Team A…</option>
+                      {leagueTeams.map(t => <option key={t.id} value={t.id}>{teamLabel(t.id)}</option>)}
+                    </select>
+                    <select value={aheadTeamB} onChange={e => setAheadTeamB(e.target.value)} style={inp}>
+                      <option value="">Team B…</option>
+                      {leagueTeams.filter(t => t.id !== aheadTeamA).map(t => <option key={t.id} value={t.id}>{teamLabel(t.id)}</option>)}
+                    </select>
+                    {aheadTeamA && aheadTeamB && aheadTeamA !== aheadTeamB && (() => {
+                      const p = aheadProbOf(aheadTeamA, aheadTeamB)
+                      if (p == null) return <span style={{ fontSize: '12px', color: muted }}>No sim data yet</span>
+                      const [oddsYes, oddsNo] = priceTwoWay(clampP(p))
+                      const nameA = teamLabel(aheadTeamA), nameB = teamLabel(aheadTeamB)
+                      return (
+                        <>
+                          <button onClick={() => addCustomFuture({ marketType: 'h2h_finish', teamId: aheadTeamA, oppTeamId: aheadTeamB, teamName: nameA, oppTeamName: nameB, fairP: p, pick: 'yes', label: `${nameA} finishes ahead of ${nameB}`, subLabel: 'Finishes Ahead Of' })} style={betBtn(false)}>{nameA} <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsYes)}</span></button>
+                          <button onClick={() => addCustomFuture({ marketType: 'h2h_finish', teamId: aheadTeamA, oppTeamId: aheadTeamB, teamName: nameA, oppTeamName: nameB, fairP: 1 - p, pick: 'no', label: `${nameB} finishes ahead of ${nameA}`, subLabel: 'Finishes Ahead Of' })} style={betBtn(false)}>{nameB} <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsNo)}</span></button>
+                        </>
+                      )
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {futures.length === 0 && <p style={{ color: muted, fontSize: '13px' }}>No futures on the board yet{adminUnlocked ? ' — generate them above.' : '.'}</p>}
 
-            {['playoffs', 'bye', 'semis', 'finals', 'title', 'win_total', 'seed_total', 'h2h_finish'].map(mt => {
+            {['playoffs', 'bye', 'semis', 'finals', 'title'].map(mt => {
               const rows = futures.filter(f => f.market_type === mt && !f.is_settled)
               if (!rows.length) return null
-              const heading = mt === 'win_total' ? 'Win Totals' : mt === 'seed_total' ? 'Final Seed' : mt === 'h2h_finish' ? "Finishes Ahead Of" : FUTURE_LABELS[mt]
+              const heading = FUTURE_LABELS[mt]
               return (
                 <div key={mt} style={{ marginBottom: '28px' }}>
                   <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>{heading}</p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {rows.map(f => (
                       <div key={f.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                        <div style={{ fontSize: '13px', color: text }}>
-                          {f.team_name}{f.opp_team_name ? ` vs ${f.opp_team_name}` : ''}{f.line != null ? ` — ${f.line}` : ''}
-                        </div>
+                        <div style={{ fontSize: '13px', color: text }}>{f.team_name}</div>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                           <button onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'yes', odds: f.odds_yes, label: futureLabel(f, 'yes'), subLabel: heading })} style={betBtn(inSlip('future', f.id, 'future', 'yes'))}>
-                            {mt === 'win_total' || mt === 'seed_total' ? 'Over' : mt === 'h2h_finish' ? f.team_name : 'Yes'} <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(f.odds_yes)}</span>
+                            Yes <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(f.odds_yes)}</span>
                           </button>
                           <button onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'no', odds: f.odds_no, label: futureLabel(f, 'no'), subLabel: heading })} style={betBtn(inSlip('future', f.id, 'future', 'no'))}>
-                            {mt === 'win_total' || mt === 'seed_total' ? 'Under' : mt === 'h2h_finish' ? f.opp_team_name : 'No'} <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(f.odds_no)}</span>
+                            No <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(f.odds_no)}</span>
                           </button>
                           {adminUnlocked && (
                             <div style={{ display: 'flex', gap: '4px', marginLeft: '4px' }}>
@@ -920,6 +1049,28 @@ export default function SportsbookPage() {
                 </div>
               )
             })}
+
+            {/* Custom win-total/seed/head-to-head picks a bettor has already
+            added -- these only resolve at season's end, so admin settles
+            them here rather than from a pre-generated list. */}
+            {adminUnlocked && futures.some(f => !f.is_settled && !FUTURE_LABELS[f.market_type]) && (
+              <div style={{ marginBottom: '28px' }}>
+                <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Custom Picks Awaiting Settlement</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {futures.filter(f => !f.is_settled && !FUTURE_LABELS[f.market_type]).map(f => (
+                    <div key={f.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div style={{ fontSize: '13px', color: text }}>
+                        {futureLabel(f, 'yes')}
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button onClick={() => settleFuture(f, 'yes')} disabled={generating} style={{ background: 'none', border: `1px solid ${green}`, color: green, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Settle Yes</button>
+                        <button onClick={() => settleFuture(f, 'no')} disabled={generating} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Settle No</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {futures.some(f => f.is_settled) && (
               <div style={{ marginTop: '32px' }}>
