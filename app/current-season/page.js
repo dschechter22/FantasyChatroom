@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-import { projectedWeekLineup, lineupEfficiency } from '../../lib/predictions'
+import { projectedWeekLineup, lineupEfficiency, actualWeekLineup } from '../../lib/predictions'
 import { resolveSchedule } from '../../lib/schedule'
 export const dynamic = 'force-dynamic'
 
@@ -188,6 +188,23 @@ export default function CurrentSeasonPage() {
     return pcts.length ? parseFloat((pcts.reduce((s, p) => s + p, 0) / pcts.length).toFixed(1)) : null
   }
 
+  // What a team's PF/PPG would be had they started the optimal lineup every
+  // week -- same "best possible lineup" (actualWeekLineup) and same
+  // per-week data-completeness gate as Start % above, just summed instead
+  // of compared against the real total.
+  const maxStatsFor = (teamId) => {
+    const entries = rosterEntries.filter(e => e.team_id === teamId)
+    const totals = weeks.map(wk => {
+      const withActual = entries.filter(e => e.stats?.actual?.[wk] != null)
+      if (!entries.length || withActual.length < entries.length * 0.8) return null
+      const optimal = actualWeekLineup(entries, wk)
+      return optimal.total || null
+    }).filter(t => t != null)
+    if (!totals.length) return { maxPf: null, maxAvg: null }
+    const maxPf = parseFloat(totals.reduce((s, t) => s + t, 0).toFixed(1))
+    return { maxPf, maxAvg: parseFloat((maxPf / totals.length).toFixed(1)) }
+  }
+
   const rows = Object.values(teamData).map(({ id, name, slug, teamName, scores, wins, losses, pf, pa, allPlaySum, gameLog }) => {
     const games = wins + losses
     const winPct = games > 0 ? wins / games : 0
@@ -204,7 +221,7 @@ export default function CurrentSeasonPage() {
       else if (w === streakType) curStreak++
       else break
     }
-    return { id, name, slug, teamName, wins, losses, pf, pa, winPct, avgScore, medScore: med, allPlayWinPct, allPlaySum, luckRaw, std, streak: curStreak, streakWin: streakType, scores, gameLog: sortedLog, startPct: startPctFor(id) }
+    return { id, name, slug, teamName, wins, losses, pf, pa, winPct, avgScore, medScore: med, allPlayWinPct, allPlaySum, luckRaw, std, streak: curStreak, streakWin: streakType, scores, gameLog: sortedLog, startPct: startPctFor(id), ...maxStatsFor(id) }
   })
 
   const maxWin = Math.max(...rows.map(r => r.winPct)) || 1
@@ -730,9 +747,11 @@ export default function CurrentSeasonPage() {
                     {!effectiveMobile && <th style={hStyle()}>Team</th>}
                     <th style={hStyle('center')}>W-L</th>
                     {!effectiveMobile && <th style={hStyle('right')}>PF</th>}
+                    {!effectiveMobile && <th style={hStyle('right')}>Max PF</th>}
                     {!effectiveMobile && <th style={hStyle('right')}>PA</th>}
                     {!effectiveMobile && <th style={hStyle('right')}>Diff</th>}
                     <th style={hStyle('right')}>Avg PPG</th>
+                    {!effectiveMobile && <th style={hStyle('right')}>Max Avg</th>}
                     <th style={hStyle('right')}>All-Play %</th>
                     {!effectiveMobile && <th style={hStyle('right')}>Luck</th>}
                     {!effectiveMobile && <th style={hStyle('right')}>Start %</th>}
@@ -752,6 +771,7 @@ export default function CurrentSeasonPage() {
                         {!effectiveMobile && <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{r.teamName}</td>}
                         <td style={cStyle('center')}>{r.wins}-{r.losses}</td>
                         {!effectiveMobile && <td style={cStyle('right')}>{r.pf.toFixed(2)}</td>}
+                        {!effectiveMobile && <td style={{ ...cStyle('right'), color: muted }}>{r.maxPf != null ? r.maxPf.toFixed(2) : '—'}</td>}
                         {!effectiveMobile && <td style={cStyle('right')}>{r.pa.toFixed(2)}</td>}
                         {!effectiveMobile && (
                           <td style={{ ...cStyle('right'), color: diff >= 0 ? green : red, fontWeight: '500' }}>
@@ -759,6 +779,7 @@ export default function CurrentSeasonPage() {
                           </td>
                         )}
                         <td style={cStyle('right')}>{r.avgScore.toFixed(1)}</td>
+                        {!effectiveMobile && <td style={{ ...cStyle('right'), color: muted }}>{r.maxAvg != null ? r.maxAvg.toFixed(1) : '—'}</td>}
                         <td style={cStyle('right')}>{(r.allPlayWinPct * 100).toFixed(1)}%</td>
                         {!effectiveMobile && (
                           <td style={{ ...cStyle('right'), color: r.luckRaw >= 0 ? green : red, fontWeight: '500' }}>
