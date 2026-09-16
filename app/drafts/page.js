@@ -4,6 +4,7 @@ import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import { FPTS_STATIC } from '../../lib/fptsStatic'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import { useSortableTable } from '../../hooks/useSortableTable'
 export const dynamic = 'force-dynamic'
 
 const POS_COLORS = { QB: '#4285F4', RB: '#34A853', WR: '#FBBC04', TE: '#EA4335', K: '#46BDC6', 'D/ST': '#888888' }
@@ -668,6 +669,9 @@ export default function DraftsPage() {
     return { gradeVsWins, correlation, slotRoi, breakouts, trajectory, carryArr, posRoi, cliffData, nflArr, sleeperArr, rd1DepArr, stackedDrafts, unStackedDrafts, stackAvg, noStackAvg, pick1s }
   }, [enrichedWithValue, allPicks, superlatives, teamByManagerYear])
 
+  const successTable = useSortableTable(superlatives?.draftSuccessRates || [], { defaultKey: 'avgRaw', defaultDir: 'desc' })
+  const careerTable = useSortableTable(superlatives?.careerStats || [], { defaultKey: 'avgVS', defaultDir: 'desc' })
+
   if (!mounted) return null
 
   const hStyle = (a = 'left') => ({ padding: '8px 12px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: a, borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' })
@@ -844,14 +848,14 @@ export default function DraftsPage() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                         <thead>
                           <tr style={{ background: cardBg }}>
-                            <th style={hStyle()}>Manager</th>
-                            <th style={hStyle('center')}>Avg Pts Above/Below Slot</th>
-                            <th style={hStyle('center')}>Hit Rate</th>
-                            <th style={hStyle('center')}>Picks</th>
+                            <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...successTable.thSort('name', 'Manager')} />
+                            <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...successTable.thSort('avgRaw', 'Avg Pts Above/Below Slot')} />
+                            <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...successTable.thSort('hitRate', 'Hit Rate')} />
+                            <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...successTable.thSort('count', 'Picks')} />
                           </tr>
                         </thead>
                         <tbody>
-                          {superlatives.draftSuccessRates.map((m, i) => (
+                          {successTable.rows.map((m, i) => (
                             <tr key={m.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                               <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{m.name}</td>
                               <td style={{ ...cStyle('center'), color: m.avgRaw > 0 ? green : red, fontWeight: '600' }}>
@@ -1355,17 +1359,17 @@ export default function DraftsPage() {
                   <table style={{ borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                     <thead>
                       <tr style={{ background: cardBg }}>
-                        <th style={hStyle()}>Manager</th>
-                        <th style={hStyle('center')}>Avg Grade</th>
-                        <th style={hStyle('center')}>A+</th>
-                        <th style={hStyle('center')}>F</th>
-                        <th style={hStyle('center')}>Hit Rate</th>
-                        <th style={hStyle('right')}>Pts vs Slot</th>
-                        <th style={hStyle('center')}>Seasons</th>
+                        <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...careerTable.thSort('name', 'Manager')} />
+                        <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...careerTable.thSort('avgVS', 'Avg Grade')} />
+                        <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...careerTable.thSort('aPlus', 'A+')} />
+                        <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...careerTable.thSort('fCount', 'F')} />
+                        <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...careerTable.thSort('hitRate', 'Hit Rate')} />
+                        <th style={{ ...hStyle('right'), cursor: 'pointer', userSelect: 'none' }} {...careerTable.thSort('totalRaw', 'Pts vs Slot')} />
+                        <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...careerTable.thSort('seasons', 'Seasons')} />
                       </tr>
                     </thead>
                     <tbody>
-                      {superlatives.careerStats.map((s, i) => {
+                      {careerTable.rows.map((s, i) => {
                         const { label: gl, color: gc } = gradeLabel(s.avgVS)
                         return (
                           <tr key={s.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
