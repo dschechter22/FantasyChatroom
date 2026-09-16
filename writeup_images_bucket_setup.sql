@@ -10,14 +10,20 @@ insert into storage.buckets (id, name, public, file_size_limit)
 select 'writeup-images', 'writeup-images', true, 5242880 -- 5MB, matches MAX_IMAGE_BYTES in app/writeups/page.js
 where not exists (select 1 from storage.buckets where id = 'writeup-images');
 
-create policy if not exists "writeup_images_public_read" on storage.objects
+-- Postgres has no "create policy if not exists" -- drop-then-create is the
+-- standard idempotent pattern for policies.
+drop policy if exists "writeup_images_public_read" on storage.objects;
+create policy "writeup_images_public_read" on storage.objects
   for select using (bucket_id = 'writeup-images');
 
-create policy if not exists "writeup_images_public_insert" on storage.objects
+drop policy if exists "writeup_images_public_insert" on storage.objects;
+create policy "writeup_images_public_insert" on storage.objects
   for insert with check (bucket_id = 'writeup-images');
 
-create policy if not exists "writeup_images_public_update" on storage.objects
+drop policy if exists "writeup_images_public_update" on storage.objects;
+create policy "writeup_images_public_update" on storage.objects
   for update using (bucket_id = 'writeup-images');
 
-create policy if not exists "writeup_images_public_delete" on storage.objects
+drop policy if exists "writeup_images_public_delete" on storage.objects;
+create policy "writeup_images_public_delete" on storage.objects
   for delete using (bucket_id = 'writeup-images');
