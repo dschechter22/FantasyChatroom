@@ -4,6 +4,7 @@ import { supabase, LEAGUE_ID } from '../../../lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import Nav from '../../../components/Nav'
 import { useLayout } from '../../../hooks/useLayout'
+import { useSortableTable } from '../../../hooks/useSortableTable'
 
 const STAT_FIELDS = {
   QB: [
@@ -159,6 +160,11 @@ export default function PlayerProfilePage() {
   const uniqueOwners = [...new Set(entries.map(e => e.team?.manager?.name).filter(Boolean))]
   const uniqueSeasons = [...new Set(entries.map(e => e.team?.season?.year).filter(Boolean))]
 
+  const seasonTable = useSortableTable(
+    entries.map(e => ({ ...e, year: e.team?.season?.year || 0, ownerName: e.team?.manager?.name || '', teamName: e.team?.team_name || '' })),
+    { defaultKey: 'year', defaultDir: 'desc' },
+  )
+
   if (!mounted) return null
 
   if (loading) {
@@ -254,11 +260,11 @@ export default function PlayerProfilePage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
               <thead>
                 <tr style={{ background: cardBg }}>
-                  <th style={hStyle('center')}>Year</th>
-                  <th style={hStyle()}>Owner</th>
-                  {!effectiveMobile && <th style={hStyle()}>Team</th>}
-                  <th style={hStyle('right')}>FPTS</th>
-                  <th style={hStyle('right')}>Avg</th>
+                  <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...seasonTable.thSort('year', 'Year')} />
+                  <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...seasonTable.thSort('ownerName', 'Owner')} />
+                  {!effectiveMobile && <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...seasonTable.thSort('teamName', 'Team')} />}
+                  <th style={{ ...hStyle('right'), cursor: 'pointer', userSelect: 'none' }} {...seasonTable.thSort('fpts', 'FPTS')} />
+                  <th style={{ ...hStyle('right'), cursor: 'pointer', userSelect: 'none' }} {...seasonTable.thSort('avg_pts', 'Avg')} />
                   {!effectiveMobile && <th style={hStyle('right')}>PRK</th>}
                   {statFields.map(f => (
                     <th key={f.key} style={hStyle('right')}>{f.label}</th>
@@ -266,7 +272,7 @@ export default function PlayerProfilePage() {
                 </tr>
               </thead>
               <tbody>
-                {entries.map((entry, i) => {
+                {seasonTable.rows.map((entry, i) => {
                   const year = entry.team?.season?.year
                   const stats = year ? (statsCache[year] || entry.stats || {}) : {}
                   const isLoadingYear = year && loadingStats[year]
