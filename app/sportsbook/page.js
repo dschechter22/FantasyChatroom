@@ -1017,7 +1017,7 @@ export default function SportsbookPage() {
   // on the left, so it's out of the vertical flow entirely instead of
   // pushing the market list down the page.
   const TeamSnapshotPanel = () => {
-    if (effectiveMobile || tab !== 'futures' || !leagueTeams.length) return null
+    if (effectiveMobile || !leagueTeams.length) return null
     return (
       <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-774px, -50%)', zIndex: 90, width: '300px', maxHeight: '80vh', overflowY: 'auto', paddingRight: '4px' }}>
         <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Team Snapshot</p>
@@ -1037,7 +1037,7 @@ export default function SportsbookPage() {
             onClick={() => setSlipOpen(o => !o)}
             style={{ width: '100%', background: text, color: bg, border: 'none', padding: '14px 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: '600', letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", cursor: 'pointer' }}
           >
-            Bet Slip <span style={{ color: gold }}>({slip.length})</span> <span style={{ fontSize: '10px' }}>{caret}</span>
+            Bet Slip ({slip.length}) <span style={{ fontSize: '10px' }}>{caret}</span>
           </button>
           {slipOpen && <div style={{ maxHeight: '60vh', overflowY: 'auto', borderTop: `1px solid ${border}` }}><SlipContent /></div>}
         </div>
@@ -1053,7 +1053,7 @@ export default function SportsbookPage() {
           onClick={() => setSlipOpen(o => !o)}
           style={{ width: '100%', background: text, color: bg, border: 'none', padding: '12px 20px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'Inter', sans-serif", letterSpacing: '0.05em', boxShadow: '0 4px 16px rgba(0,0,0,0.3)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
         >
-          Bet Slip <span style={{ color: gold }}>({slip.length})</span> <span style={{ fontSize: '10px' }}>{caret}</span>
+          Bet Slip ({slip.length}) <span style={{ fontSize: '10px' }}>{caret}</span>
         </button>
         {slipOpen && (
           <div style={{ background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, marginTop: '10px', maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
@@ -1455,6 +1455,18 @@ export default function SportsbookPage() {
           </>
         )}
 
+        {/* Team Snapshot lives in the left gutter on desktop (see
+        TeamSnapshotPanel near the bet slip) on every tab, so it doesn't
+        compete with any tab's own content for vertical space; on mobile,
+        where there's no gutter to use, it renders inline here instead, also
+        on every tab. */}
+        {effectiveMobile && leagueTeams.length > 0 && (
+          <div style={{ marginBottom: '32px' }}>
+            <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Team Snapshot</p>
+            <TeamSnapshotList />
+          </div>
+        )}
+
         {/* ── FUTURES ── */}
         {tab === 'futures' && (
           <>
@@ -1463,17 +1475,6 @@ export default function SportsbookPage() {
             </p>
             {adminUnlocked && (
               <button onClick={runGenerateFutures} disabled={generating} style={{ ...adminBtn, marginBottom: '20px' }}>{generating ? 'Working…' : 'Generate / Refresh Season Futures'}</button>
-            )}
-
-            {/* Team Snapshot lives in the left gutter on desktop (see
-            TeamSnapshotPanel near the bet slip) so it doesn't compete with
-            the markets below for vertical space; on mobile, where there's no
-            gutter to use, it renders inline here instead. */}
-            {effectiveMobile && leagueTeams.length > 0 && (
-              <div style={{ marginBottom: '32px' }}>
-                <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Team Snapshot</p>
-                <TeamSnapshotList />
-              </div>
             )}
 
             {/* ── Build a Bet: win total / final seed / finishes ahead of are
