@@ -479,7 +479,13 @@ export default function SportsbookPage() {
     try {
       const res = await fetch(`/api/sportsbook-admin-sync?week=${week}`)
       const data = await res.json()
-      if (data.errors?.length) { console.error('Live sync errors:', data.errors); showFlash(`Sync finished with errors: ${data.errors[0]}`, false) }
+      // espn-sync reports failure two different ways depending on how early
+      // it fails: a 401/setup problem comes back as a bare {error}, while a
+      // failure partway through the real sync lands in {errors: [...]}.
+      // Checking only the array form meant an auth failure looked exactly
+      // like a successful sync with nothing to report.
+      if (!res.ok || data.error) { console.error('Live sync failed:', data.error || res.status); showFlash(`Sync failed: ${data.error || `HTTP ${res.status}`}`, false) }
+      else if (data.errors?.length) { console.error('Live sync errors:', data.errors); showFlash(`Sync finished with errors: ${data.errors[0]}`, false) }
       else showFlash(`Live sync complete — ${data.projectionsSynced ?? 0} projection(s) refreshed from ESPN`)
     } catch (e) {
       showFlash(`Sync failed: ${e.message}`, false)
