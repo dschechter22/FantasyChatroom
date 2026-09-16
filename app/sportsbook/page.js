@@ -282,7 +282,7 @@ export default function SportsbookPage() {
   const handlePinSubmit = async () => {
     if (!pinInput || pinInput.length < 4) return setPinError('PIN must be 4+ digits')
     if (isNewAccount) {
-      const { data, error } = await db.from('gb_accounts').insert({ manager_name: pendingName, season: SEASON, balance: 1000, pin: pinInput }).select().single()
+      const { data, error } = await db.from('gb_accounts').insert({ manager_name: pendingName, season: SEASON, balance: 200, pin: pinInput }).select().single()
       if (error) {
         // 23505 is Postgres's real unique-violation code (this table is
         // unique on manager_name+season) -- anything else is a different
@@ -1184,7 +1184,7 @@ export default function SportsbookPage() {
             </div>
             <div style={{ overflowY: 'auto', padding: '20px', fontSize: '13px', lineHeight: 1.6, color: text }}>
               <p style={{ marginBottom: '14px' }}>
-                Everyone plays with <strong>Gimre Bucks (GB)</strong> — fake money, no real cash involved. New accounts start with <strong>1,000 GB</strong>. Your year-end GB total sets next season's draft order (most GB picks first).
+                Everyone plays with <strong>Gimre Bucks (GB)</strong> — fake money, no real cash involved. New accounts start with <strong>200 GB</strong>. Your year-end GB total sets next season's draft order (most GB picks first).
               </p>
 
               <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginTop: '18px', marginBottom: '6px' }}>Odds, Wager &amp; To Win</p>
