@@ -29,6 +29,12 @@ const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 // player who was never seeded (a free-agent pickup) gets a new players/
 // roster_entries row created. A newly-created player has no sleeper_id, so
 // they won't pick up Sleeper projections until/unless that's set by hand.
+// This reconciliation ONLY happens when `week` is the actual current week;
+// hit with an older `?week=N` (e.g. to backfill a week whose roster_entries
+// didn't exist yet at the time), it only fills in that week's stats for
+// whoever's already on file, and never touches team_id -- otherwise a
+// backfill of an old week would undo a real move that happened since, since
+// that old week's data still shows the player on their previous team.
 //
 // Every ESPN/Supabase call here is best-effort and independently caught so
 // one feed's outage (or one bad team/player match) can't block the rest --
@@ -43,10 +49,21 @@ export async function GET(request) {
   }
 
   const { searchParams } = new URL(request.url)
-  const week = parseInt(searchParams.get('week') || '') || (await fetchSleeperCurrentWeek()) || 1
+  const currentWeek = (await fetchSleeperCurrentWeek()) || 1
+  const requestedWeek = parseInt(searchParams.get('week') || '')
+  const week = requestedWeek || currentWeek
+  // Team assignment only ever reflects *right now* -- reconciling it against
+  // an older week's roster snapshot would undo a real move that happened
+  // since (e.g. backfilling Week 1 after a Week 2 sync already moved a
+  // player to a new team would move them back, because Week 1's data still
+  // shows their old team). So only the current week's sync is allowed to
+  // create players or move team_id; a backfill of a past week only ever
+  // fills in that week's stats for whichever roster_entries row already
+  // exists, wherever it currently lives.
+  const isBackfill = week < currentWeek
 
   const result = {
-    week, matchupsSynced: 0, playersScored: 0, unmatchedPlayers: [],
+    week, isBackfill, matchupsSynced: 0, playersScored: 0, unmatchedPlayers: [],
     rosterMoves: [], newRosterEntries: [], projectionsSynced: 0, errors: [],
   }
 
@@ -122,38 +139,49 @@ export async function GET(request) {
       const key = norm(line.playerName)
       let entry = entryByTeamAndName.get(`${team.id}|${key}`)
 
-      // Not on this team's roster in our DB -- either they moved here from
-      // another of our tracked teams (trade/waiver claim), or they're new
-      // to the league entirely (a free-agent pickup we've never seeded).
+      // Not on this team's roster in our DB.
       if (!entry) {
-        const elsewhere = entryByAnyTeamAndName.get(key)
-        if (elsewhere && elsewhere.team_id !== team.id) {
-          const fromTeamId = elsewhere.team_id
-          await supabase.from('roster_entries').update({ team_id: team.id }).eq('id', elsewhere.id)
-          elsewhere.team_id = team.id
-          entry = elsewhere
-          result.rosterMoves.push(`${line.playerName} -> ${team.manager?.name || team.id}`)
-          await supabase.from('roster_moves').insert({
-            season_id: season.id, week, player_id: elsewhere.player_id,
-            from_team_id: fromTeamId, to_team_id: team.id, move_type: 'moved',
-          })
-        } else if (!elsewhere) {
-          let { data: player } = await supabase.from('players').select('id').eq('name', line.playerName).maybeSingle()
-          if (!player) {
-            const { data: newPlayer, error: playerErr } = await supabase.from('players')
-              .insert({ name: line.playerName, position: line.position }).select('id').single()
-            if (playerErr) { result.errors.push(`Could not create player ${line.playerName}: ${playerErr.message}`); continue }
-            player = newPlayer
+        if (isBackfill) {
+          // A backfill only ever attaches this week's stats to wherever the
+          // player already sits today -- never moves team_id (see the note
+          // on isBackfill above) and never creates a brand-new row (we'd
+          // have no reliable way to know whether their team back then still
+          // is their team now, so it's safer to report them unmatched than
+          // guess).
+          entry = entryByAnyTeamAndName.get(key) || null
+        } else {
+          // Current-week sync: either they moved here from another of our
+          // tracked teams (trade/waiver claim), or they're new to the
+          // league entirely (a free-agent pickup we've never seeded).
+          const elsewhere = entryByAnyTeamAndName.get(key)
+          if (elsewhere && elsewhere.team_id !== team.id) {
+            const fromTeamId = elsewhere.team_id
+            await supabase.from('roster_entries').update({ team_id: team.id }).eq('id', elsewhere.id)
+            elsewhere.team_id = team.id
+            entry = elsewhere
+            result.rosterMoves.push(`${line.playerName} -> ${team.manager?.name || team.id}`)
+            await supabase.from('roster_moves').insert({
+              season_id: season.id, week, player_id: elsewhere.player_id,
+              from_team_id: fromTeamId, to_team_id: team.id, move_type: 'moved',
+            })
+          } else if (!elsewhere) {
+            let { data: player } = await supabase.from('players').select('id').eq('name', line.playerName).maybeSingle()
+            if (!player) {
+              const { data: newPlayer, error: playerErr } = await supabase.from('players')
+                .insert({ name: line.playerName, position: line.position }).select('id').single()
+              if (playerErr) { result.errors.push(`Could not create player ${line.playerName}: ${playerErr.message}`); continue }
+              player = newPlayer
+            }
+            const { data: newEntry, error: entryErr } = await supabase.from('roster_entries')
+              .insert({ team_id: team.id, player_id: player.id, stats: {} }).select('id, stats').single()
+            if (entryErr) { result.errors.push(`Could not roster ${line.playerName}: ${entryErr.message}`); continue }
+            entry = { ...newEntry, team_id: team.id, player_id: player.id, player: { name: line.playerName } }
+            result.newRosterEntries.push(`${line.playerName} -> ${team.manager?.name || team.id}`)
+            await supabase.from('roster_moves').insert({
+              season_id: season.id, week, player_id: player.id,
+              from_team_id: null, to_team_id: team.id, move_type: 'added',
+            })
           }
-          const { data: newEntry, error: entryErr } = await supabase.from('roster_entries')
-            .insert({ team_id: team.id, player_id: player.id, stats: {} }).select('id, stats').single()
-          if (entryErr) { result.errors.push(`Could not roster ${line.playerName}: ${entryErr.message}`); continue }
-          entry = { ...newEntry, team_id: team.id, player_id: player.id, player: { name: line.playerName } }
-          result.newRosterEntries.push(`${line.playerName} -> ${team.manager?.name || team.id}`)
-          await supabase.from('roster_moves').insert({
-            season_id: season.id, week, player_id: player.id,
-            from_team_id: null, to_team_id: team.id, move_type: 'added',
-          })
         }
         if (entry) {
           entryByTeamAndName.set(`${team.id}|${key}`, entry)
