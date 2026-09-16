@@ -89,7 +89,7 @@ export async function GET(request) {
 
   // One shared fetch of every roster row for this season.
   const { data: allEntries } = await supabase.from('roster_entries')
-    .select('id, team_id, player_id, stats, player:player_id(name)')
+    .select('id, team_id, player_id, stats, player:player_id(name, nfl_team)')
     .in('team_id', teams.map(t => t.id))
   const entryByTeamAndName = new Map((allEntries || []).map(e => [`${e.team_id}|${norm(e.player?.name)}`, e]))
   // Season-wide (not team-scoped) name lookup, so a player who moved teams
@@ -161,7 +161,7 @@ export async function GET(request) {
             let { data: player } = await supabase.from('players').select('id').eq('name', line.playerName).maybeSingle()
             if (!player) {
               const { data: newPlayer, error: playerErr } = await supabase.from('players')
-                .insert({ name: line.playerName, position: line.position }).select('id').single()
+                .insert({ name: line.playerName, position: line.position, nfl_team: line.nflTeam }).select('id').single()
               if (playerErr) { result.errors.push(`Could not create player ${line.playerName}: ${playerErr.message}`); continue }
               player = newPlayer
             }
@@ -204,6 +204,14 @@ export async function GET(request) {
       await supabase.from('roster_entries').update({ stats: nextStats }).eq('id', entry.id)
       entry.stats = nextStats
       result.playersScored++
+
+      // Keep the real NFL team on file fresh (a free-agent signing, a trade
+      // between real NFL teams) -- skipped when unchanged so a normal sync
+      // isn't doing an extra write per player for no reason.
+      if (line.nflTeam && entry.player?.nfl_team !== line.nflTeam) {
+        await supabase.from('players').update({ nfl_team: line.nflTeam }).eq('id', entry.player_id)
+        entry.player = { ...entry.player, nfl_team: line.nflTeam }
+      }
     }
   } catch (e) {
     result.errors.push(`ESPN sync failed: ${e.message}`)

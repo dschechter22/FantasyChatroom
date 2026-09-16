@@ -109,6 +109,7 @@ export default function SportsbookPage() {
   const [leagueTeams, setLeagueTeams] = useState([])
   const [leagueMatchups, setLeagueMatchups] = useState([])
   const [rosterEntries, setRosterEntries] = useState([])
+  const [nflGames, setNflGames] = useState([])
 
   useEffect(() => { setMounted(true) }, [])
   useEffect(() => {
@@ -116,7 +117,18 @@ export default function SportsbookPage() {
       .then(({ data }) => { if (data?.length) setWeek(data[0].week) })
   }, [])
   useEffect(() => { if (mounted) { fetchGames(); fetchFutures(); fetchTeamSim(); fetchProps(); fetchAccounts() } }, [mounted, week])
+  // Real NFL schedule for the Props tab's "who do they play this week"
+  // column -- a separate public ESPN endpoint, not the fantasy API, so it's
+  // fetched independently and only matters while on Props.
+  useEffect(() => {
+    if (!mounted || tab !== 'props') return
+    fetch(`/api/nfl-schedule?week=${week}`).then(r => r.json()).then(d => setNflGames(d.games || [])).catch(() => setNflGames([]))
+  }, [mounted, tab, week])
   useEffect(() => { if (mounted) { fetchActivityLog(); fetchAllPendingBets(); fetchPendingPinResets() } }, [mounted])
+  // If adding/removing a leg turns an in-progress parlay into a same-team
+  // futures ladder, drop back to Singles rather than leaving Parlay mode
+  // selected with no legal way to submit it.
+  useEffect(() => { if (isParlay && slipHasSameTeamFutures(slip)) setIsParlay(false) }, [slip])
   useEffect(() => { if (mounted && tab === 'allbets') fetchAllBets() }, [mounted, tab])
 
   useEffect(() => {
@@ -137,7 +149,7 @@ export default function SportsbookPage() {
       setLeagueMatchups((mRes.data || []).filter(x => x.season?.year === latestSeasonYear))
       if (t.length) {
         const { data } = await db.from('roster_entries')
-          .select('id, team_id, player_id, stats, player:player_id(id, name, position)')
+          .select('id, team_id, player_id, stats, player:player_id(id, name, position, nfl_team)')
           .in('team_id', t.map(x => x.id))
         setRosterEntries(data || [])
       }
@@ -340,6 +352,49 @@ export default function SportsbookPage() {
     return byTeam
   }, [rosterEntries])
 
+  // Real NFL team abbreviation -> this week's opponent, from the site-wide
+  // schedule endpoint (unrelated to the fantasy league's own matchups).
+  const nflOppByAbbr = useMemo(() => {
+    const m = {}
+    nflGames.forEach(g => {
+      if (g.home?.abbreviation && g.away?.abbreviation) {
+        m[g.home.abbreviation] = { opp: g.away.abbreviation, homeAway: 'vs' }
+        m[g.away.abbreviation] = { opp: g.home.abbreviation, homeAway: '@' }
+      }
+    })
+    return m
+  }, [nflGames])
+
+  // Per-player season log (through the week before `week`, i.e. completed
+  // weeks only) -- season avg, last week's points, last-3-week avg, and
+  // position rank by season avg among every rostered player at that
+  // position league-wide. Backs the Props tab's stat columns.
+  const playerSeasonStats = useMemo(() => {
+    const byPlayer = {}
+    rosterEntries.forEach(e => {
+      const played = Object.entries(e.stats?.actual || {})
+        .map(([w, v]) => ({ week: parseInt(w), actual: v }))
+        .filter(x => x.week < week && typeof x.actual === 'number')
+        .sort((a, b) => a.week - b.week)
+      const avgPts = played.length ? played.reduce((s, x) => s + x.actual, 0) / played.length : null
+      const last3 = played.slice(-3)
+      byPlayer[e.player_id] = {
+        avgPts,
+        lastWeekPts: played.length ? played[played.length - 1].actual : null,
+        l3Avg: last3.length ? last3.reduce((s, x) => s + x.actual, 0) / last3.length : null,
+        position: e.player?.position,
+        nflTeam: e.player?.nfl_team || null,
+      }
+    })
+    const byPos = {}
+    Object.entries(byPlayer).forEach(([pid, s]) => { if (s.avgPts != null) (byPos[s.position] ||= []).push({ pid, avgPts: s.avgPts }) })
+    Object.values(byPos).forEach(arr => {
+      arr.sort((a, b) => b.avgPts - a.avgPts)
+      arr.forEach((x, i) => { byPlayer[x.pid].posRank = i + 1 })
+    })
+    return byPlayer
+  }, [rosterEntries, week])
+
   // Record/avg PF for the team-snapshot table on the Futures tab -- a plain
   // tally off the real matchup rows, same as every other page's version of
   // this.
@@ -507,16 +562,32 @@ export default function SportsbookPage() {
   // ── bet slip: generalized across games, futures and props so any
   // combination of them can ride together in one parlay ──
   const inSlip = (family, refId, betType, pick) => slip.some(s => s.family === family && s.refId === refId && s.betType === betType && s.pick === pick)
-  const toggleBet = ({ family, refId, betType, pick, odds, label, subLabel }) => {
+  const toggleBet = ({ family, refId, betType, pick, odds, label, subLabel, teamId = null, oppTeamId = null }) => {
     const key = `${family}-${refId}-${betType}-${pick}`
     if (slip.find(s => s.key === key)) {
       const idx = slip.findIndex(s => s.key === key)
       setSlip(sl => sl.filter(s => s.key !== key))
       setSlipAmounts(a => { const n = { ...a }; delete n[idx]; return n })
     } else {
-      setSlip(sl => [...sl, { key, family, refId, betType, pick, odds, label, gameName: subLabel }])
+      setSlip(sl => [...sl, { key, family, refId, betType, pick, odds, label, gameName: subLabel, teamId, oppTeamId }])
       setSlipOpen(true)
     }
+  }
+  // A team's own playoffs/bye/semis/finals/title/win-total/seed markets are
+  // all the same underlying event ladder -- "makes the finals" is nearly
+  // implied by "wins the title", etc -- so parlaying two of a team's own
+  // futures together is closer to free money against the book than a real
+  // combined bet. Only checked for futures; games/props from the same real
+  // matchup are still allowed to ride together.
+  const futureTeamIds = leg => [leg.teamId, leg.oppTeamId].filter(Boolean)
+  const slipHasSameTeamFutures = legs => {
+    const futures = legs.filter(s => s.family === 'future')
+    for (let i = 0; i < futures.length; i++) {
+      for (let j = i + 1; j < futures.length; j++) {
+        if (futureTeamIds(futures[i]).some(t => futureTeamIds(futures[j]).includes(t))) return true
+      }
+    }
+    return false
   }
   const legInsertRow = (accountId, leg, amount, extra = {}) => ({
     account_id: accountId,
@@ -624,7 +695,7 @@ export default function SportsbookPage() {
     const [oddsYes, oddsNo] = priceCustomMarket(p)
     const { future, error } = await getOrCreateFuture(db, { season: SEASON, marketType, teamId, oppTeamId, teamName, oppTeamName, line, fairP: p, oddsYes, oddsNo })
     if (error || !future) return showFlash(`Failed: ${error || 'unknown error'}`, false)
-    toggleBet({ family: 'future', refId: future.id, betType: 'future', pick, odds: pick === 'yes' ? future.odds_yes : future.odds_no, label, subLabel })
+    toggleBet({ family: 'future', refId: future.id, betType: 'future', pick, odds: pick === 'yes' ? future.odds_yes : future.odds_no, label, subLabel, teamId, oppTeamId })
     fetchFutures()
   }
 
@@ -649,6 +720,7 @@ export default function SportsbookPage() {
   const placeParlay = async () => {
     if (!myAccount) return showFlash('Log in first', false)
     if (slip.length < 2) return showFlash('Parlays need 2+ legs', false)
+    if (slipHasSameTeamFutures(slip)) return showFlash("Can't parlay two of the same team's futures together", false)
     const amt = parseInt(parlayAmt)
     if (!amt || amt <= 0) return showFlash('Enter parlay amount', false)
     if (amt > myAccount.balance) return showFlash('Insufficient Gimre Bucks', false)
@@ -762,7 +834,8 @@ export default function SportsbookPage() {
   // collapses into a bottom sheet -- a full-width bar (always the tap
   // target, whether open or closed) with the content expanding below it. ──
   const SlipContent = () => {
-    const eligibleForParlay = slip.length >= 2
+    const sameTeamConflict = slipHasSameTeamFutures(slip)
+    const eligibleForParlay = slip.length >= 2 && !sameTeamConflict
     if (slip.length === 0) return <div style={{ padding: '20px 16px', fontSize: '12px', color: muted }}>No picks yet — tap any line to add it.</div>
     return (
       <div style={{ padding: '12px 16px' }}>
@@ -770,6 +843,9 @@ export default function SportsbookPage() {
           <button onClick={() => setIsParlay(false)} style={tabBtn(!isParlay)}>Singles</button>
           <button onClick={() => setIsParlay(true)} disabled={!eligibleForParlay} style={{ ...tabBtn(isParlay), opacity: eligibleForParlay ? 1 : 0.4 }}>Parlay</button>
         </div>
+        {sameTeamConflict && (
+          <p style={{ fontSize: '11px', color: red, marginBottom: '10px' }}>Two of these futures share the same team — parlaying a team's own markets together (e.g. make the playoffs + win the title) isn't allowed. Place them as singles, or drop one.</p>
+        )}
         {slip.map((s, i) => (
           <div key={s.key} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
             <button onClick={() => toggleBet(s)} style={{ background: 'none', border: 'none', color: red, cursor: 'pointer', fontSize: '14px', padding: 0, marginTop: '2px' }}>✕</button>
@@ -818,8 +894,8 @@ export default function SportsbookPage() {
         {flash.msg && <p style={{ fontSize: '12px', color: flash.ok ? green : red, marginTop: '10px' }}>{flash.msg}</p>}
         <button
           onClick={isParlay ? placeParlay : placeSingles}
-          disabled={submitting || !myAccount || stakeTotal <= 0 || overBalance}
-          style={{ background: text, color: bg, border: 'none', padding: '12px 24px', width: '100%', cursor: (submitting || overBalance || stakeTotal <= 0) ? 'not-allowed' : 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', marginTop: '12px', opacity: (submitting || overBalance || stakeTotal <= 0) ? 0.5 : 1 }}
+          disabled={submitting || !myAccount || stakeTotal <= 0 || overBalance || (isParlay && sameTeamConflict)}
+          style={{ background: text, color: bg, border: 'none', padding: '12px 24px', width: '100%', cursor: (submitting || overBalance || stakeTotal <= 0 || (isParlay && sameTeamConflict)) ? 'not-allowed' : 'pointer', fontSize: '12px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: '500', marginTop: '12px', opacity: (submitting || overBalance || stakeTotal <= 0 || (isParlay && sameTeamConflict)) ? 0.5 : 1 }}
         >
           {!myAccount ? 'Log in first' : submitting ? 'Placing...' : isParlay ? 'Place Parlay' : 'Place Bets'}
         </button>
@@ -1417,14 +1493,14 @@ export default function SportsbookPage() {
                             <div style={{ fontSize: '15px', color: text, fontFamily: "'Playfair Display', serif" }}>{f.team_name}</div>
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                               <button
-                                onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'yes', odds: f.odds_yes, label: futureLabel(f, 'yes'), subLabel: heading })}
+                                onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'yes', odds: f.odds_yes, label: futureLabel(f, 'yes'), subLabel: heading, teamId: f.team_id, oppTeamId: f.opp_team_id })}
                                 onMouseEnter={() => setHoveredBetKey(yesKey)} onMouseLeave={() => setHoveredBetKey(null)}
                                 style={oddsBtn(yesKey, green, inSlip('future', f.id, 'future', 'yes'))}
                               >
                                 Yes {fmtOdds(f.odds_yes)}
                               </button>
                               <button
-                                onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'no', odds: f.odds_no, label: futureLabel(f, 'no'), subLabel: heading })}
+                                onClick={() => toggleBet({ family: 'future', refId: f.id, betType: 'future', pick: 'no', odds: f.odds_no, label: futureLabel(f, 'no'), subLabel: heading, teamId: f.team_id, oppTeamId: f.opp_team_id })}
                                 onMouseEnter={() => setHoveredBetKey(noKey)} onMouseLeave={() => setHoveredBetKey(null)}
                                 style={oddsBtn(noKey, red, inSlip('future', f.id, 'future', 'no'))}
                               >
@@ -1533,18 +1609,28 @@ export default function SportsbookPage() {
               }
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {visible.map(p => (
+                  {visible.map(p => {
+                    const s = playerSeasonStats[p.player_id]
+                    const opp = s?.nflTeam ? nflOppByAbbr[s.nflTeam] : null
+                    const fmt1 = v => (v == null ? '—' : v.toFixed(1))
+                    return (
                     <div key={p.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                       <div>
                         <div style={{ fontSize: '13px', color: text }}>{p.player_name} <span style={{ color: muted, fontSize: '11px' }}>{p.position}{p.team_name ? ` · ${p.team_name}` : ''}</span></div>
                         <div style={{ fontSize: '11px', color: muted }}>Line: {p.line} pts</div>
+                        <div style={{ fontSize: '11px', color: muted, marginTop: '4px' }}>
+                          Avg {fmt1(s?.avgPts)} · Last Wk {fmt1(s?.lastWeekPts)} · L3 {fmt1(s?.l3Avg)}
+                          {s?.posRank ? ` · ${p.position}${s.posRank}` : ''}
+                          {opp ? ` · ${s.nflTeam} ${opp.homeAway} ${opp.opp}` : ''}
+                        </div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'over', odds: p.odds_over, label: `${p.player_name} Over ${p.line}`, subLabel: `Week ${p.week} prop` })} style={betBtn(inSlip('prop', p.id, 'prop', 'over'))}>Over <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(p.odds_over)}</span></button>
                         <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'under', odds: p.odds_under, label: `${p.player_name} Under ${p.line}`, subLabel: `Week ${p.week} prop` })} style={betBtn(inSlip('prop', p.id, 'prop', 'under'))}>Under <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(p.odds_under)}</span></button>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )
             })()}
