@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import { useSortableTable } from '../../hooks/useSortableTable'
 
 export default function ChampionsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, gold, red } = useLayout()
@@ -24,7 +25,9 @@ export default function ChampionsPage() {
     !searchText ||
     s.champion?.name?.toLowerCase().includes(searchText.toLowerCase()) ||
     s.mol_bowl_loser?.name?.toLowerCase().includes(searchText.toLowerCase())
-  )
+  ).map(s => ({ ...s, championName: s.champion?.name || '', molBowlName: s.mol_bowl_loser?.name || '' }))
+
+  const seasonTable = useSortableTable(filteredSeasons, { defaultKey: 'year', defaultDir: 'desc' })
 
   // Championship counts per manager
   const champCounts = managers.map(m => ({
@@ -93,7 +96,7 @@ export default function ChampionsPage() {
         {/* Year by year table */}
         {effectiveMobile ? (
           <div>
-            {filteredSeasons.map((s, i) => (
+            {seasonTable.rows.map((s, i) => (
               <div key={s.year} style={{ background: i % 2 === 0 ? 'transparent' : cardBg, padding: '14px 4px', borderBottom: `1px solid ${border}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
@@ -120,14 +123,14 @@ export default function ChampionsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
               <thead>
                 <tr style={{ background: cardBg }}>
-                  <th style={hStyle('center')}>Year</th>
-                  <th style={hStyle('center')}>Season</th>
-                  <th style={hStyle()}>Champion</th>
-                  <th style={hStyle()}>Mol Bowl</th>
+                  <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...seasonTable.thSort('year', 'Year')} />
+                  <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...seasonTable.thSort('season_number', 'Season')} />
+                  <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...seasonTable.thSort('championName', 'Champion')} />
+                  <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...seasonTable.thSort('molBowlName', 'Mol Bowl')} />
                 </tr>
               </thead>
               <tbody>
-                {filteredSeasons.map((s, i) => (
+                {seasonTable.rows.map((s, i) => (
                   <tr key={s.year} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                     <td style={{ ...cStyle('center'), color: muted }}>{s.year}</td>
                     <td style={{ ...cStyle('center'), color: muted }}>Year {s.season_number}</td>

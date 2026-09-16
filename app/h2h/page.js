@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import { useSortableTable } from '../../hooks/useSortableTable'
 
 export default function H2HPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red } = useLayout()
@@ -57,6 +58,12 @@ export default function H2HPage() {
   }
 
   const selectedManager = managers.find(m => m.id === selected)
+
+  const opponentRows = selected ? managers.filter(m => m.id !== selected).map(opponent => {
+    const h = getH2H(selected, opponent.id)
+    return { ...opponent, wins: h.wins, losses: h.losses, count: h.count, winPct: h.count ? parseFloat(((h.wins / h.count) * 100).toFixed(1)) : 0, pf: h.pf, pa: h.pa, diff: parseFloat((h.pf - h.pa).toFixed(2)) }
+  }).filter(o => o.count > 0) : []
+  const oppTable = useSortableTable(opponentRows, { filterKeys: ['name'] })
 
   const matchupHistory = selected ? filteredMatchups.filter(m => {
     return m.home_team?.manager_id === selected || m.away_team?.manager_id === selected
@@ -374,50 +381,50 @@ export default function H2HPage() {
             </h2>
 
             {/* H2H breakdown -- clickable rows */}
+            <input
+              value={oppTable.filterText}
+              onChange={e => oppTable.setFilterText(e.target.value)}
+              placeholder="Filter opponent…"
+              style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '200px', marginBottom: '10px' }}
+            />
             <div style={{ overflowX: 'auto', marginBottom: '48px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                 <thead>
                   <tr style={{ background: cardBg }}>
-                    <th style={hStyle('left')}>Opponent</th>
-                    <th style={hStyle()}>W</th>
-                    <th style={hStyle()}>L</th>
-                    <th style={hStyle()}>Games</th>
-                    <th style={hStyle()}>Win %</th>
-                    <th style={hStyle()}>PF</th>
-                    <th style={hStyle()}>PA</th>
-                    <th style={hStyle()}>Diff</th>
+                    <th style={{ ...hStyle('left'), cursor: 'pointer', userSelect: 'none' }} {...oppTable.thSort('name', 'Opponent')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...oppTable.thSort('wins', 'W')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...oppTable.thSort('losses', 'L')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...oppTable.thSort('count', 'Games')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...oppTable.thSort('winPct', 'Win %')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...oppTable.thSort('pf', 'PF')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...oppTable.thSort('pa', 'PA')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...oppTable.thSort('diff', 'Diff')} />
                   </tr>
                 </thead>
                 <tbody>
-                  {managers.filter(m => m.id !== selected).map((opponent, i) => {
-                    const h = getH2H(selected, opponent.id)
-                    if (h.count === 0) return null
-                    const winPct = ((h.wins / h.count) * 100).toFixed(1)
-                    const diff = parseFloat((h.pf - h.pa).toFixed(2))
-                    return (
-                      <tr
-                        key={opponent.id}
-                        onClick={() => setModal({ managerA: selectedManager, managerB: opponent })}
-                        style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer', transition: 'background 0.1s' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = d ? 'rgba(255,255,255,0.04)' : 'rgba(13,33,82,0.04)' }}
-                        onMouseLeave={e => { e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : rowAlt }}
-                      >
-                        <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
-                          {opponent.name}
-                          {!opponent.active && <span style={{ fontSize: '10px', color: muted, marginLeft: '8px' }}>retired</span>}
-                        </td>
-                        <td style={cStyle()}>{h.wins}</td>
-                        <td style={cStyle()}>{h.losses}</td>
-                        <td style={cStyle()}>{h.count}</td>
-                        <td style={cStyle()}>{winPct}%</td>
-                        <td style={cStyle()}>{h.pf.toFixed(2)}</td>
-                        <td style={cStyle()}>{h.pa.toFixed(2)}</td>
-                        <td style={{ ...cStyle(), color: diff >= 0 ? green : red, fontWeight: '500' }}>
-                          {diff >= 0 ? '+' : ''}{diff}
-                        </td>
-                      </tr>
-                    )
-                  }).filter(Boolean)}
+                  {oppTable.rows.map((opponent, i) => (
+                    <tr
+                      key={opponent.id}
+                      onClick={() => setModal({ managerA: selectedManager, managerB: opponent })}
+                      style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer', transition: 'background 0.1s' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = d ? 'rgba(255,255,255,0.04)' : 'rgba(13,33,82,0.04)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : rowAlt }}
+                    >
+                      <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
+                        {opponent.name}
+                        {!opponent.active && <span style={{ fontSize: '10px', color: muted, marginLeft: '8px' }}>retired</span>}
+                      </td>
+                      <td style={cStyle()}>{opponent.wins}</td>
+                      <td style={cStyle()}>{opponent.losses}</td>
+                      <td style={cStyle()}>{opponent.count}</td>
+                      <td style={cStyle()}>{opponent.winPct}%</td>
+                      <td style={cStyle()}>{opponent.pf.toFixed(2)}</td>
+                      <td style={cStyle()}>{opponent.pa.toFixed(2)}</td>
+                      <td style={{ ...cStyle(), color: opponent.diff >= 0 ? green : red, fontWeight: '500' }}>
+                        {opponent.diff >= 0 ? '+' : ''}{opponent.diff}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
