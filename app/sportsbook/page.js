@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { LEAGUE_ID } from '../../lib/supabase'
-import { priceTwoWay } from '../../lib/predictions'
+import { priceTwoWay, actualWeekLineup, projectedWeekLineup } from '../../lib/predictions'
 import { buildFixtures, REG_SEASON_WEEKS } from '../../lib/schedule'
 import { generateWeekBoard, generateFutures, getOrCreateFuture, priceCustomMarket, temperProb } from '../../lib/sportsbookGen'
 export const dynamic = 'force-dynamic'
@@ -234,6 +234,39 @@ export default function SportsbookPage() {
   const seedLines = useMemo(() => Array.from({ length: Math.max(leagueTeams.length - 1, 0) }, (_, i) => i + 1.5), [leagueTeams])
 
   const genArgs = () => ({ season: SEASON, week, teams: leagueTeams, matchups: leagueMatchups, rosterEntries })
+
+  const entriesByTeamId = useMemo(() => {
+    const byTeam = {}
+    rosterEntries.forEach(e => { (byTeam[e.team_id] ||= []).push(e) })
+    return byTeam
+  }, [rosterEntries])
+
+  // Record/avg PF for the team-snapshot table on the Futures tab -- a plain
+  // tally off the real matchup rows, same as every other page's version of
+  // this.
+  const teamRecord = useMemo(() => {
+    const td = {}
+    leagueTeams.forEach(t => { td[t.id] = { wins: 0, losses: 0, pf: 0, gp: 0 } })
+    leagueMatchups.forEach(m => {
+      const played = (m.home_score ?? 0) > 0 || (m.away_score ?? 0) > 0
+      if (!played) return
+      const h = td[m.home_team?.id], a = td[m.away_team?.id]
+      if (h) { h.pf += m.home_score; h.gp++; if (m.home_score > m.away_score) h.wins++; else if (m.home_score < m.away_score) h.losses++ }
+      if (a) { a.pf += m.away_score; a.gp++; if (m.away_score > m.home_score) a.wins++; else if (m.away_score < m.home_score) a.losses++ }
+    })
+    return td
+  }, [leagueTeams, leagueMatchups])
+
+  // This week's projected total per team -- summed straight from the props
+  // already generated for the week (each is an optimal-lineup starter's own
+  // ESPN projection), so no separate model computation is needed here.
+  const weekProjByTeam = useMemo(() => {
+    const byTeam = {}
+    props.forEach(p => { if (p.team_id) byTeam[p.team_id] = (byTeam[p.team_id] || 0) + p.line })
+    return byTeam
+  }, [props])
+
+  const [projModalTeamId, setProjModalTeamId] = useState(null)
 
   // ── admin: manual override for the board/futures the daily sync also
   // generates automatically -- useful to regenerate on demand without
@@ -793,6 +826,50 @@ export default function SportsbookPage() {
         </>
       )}
 
+      {/* Matchup projections popup -- reachable from the Futures tab's team
+      snapshot table. Always shows the projection (not actual), regardless
+      of whether the week's already kicked off, since that's what a bettor
+      deciding on a future wants to see. */}
+      {projModalTeamId && (() => {
+        const oppFixture = weekFixtures.find(f => f.homeId === projModalTeamId || f.awayId === projModalTeamId)
+        const oppId = oppFixture ? (oppFixture.homeId === projModalTeamId ? oppFixture.awayId : oppFixture.homeId) : null
+        const sides = [projModalTeamId, oppId].filter(Boolean).map(id => ({
+          id, name: teamLabel(id), lineup: projectedWeekLineup(entriesByTeamId[id] || [], week),
+        }))
+        return (
+          <>
+            <div onClick={() => setProjModalTeamId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
+            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, width: effectiveMobile ? '92vw' : '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', color: text, margin: 0 }}>
+                  Week {week} Projections {oppId ? `— ${teamLabel(projModalTeamId)} vs ${teamLabel(oppId)}` : `— ${teamLabel(projModalTeamId)}`}
+                </h3>
+                <button onClick={() => setProjModalTeamId(null)} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '18px', padding: 0 }}>✕</button>
+              </div>
+              <div style={{ overflowY: 'auto', display: 'flex', flexDirection: effectiveMobile ? 'column' : 'row' }}>
+                {sides.map(side => (
+                  <div key={side.id} style={{ flex: 1, borderRight: effectiveMobile ? 'none' : `1px solid ${border}` }}>
+                    <div style={{ padding: '10px 16px', background: cardBg, borderBottom: `1px solid ${border}`, fontFamily: "'Playfair Display', serif", fontSize: '14px', color: text }}>{side.name}</div>
+                    {side.lineup.starters.map((e, i) => (
+                      <div key={e.id} style={{ display: 'grid', gridTemplateColumns: '44px 1fr 50px', alignItems: 'center', padding: '6px 16px', background: i % 2 === 0 ? 'transparent' : (d ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)') }}>
+                        <span style={{ fontSize: '9px', fontWeight: '700', color: muted }}>{e.slot}</span>
+                        <span style={{ fontSize: '12px', color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.player?.name || '—'}</span>
+                        <span style={{ fontSize: '12px', fontWeight: '500', color: text, textAlign: 'right' }}>{e.proj != null ? e.proj.toFixed(1) : '—'}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'grid', gridTemplateColumns: '44px 1fr 50px', padding: '8px 16px', background: d ? 'rgba(255,255,255,0.03)' : 'rgba(13,33,82,0.04)' }}>
+                      <span />
+                      <span style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted }}>Total</span>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: gold, textAlign: 'right' }}>{side.lineup.total.toFixed(1)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )
+      })()}
+
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 160px' : '120px 24px 160px' }}>
 
         {/* Header */}
@@ -950,6 +1027,48 @@ export default function SportsbookPage() {
             </p>
             {adminUnlocked && (
               <button onClick={runGenerateFutures} disabled={generating} style={{ ...adminBtn, marginBottom: '20px' }}>{generating ? 'Working…' : 'Generate / Refresh Season Futures'}</button>
+            )}
+
+            {/* ── Team Snapshot: record/PF/playoff odds/this-week projection
+            at a glance, plus a button into the full projections popup --
+            context for the Build a Bet form below. ── */}
+            {leagueTeams.length > 0 && (
+              <div style={{ marginBottom: '32px' }}>
+                <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Team Snapshot</p>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                    <thead>
+                      <tr style={{ background: cardBg }}>
+                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'left', borderBottom: `1px solid ${border}` }}>Team</th>
+                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'center', borderBottom: `1px solid ${border}` }}>Record</th>
+                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right', borderBottom: `1px solid ${border}` }}>Avg PF</th>
+                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right', borderBottom: `1px solid ${border}` }}>Playoff %</th>
+                        <th style={{ padding: '8px 12px', fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, textAlign: 'right', borderBottom: `1px solid ${border}` }}>Proj Wk {week}</th>
+                        <th style={{ padding: '8px 12px', borderBottom: `1px solid ${border}` }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leagueTeams.map((t, i) => {
+                        const rec = teamRecord[t.id] || { wins: 0, losses: 0, pf: 0, gp: 0 }
+                        const playoffFuture = futures.find(f => f.team_id === t.id && f.market_type === 'playoffs' && !f.is_settled)
+                        const projPts = weekProjByTeam[t.id]
+                        return (
+                          <tr key={t.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                            <td style={{ padding: '10px 12px', fontSize: '13px', color: text, fontFamily: "'Playfair Display', serif" }}>{teamLabel(t.id)}</td>
+                            <td style={{ padding: '10px 12px', fontSize: '12px', color: text, textAlign: 'center' }}>{rec.wins}-{rec.losses}</td>
+                            <td style={{ padding: '10px 12px', fontSize: '12px', color: muted, textAlign: 'right' }}>{rec.gp ? (rec.pf / rec.gp).toFixed(1) : '—'}</td>
+                            <td style={{ padding: '10px 12px', fontSize: '12px', color: text, textAlign: 'right' }}>{playoffFuture ? `${Math.round(playoffFuture.fair_p * 100)}%` : '—'}</td>
+                            <td style={{ padding: '10px 12px', fontSize: '12px', color: text, textAlign: 'right' }}>{projPts != null ? projPts.toFixed(1) : '—'}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              <button onClick={() => setProjModalTeamId(t.id)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 10px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap' }}>Matchup</button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
 
             {/* ── Build a Bet: win total / final seed / finishes ahead of are
