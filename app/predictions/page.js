@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import { useSortableTable } from '../../hooks/useSortableTable'
 import {
   PLAYOFF_SPOTS, BYE_SPOTS,
   isPlayed, buildRatings, makeLine, simulateFutures,
@@ -204,8 +205,17 @@ export default function PredictionsPage() {
     return futures.rows
       .map(f => ({ ...f, r: ratings.byId[f.id] }))
       .filter(x => x.r)
+      .map(f => ({
+        ...f,
+        name: f.r.name, powerScore: f.r.powerScore, rating: f.r.rating,
+        playoffsP: f.markets.playoffs.p, byeP: f.markets.bye.p, semisP: f.markets.semis.p,
+        finalsP: f.markets.finals.p, titleP: f.markets.title.p,
+      }))
       .sort((a, b) => b.markets.title.p - a.markets.title.p)
   }, [futures, ratings])
+
+  const futuresTable = useSortableTable(futuresRows, { defaultKey: 'titleP', defaultDir: 'desc' })
+  const ratingsTable = useSortableTable(ratings?.rows || [], { defaultKey: 'powerScore', defaultDir: 'desc' })
 
   const storylines = useMemo(() => {
     if (weekGames.length < 2) return []
@@ -572,20 +582,20 @@ export default function PredictionsPage() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                       <thead>
                         <tr style={{ background: cardBg }}>
-                          <th style={hStyle('left')}>Team</th>
-                          <th style={hStyle()}>Power</th>
-                          <th style={hStyle()}>Proj PPG</th>
-                          <th style={hStyle('center')}>Proj Record</th>
-                          <th style={hStyle('center')}>Win Total</th>
-                          <th style={hStyle('center')}>Playoffs</th>
-                          <th style={hStyle('center')}>Bye</th>
-                          <th style={hStyle('center')}>Semis</th>
-                          <th style={hStyle('center')}>Finals</th>
-                          <th style={hStyle('center')}>Title</th>
+                          <th style={{ ...hStyle('left'), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('name', 'Team')} />
+                          <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('powerScore', 'Power')} />
+                          <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('rating', 'Proj PPG')} />
+                          <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('winsMean', 'Proj Record')} />
+                          <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('winTotal', 'Win Total')} />
+                          <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('playoffsP', 'Playoffs')} />
+                          <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('byeP', 'Bye')} />
+                          <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('semisP', 'Semis')} />
+                          <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('finalsP', 'Finals')} />
+                          <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...futuresTable.thSort('titleP', 'Title')} />
                         </tr>
                       </thead>
                       <tbody>
-                        {futuresRows.map((f, i) => {
+                        {futuresTable.rows.map((f, i) => {
                           const projLosses = f.r.wins + f.r.losses + futures.gamesPerTeamLeft - f.winsMean
                           return (
                             <tr key={f.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
@@ -634,19 +644,19 @@ export default function PredictionsPage() {
                 <thead>
                   <tr style={{ background: cardBg }}>
                     <th style={hStyle('center')}>Rk</th>
-                    <th style={hStyle('left')}>Team</th>
-                    <th style={hStyle('center')}>W-L</th>
-                    <th style={hStyle()}>Power</th>
-                    <th style={hStyle()}>Avg PPG</th>
-                    <th style={hStyle()}>Roster PPG</th>
-                    <th style={hStyle()}>Rating</th>
-                    <th style={hStyle()}>Volatility</th>
-                    <th style={hStyle()}>All-Play</th>
-                    <th style={hStyle()}>Luck</th>
+                    <th style={{ ...hStyle('left'), cursor: 'pointer', userSelect: 'none' }} {...ratingsTable.thSort('name', 'Team')} />
+                    <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...ratingsTable.thSort('wins', 'W-L')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...ratingsTable.thSort('powerScore', 'Power')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...ratingsTable.thSort('avgScore', 'Avg PPG')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...ratingsTable.thSort('rosterProj', 'Roster PPG')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...ratingsTable.thSort('rating', 'Rating')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...ratingsTable.thSort('sigma', 'Volatility')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...ratingsTable.thSort('allPlayWinPct', 'All-Play')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...ratingsTable.thSort('luck', 'Luck')} />
                   </tr>
                 </thead>
                 <tbody>
-                  {ratings.rows.map((r, i) => (
+                  {ratingsTable.rows.map((r, i) => (
                     <tr key={r.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                       <td style={{ ...cStyle('center'), fontWeight: '700', color: i === 0 ? gold : muted }}>{r.powerRank ?? '—'}</td>
                       <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
