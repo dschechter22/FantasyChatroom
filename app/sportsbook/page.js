@@ -80,6 +80,7 @@ export default function SportsbookPage() {
   const [hoveredBetKey, setHoveredBetKey] = useState(null)
   const [propMatchupFilter, setPropMatchupFilter] = useState('all')
   const [propPositionFilter, setPropPositionFilter] = useState('all')
+  const [propNameFilter, setPropNameFilter] = useState('')
   const [wtTeam, setWtTeam] = useState('')
   const [wtLine, setWtLine] = useState('')
   const [seedTeam, setSeedTeam] = useState('')
@@ -1810,6 +1811,7 @@ export default function SportsbookPage() {
                 <option value="all">All positions</option>
                 {POSITIONS.map(pos => <option key={pos} value={pos}>{pos}</option>)}
               </select>
+              <input value={propNameFilter} onChange={e => setPropNameFilter(e.target.value)} placeholder="Search player…" style={{ ...inp, width: '160px' }} />
               {adminUnlocked && (
                 <button onClick={autoSettleProps} disabled={generating} style={{ ...adminBtn, borderColor: green, color: green }}>{generating ? 'Working…' : `Auto-Settle Week ${week} Props`}</button>
               )}
@@ -1830,10 +1832,12 @@ export default function SportsbookPage() {
               const matchupTeamIds = propMatchupFilter === 'all'
                 ? null
                 : new Set([weekFixtures.find(f => f.key === propMatchupFilter)?.homeId, weekFixtures.find(f => f.key === propMatchupFilter)?.awayId])
+              const nameQuery = propNameFilter.trim().toLowerCase()
               const visible = props
                 .filter(p => !p.is_settled)
                 .filter(p => propPositionFilter === 'all' || p.position === propPositionFilter)
                 .filter(p => !matchupTeamIds || matchupTeamIds.has(p.team_id))
+                .filter(p => !nameQuery || p.player_name.toLowerCase().includes(nameQuery))
                 .sort((a, b) => b.line - a.line)
               if (props.filter(p => !p.is_settled).length > 0 && visible.length === 0) {
                 return <p style={{ color: muted, fontSize: '13px' }}>No props match this filter.</p>
