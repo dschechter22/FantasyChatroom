@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import { useSortableTable } from '../../hooks/useSortableTable'
 const MANAGER_COLORS = {
   'dan': '#4285F4', 'wally': '#EA4335', 'john': '#FBBC04', 'braden': '#34A853',
   'jm': '#FF6D00', 'big-e': '#46BDC6', 'mamby-tenner': '#7BAAF7', 'reid': '#F07B72',
@@ -210,6 +211,7 @@ export default function LJIndexPage() {
   ]
   const hStyle = (align = 'left') => ({ padding: '10px 12px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: align, borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' })
   const cStyle = (align = 'left') => ({ padding: '12px', fontSize: '12px', textAlign: align, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
+  const ljTable = useSortableTable(activeData, { defaultKey: 'allPlayWinPct', defaultDir: 'desc' })
   if (!mounted) return null
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
@@ -328,13 +330,13 @@ export default function LJIndexPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
               <thead>
                 <tr style={{ background: cardBg }}>
-                  {['Manager', 'Team', 'Record', 'Win %', 'All-Play Win %', 'Luck', 'Avg PPG'].map((h, i) => (
-                    <th key={h} style={hStyle(i <= 1 ? 'left' : 'right')}>{h}</th>
+                  {[['managerName', 'Manager', 'left'], ['teamName', 'Team', 'left'], ['wins', 'Record', 'right'], ['winPct', 'Win %', 'right'], ['allPlayWinPct', 'All-Play Win %', 'right'], ['luckRaw', 'Luck', 'right'], ['avgScore', 'Avg PPG', 'right']].map(([key, h, align]) => (
+                    <th key={key} style={{ ...hStyle(align), cursor: 'pointer', userSelect: 'none' }} {...ljTable.thSort(key, h)} />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {[...activeData].sort((a, b) => b.allPlayWinPct - a.allPlayWinPct).map((r, i) => (
+                {ljTable.rows.map((r, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                     <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif" }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
