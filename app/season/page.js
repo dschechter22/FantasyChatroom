@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import { useSortableTable } from '../../hooks/useSortableTable'
 import RosterDrawer from '../../components/RosterDrawer'
 
 export default function SeasonPage() {
@@ -40,6 +41,11 @@ export default function SeasonPage() {
       .eq('league_id', LEAGUE_ID)
       .then(({ data }) => setTeams((data || []).filter(t => t.season?.year === selectedYear).sort((a, b) => a.final_standing - b.final_standing)))
   }, [selectedYear])
+
+  const standingsTable = useSortableTable(
+    teams.map(t => ({ ...t, managerName: t.manager?.name || '', diff: parseFloat((t.points_for - t.points_against).toFixed(2)) })),
+    { defaultKey: 'final_standing', defaultDir: 'asc' },
+  )
 
   if (!mounted) return null
 
@@ -399,21 +405,21 @@ export default function SeasonPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                 <thead>
                   <tr style={{ background: cardBg }}>
-                    <th style={hStyle('center')}>Rk</th>
-                    <th style={hStyle()}>Manager</th>
-                    {!effectiveMobile && <th style={hStyle()}>Team</th>}
-                    <th style={hStyle('center')}>W</th>
-                    <th style={hStyle('center')}>L</th>
-                    <th style={hStyle('right')}>PF</th>
-                    {!effectiveMobile && <th style={hStyle('right')}>PA</th>}
-                    <th style={hStyle('right')}>Diff</th>
+                    <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...standingsTable.thSort('final_standing', 'Rk')} />
+                    <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...standingsTable.thSort('managerName', 'Manager')} />
+                    {!effectiveMobile && <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...standingsTable.thSort('team_name', 'Team')} />}
+                    <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...standingsTable.thSort('wins', 'W')} />
+                    <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...standingsTable.thSort('losses', 'L')} />
+                    <th style={{ ...hStyle('right'), cursor: 'pointer', userSelect: 'none' }} {...standingsTable.thSort('points_for', 'PF')} />
+                    {!effectiveMobile && <th style={{ ...hStyle('right'), cursor: 'pointer', userSelect: 'none' }} {...standingsTable.thSort('points_against', 'PA')} />}
+                    <th style={{ ...hStyle('right'), cursor: 'pointer', userSelect: 'none' }} {...standingsTable.thSort('diff', 'Diff')} />
                     <th style={hStyle('center')}>Result</th>
                     <th style={hStyle('center')}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {teams.map((t, i) => {
-                    const diff = parseFloat((t.points_for - t.points_against).toFixed(2))
+                  {standingsTable.rows.map((t, i) => {
+                    const diff = t.diff
                     const isSelected = selectedTeam === t.id
                     return (
                       <tr key={t.id} style={{ background: isSelected ? highlight : i % 2 === 0 ? 'transparent' : rowAlt }}>
