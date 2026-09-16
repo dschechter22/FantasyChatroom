@@ -468,6 +468,34 @@ export default function SportsbookPage() {
     setGenerating(false)
   }
 
+  // Neither runGenerateProps nor refreshUnbetPropLines (below) ever talk to
+  // ESPN -- they only re-read whatever's already in roster_entries.stats,
+  // which the daily cron only refreshes once a day. This is the one button
+  // that actually re-fetches live data from ESPN on demand, through a
+  // server-side proxy that holds CRON_SECRET so it never reaches the
+  // browser (see app/api/sportsbook-admin-sync).
+  const runLiveEspnSync = async () => {
+    setGenerating(true)
+    try {
+      const res = await fetch(`/api/sportsbook-admin-sync?week=${week}`)
+      const data = await res.json()
+      if (data.errors?.length) { console.error('Live sync errors:', data.errors); showFlash(`Sync finished with errors: ${data.errors[0]}`, false) }
+      else showFlash(`Live sync complete — ${data.projectionsSynced ?? 0} projection(s) refreshed from ESPN`)
+    } catch (e) {
+      showFlash(`Sync failed: ${e.message}`, false)
+    }
+    // Re-pull everything downstream of the sync: roster stats (drives
+    // prop/futures pricing) plus the boards themselves.
+    if (leagueTeams.length) {
+      const { data: fresh } = await db.from('roster_entries')
+        .select('id, team_id, player_id, stats, player:player_id(id, name, position, nfl_team)')
+        .in('team_id', leagueTeams.map(t => t.id))
+      if (fresh) setRosterEntries(fresh)
+    }
+    fetchGames(); fetchFutures(); fetchTeamSim(); fetchProps()
+    setGenerating(false)
+  }
+
   // Shared by every settlement path -- a parlay only grades once every leg
   // touching it (game, future, or prop alike) has a final status, since all
   // of them live in sb_bets together.
@@ -1716,6 +1744,7 @@ export default function SportsbookPage() {
             </p>
             {adminUnlocked && (
               <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button onClick={runLiveEspnSync} disabled={generating} style={{ ...adminBtn, borderColor: green, color: green }}>{generating ? 'Working…' : 'Sync Live From ESPN Now'}</button>
                 <button onClick={runGenerateProps} disabled={generating} style={adminBtn}>{generating ? 'Working…' : `Generate Week ${week} Props Now`}</button>
                 <button onClick={refreshUnbetPropLines} disabled={generating} style={adminBtn}>{generating ? 'Working…' : 'Refresh Unbet Lines to Current ESPN Proj'}</button>
               </div>
