@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import { useSortableTable } from '../../hooks/useSortableTable'
 import {
   isPlayed, buildRatings, simulateFutures,
   projectedStarterPoints, fmtSpread, leagueBaseline,
@@ -147,11 +148,15 @@ export default function PostweekPage() {
         const b = swing.before[r.id], a = swing.after[r.id]
         if (!b || !a) return null
         return {
-          r,
+          r, name: r.name, wins: r.wins, losses: r.losses,
           playoffs: [b.markets.playoffs.p, a.markets.playoffs.p],
           bye: [b.markets.bye.p, a.markets.bye.p],
           title: [b.markets.title.p, a.markets.title.p],
           seed: [b.avgSeed, a.avgSeed],
+          playoffsDelta: a.markets.playoffs.p - b.markets.playoffs.p,
+          byeDelta: a.markets.bye.p - b.markets.bye.p,
+          titleDelta: a.markets.title.p - b.markets.title.p,
+          seedDelta: b.avgSeed - a.avgSeed,
         }
       })
       .filter(Boolean)
@@ -170,6 +175,13 @@ export default function PostweekPage() {
       })
       .sort((a, b) => b.allPlayWinPct - a.allPlayWinPct)
   }, [after])
+
+  const gamesTable = useSortableTable(
+    games.map(g => ({ ...g, matchupName: `${g.a.name} vs ${g.b.name}` })),
+    {},
+  )
+  const swingTable = useSortableTable(swingRows, { defaultKey: 'playoffsDelta', defaultDir: 'desc' })
+  const luckTable = useSortableTable(luckRows, { defaultKey: 'allPlayWinPct', defaultDir: 'desc' })
 
   if (!mounted) return null
 
@@ -249,17 +261,17 @@ export default function PostweekPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                   <thead>
                     <tr style={{ background: cardBg }}>
-                      <th style={hStyle('left')}>Matchup</th>
+                      <th style={{ ...hStyle('left'), cursor: 'pointer', userSelect: 'none' }} {...gamesTable.thSort('matchupName', 'Matchup')} />
                       <th style={hStyle()}>Result</th>
                       <th style={hStyle()}>Spread</th>
-                      <th style={hStyle()}>ATS</th>
+                      <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...gamesTable.thSort('atsMargin', 'ATS')} />
                       <th style={hStyle()}>Total</th>
-                      <th style={hStyle()}>O/U</th>
-                      <th style={hStyle()}>Model</th>
+                      <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...gamesTable.thSort('ouMargin', 'O/U')} />
+                      <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...gamesTable.thSort('pWinner', 'Model')} />
                     </tr>
                   </thead>
                   <tbody>
-                    {games.map((g, i) => (
+                    {gamesTable.rows.map((g, i) => (
                       <tr key={g.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                         <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
                           {g.a.name} <span style={{ fontSize: '11px', color: muted, fontFamily: "'Inter', sans-serif" }}>vs</span> {g.b.name}
@@ -303,16 +315,16 @@ export default function PostweekPage() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                       <thead>
                         <tr style={{ background: cardBg }}>
-                          <th style={hStyle('left')}>Team</th>
-                          <th style={hStyle('center')}>W-L</th>
-                          <th style={hStyle()}>Playoffs</th>
-                          <th style={hStyle()}>Bye</th>
-                          <th style={hStyle()}>Title</th>
-                          <th style={hStyle()}>Proj Seed</th>
+                          <th style={{ ...hStyle('left'), cursor: 'pointer', userSelect: 'none' }} {...swingTable.thSort('name', 'Team')} />
+                          <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...swingTable.thSort('wins', 'W-L')} />
+                          <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...swingTable.thSort('playoffsDelta', 'Playoffs')} />
+                          <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...swingTable.thSort('byeDelta', 'Bye')} />
+                          <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...swingTable.thSort('titleDelta', 'Title')} />
+                          <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...swingTable.thSort('seedDelta', 'Proj Seed')} />
                         </tr>
                       </thead>
                       <tbody>
-                        {swingRows.map((s, i) => (
+                        {swingTable.rows.map((s, i) => (
                           <tr key={s.r.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                             <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
                               {s.r.name}
@@ -344,16 +356,16 @@ export default function PostweekPage() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                     <thead>
                       <tr style={{ background: cardBg }}>
-                        <th style={hStyle('left')}>Team</th>
-                        <th style={hStyle('center')}>Record</th>
+                        <th style={{ ...hStyle('left'), cursor: 'pointer', userSelect: 'none' }} {...luckTable.thSort('name', 'Team')} />
+                        <th style={{ ...hStyle('center'), cursor: 'pointer', userSelect: 'none' }} {...luckTable.thSort('wins', 'Record')} />
                         <th style={hStyle('center')}>All-Play</th>
-                        <th style={hStyle()}>All-Play %</th>
-                        <th style={hStyle()}>Deserved W</th>
-                        <th style={hStyle()}>Luck</th>
+                        <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...luckTable.thSort('allPlayWinPct', 'All-Play %')} />
+                        <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...luckTable.thSort('expWins', 'Deserved W')} />
+                        <th style={{ ...hStyle(), cursor: 'pointer', userSelect: 'none' }} {...luckTable.thSort('luck', 'Luck')} />
                       </tr>
                     </thead>
                     <tbody>
-                      {luckRows.map((r, i) => (
+                      {luckTable.rows.map((r, i) => (
                         <tr key={r.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                           <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{r.name}</td>
                           <td style={cStyle('center')}>{r.wins}-{r.losses}</td>
