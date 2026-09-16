@@ -16,7 +16,7 @@ const SEASON = '2026-27'
 // most this far off its stored fair probability -- keeps a single big bet
 // from swinging a line to something absurd.
 const MAX_ACTION_SHIFT = 0.12
-const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'D/ST']
+const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K']
 
 const toDecimal = o => o > 0 ? 1 + o / 100 : 1 + 100 / Math.abs(o)
 const toAmerican = d => d >= 2 ? Math.round((d - 1) * 100) : Math.round(-100 / (d - 1))
