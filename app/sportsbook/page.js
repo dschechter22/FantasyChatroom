@@ -1120,7 +1120,7 @@ export default function SportsbookPage() {
     return (
       <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-774px, -50%)', zIndex: 90, width: '300px', maxHeight: '80vh', overflowY: 'auto', paddingRight: '4px' }}>
         <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Team Snapshot</p>
-        <TeamSnapshotList />
+        {TeamSnapshotList()}
       </div>
     )
   }
@@ -1138,7 +1138,7 @@ export default function SportsbookPage() {
           >
             Bet Slip ({slip.length}) <span style={{ fontSize: '10px' }}>{caret}</span>
           </button>
-          {slipOpen && <div style={{ maxHeight: '60vh', overflowY: 'auto', borderTop: `1px solid ${border}` }}><SlipContent /></div>}
+          {slipOpen && <div style={{ maxHeight: '60vh', overflowY: 'auto', borderTop: `1px solid ${border}` }}>{SlipContent()}</div>}
         </div>
       )
     }
@@ -1156,7 +1156,7 @@ export default function SportsbookPage() {
         </button>
         {slipOpen && (
           <div style={{ background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, marginTop: '10px', maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
-            <SlipContent />
+            {SlipContent()}
           </div>
         )}
       </div>
@@ -1259,8 +1259,8 @@ export default function SportsbookPage() {
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
-      <SlipPanel />
-      <TeamSnapshotPanel />
+      {SlipPanel()}
+      {TeamSnapshotPanel()}
 
       {/* Global flash banner -- feedback for every action on the page (admin
       generate/sync/settle buttons included), not just bet placement. This
@@ -1570,7 +1570,7 @@ export default function SportsbookPage() {
         {effectiveMobile && leagueTeams.length > 0 && (
           <div style={{ marginBottom: '32px' }}>
             <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Team Snapshot</p>
-            <TeamSnapshotList />
+            {TeamSnapshotList()}
           </div>
         )}
 
