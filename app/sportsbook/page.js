@@ -1025,9 +1025,9 @@ export default function SportsbookPage() {
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 150, background: d ? '#0f1524' : '#f4f1ec', boxShadow: '0 -8px 24px rgba(0,0,0,0.35)' }}>
           <button
             onClick={() => setSlipOpen(o => !o)}
-            style={{ width: '100%', background: gold, color: '#000', border: 'none', padding: '14px 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: '600', letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", cursor: 'pointer' }}
+            style={{ width: '100%', background: text, color: bg, border: 'none', padding: '14px 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: '600', letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", cursor: 'pointer' }}
           >
-            Bet Slip ({slip.length}) <span style={{ fontSize: '10px' }}>{caret}</span>
+            Bet Slip <span style={{ color: gold }}>({slip.length})</span> <span style={{ fontSize: '10px' }}>{caret}</span>
           </button>
           {slipOpen && <div style={{ maxHeight: '60vh', overflowY: 'auto', borderTop: `1px solid ${border}` }}><SlipContent /></div>}
         </div>
@@ -1041,9 +1041,9 @@ export default function SportsbookPage() {
       <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(474px, -50%)', zIndex: 150, width: '340px' }}>
         <button
           onClick={() => setSlipOpen(o => !o)}
-          style={{ width: '100%', background: gold, color: '#000', border: 'none', padding: '12px 20px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'Inter', sans-serif", letterSpacing: '0.05em', boxShadow: '0 4px 16px rgba(0,0,0,0.3)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+          style={{ width: '100%', background: text, color: bg, border: 'none', padding: '12px 20px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: "'Inter', sans-serif", letterSpacing: '0.05em', boxShadow: '0 4px 16px rgba(0,0,0,0.3)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
         >
-          Bet Slip ({slip.length}) <span style={{ fontSize: '10px' }}>{caret}</span>
+          Bet Slip <span style={{ color: gold }}>({slip.length})</span> <span style={{ fontSize: '10px' }}>{caret}</span>
         </button>
         {slipOpen && (
           <div style={{ background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, marginTop: '10px', maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
