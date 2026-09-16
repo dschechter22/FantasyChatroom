@@ -1738,35 +1738,37 @@ export default function SportsbookPage() {
                     return (
                     <div key={p.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                       <div>
-                        <div style={{ fontSize: '13px', color: text }}>{p.player_name} <span style={{ color: muted, fontSize: '11px' }}>{p.position}{p.team_name ? ` · ${p.team_name}` : ''}</span></div>
-                        <div style={{ fontSize: '11px', color: muted }}>Line: {p.line} pts</div>
+                        <div style={{ fontSize: '14px', color: text }}>{p.player_name} <span style={{ color: muted, fontSize: '11px' }}>{p.position}{p.team_name ? ` · ${p.team_name}` : ''}</span></div>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'center', flex: '1 1 auto', minWidth: '180px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', flex: '1 1 auto', minWidth: '160px' }}>
                         {[
                           ['Avg', fmt1(s?.avgPts)],
                           ['Last Wk', fmt1(s?.lastWeekPts)],
                           ['L3', fmt1(s?.l3Avg)],
                           ...(s?.posRank ? [[p.position, `#${s.posRank}`]] : []),
                         ].map(([label, val], i) => (
-                          <div key={label} style={{ padding: '0 12px', borderLeft: i > 0 ? `1px solid ${border}` : 'none', textAlign: 'center' }}>
-                            <div style={{ fontSize: '9px', color: muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
-                            <div style={{ fontSize: '13px', fontWeight: '700', color: text }}>{val}</div>
+                          <div key={label} style={{ padding: '0 10px', borderLeft: i > 0 ? `1px solid ${border}` : 'none', textAlign: 'center' }}>
+                            <div style={{ fontSize: '8px', color: muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: text }}>{val}</div>
                           </div>
                         ))}
                         {opp && (
-                          <div style={{ padding: '0 12px', borderLeft: `1px solid ${border}`, textAlign: 'center' }}>
-                            <div style={{ fontSize: '9px', color: muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Opp</div>
-                            <div style={{ fontSize: '13px', fontWeight: '700', color: text }}>{opp.homeAway} {opp.opp}</div>
+                          <div style={{ padding: '0 10px', borderLeft: `1px solid ${border}`, textAlign: 'center' }}>
+                            <div style={{ fontSize: '8px', color: muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Opp</div>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: text }}>{opp.homeAway} {opp.opp}</div>
                           </div>
                         )}
                       </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'over', odds: p.odds_over, label: `${p.player_name} Over ${p.line}`, subLabel: `Week ${p.week} prop` })}
-                          onMouseEnter={() => setHoveredBetKey(`prop${p.id}-over`)} onMouseLeave={() => setHoveredBetKey(null)}
-                          style={oddsBtn(`prop${p.id}-over`, green, inSlip('prop', p.id, 'prop', 'over'))}>Over {fmtOdds(p.odds_over)}</button>
-                        <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'under', odds: p.odds_under, label: `${p.player_name} Under ${p.line}`, subLabel: `Week ${p.week} prop` })}
-                          onMouseEnter={() => setHoveredBetKey(`prop${p.id}-under`)} onMouseLeave={() => setHoveredBetKey(null)}
-                          style={oddsBtn(`prop${p.id}-under`, red, inSlip('prop', p.id, 'prop', 'under'))}>Under {fmtOdds(p.odds_under)}</button>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '15px', fontWeight: '700', color: text, marginBottom: '6px' }}>Line: {p.line} pts</div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'over', odds: p.odds_over, label: `${p.player_name} Over ${p.line}`, subLabel: `Week ${p.week} prop` })}
+                            onMouseEnter={() => setHoveredBetKey(`prop${p.id}-over`)} onMouseLeave={() => setHoveredBetKey(null)}
+                            style={oddsBtn(`prop${p.id}-over`, green, inSlip('prop', p.id, 'prop', 'over'))}>Over {fmtOdds(p.odds_over)}</button>
+                          <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'under', odds: p.odds_under, label: `${p.player_name} Under ${p.line}`, subLabel: `Week ${p.week} prop` })}
+                            onMouseEnter={() => setHoveredBetKey(`prop${p.id}-under`)} onMouseLeave={() => setHoveredBetKey(null)}
+                            style={oddsBtn(`prop${p.id}-under`, red, inSlip('prop', p.id, 'prop', 'under'))}>Under {fmtOdds(p.odds_under)}</button>
+                        </div>
                       </div>
                     </div>
                     )
