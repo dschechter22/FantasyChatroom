@@ -42,6 +42,7 @@ export default function SportsbookPage() {
   const [balanceAdjustAccountId, setBalanceAdjustAccountId] = useState('')
   const [balanceAdjustAmount, setBalanceAdjustAmount] = useState('')
   const [deleteAccountId, setDeleteAccountId] = useState('')
+  const [confirmResetProps, setConfirmResetProps] = useState(false)
   const [allPendingBets, setAllPendingBets] = useState([])
   const [allBets, setAllBets] = useState([])
   const [allParlays, setAllParlays] = useState([])
@@ -557,6 +558,53 @@ export default function SportsbookPage() {
     fetchProps(); fetchAccounts()
     if (myAccount) fetchMyBets(myAccount.id)
     setGenerating(false)
+  }
+
+  // Undoes autoSettleProps/manual settlement for this week -- reverses every
+  // affected bet (and, if it finished a parlay, that parlay too) back to
+  // pending and claws back whatever balance the settlement paid out, then
+  // reopens the prop itself. For when a settlement ran off bad/stale actual
+  // points and needs to be redone once the real numbers are in.
+  const resetSettledProps = async () => {
+    setGenerating(true)
+    const { data: settledProps } = await db.from('sb_props').select('*').eq('season', SEASON).eq('week', week).eq('is_settled', true)
+    if (!settledProps?.length) { showFlash('No settled props for this week', false); setGenerating(false); return }
+
+    let resetCount = 0
+    for (const prop of settledProps) {
+      const { data: propBets } = await db.from('sb_bets').select('*').eq('prop_id', prop.id).neq('status', 'pending')
+      for (const bet of (propBets || [])) {
+        if (bet.status === 'won' || bet.status === 'push') {
+          const back = bet.status === 'won' ? bet.amount + bet.win_amount : bet.amount
+          const { data: acc } = await db.from('gb_accounts').select('balance').eq('id', bet.account_id).single()
+          await db.from('gb_accounts').update({ balance: acc.balance - back }).eq('id', bet.account_id)
+        }
+        await db.from('sb_bets').update({ status: 'pending', win_amount: 0 }).eq('id', bet.id)
+
+        // A parlay only ever finalizes once every leg is final -- reopening
+        // one leg means the parlay can't be final either, so undo its own
+        // payout (if any) and reopen it too. Its other, unrelated legs keep
+        // whatever real result they already have.
+        if (bet.parlay_id) {
+          const { data: parlay } = await db.from('sb_parlays').select('*').eq('id', bet.parlay_id).single()
+          if (parlay && parlay.status !== 'pending') {
+            if (parlay.status === 'won') {
+              const { data: acc } = await db.from('gb_accounts').select('balance').eq('id', parlay.account_id).single()
+              await db.from('gb_accounts').update({ balance: acc.balance - (parlay.amount + parlay.win_amount) }).eq('id', parlay.account_id)
+            }
+            await db.from('sb_parlays').update({ status: 'pending', win_amount: 0 }).eq('id', parlay.id)
+          }
+        }
+      }
+      await db.from('sb_props').update({ is_settled: false, result: null, actual_points: null }).eq('id', prop.id)
+      resetCount++
+    }
+    showFlash(`Reset ${resetCount} prop${resetCount === 1 ? '' : 's'} back to pending`)
+    logActivity('props_reset', 'Admin', `Admin reset ${resetCount} settled Week ${week} prop${resetCount === 1 ? '' : 's'} back to pending`)
+    fetchProps(); fetchAccounts(); fetchAllPendingBets(); fetchActivityLog()
+    if (myAccount) fetchMyBets(myAccount.id)
+    setGenerating(false)
+    setConfirmResetProps(false)
   }
 
   // ── bet slip: generalized across games, futures and props so any
@@ -1591,6 +1639,16 @@ export default function SportsbookPage() {
               </select>
               {adminUnlocked && (
                 <button onClick={autoSettleProps} disabled={generating} style={{ ...adminBtn, borderColor: green, color: green }}>{generating ? 'Working…' : `Auto-Settle Week ${week} Props`}</button>
+              )}
+              {adminUnlocked && props.some(p => p.is_settled) && !confirmResetProps && (
+                <button onClick={() => setConfirmResetProps(true)} disabled={generating} style={{ ...adminBtn, borderColor: red, color: red }}>Reset Settled Week {week} Props</button>
+              )}
+              {adminUnlocked && confirmResetProps && (
+                <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', color: red }}>Undo settlement and reverse balance changes for Week {week}'s settled props?</span>
+                  <button onClick={resetSettledProps} disabled={generating} style={{ ...adminBtn, borderColor: red, color: red }}>{generating ? 'Working…' : 'Confirm Reset'}</button>
+                  <button onClick={() => setConfirmResetProps(false)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '8px 16px', cursor: 'pointer', fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>Cancel</button>
+                </span>
               )}
             </div>
             {props.length === 0 && <p style={{ color: muted, fontSize: '13px' }}>No props for Week {week} yet — these fill in from the daily sync once that week's ESPN projections are available.</p>}
