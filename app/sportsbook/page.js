@@ -5,8 +5,8 @@ import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { LEAGUE_ID } from '../../lib/supabase'
 import { priceTwoWay } from '../../lib/predictions'
-import { buildFixtures } from '../../lib/schedule'
-import { generateWeekBoard, generateFutures, getOrCreateFuture } from '../../lib/sportsbookGen'
+import { buildFixtures, REG_SEASON_WEEKS } from '../../lib/schedule'
+import { generateWeekBoard, generateFutures, getOrCreateFuture, priceCustomMarket, temperProb } from '../../lib/sportsbookGen'
 export const dynamic = 'force-dynamic'
 
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -224,6 +224,14 @@ export default function SportsbookPage() {
   )
   const weekFixtures = useMemo(() => fixtures.filter(f => f.week === week), [fixtures, week])
   const teamNameById = useMemo(() => Object.fromEntries(leagueTeams.map(t => [t.id, t.manager?.name || t.team_name])), [leagueTeams])
+  const weeksPlayed = useMemo(
+    () => new Set(leagueMatchups.filter(m => (m.home_score ?? 0) > 0 || (m.away_score ?? 0) > 0).map(m => m.week)).size,
+    [leagueMatchups],
+  )
+  // Half-integer lines only, spaced by 1 -- a push is never possible, so
+  // "over/under" (or "better/worse") always actually resolves one way.
+  const winTotalLines = useMemo(() => Array.from({ length: REG_SEASON_WEEKS }, (_, i) => i + 0.5), [])
+  const seedLines = useMemo(() => Array.from({ length: Math.max(leagueTeams.length - 1, 0) }, (_, i) => i + 1.5), [leagueTeams])
 
   const genArgs = () => ({ season: SEASON, week, teams: leagueTeams, matchups: leagueMatchups, rosterEntries })
 
@@ -376,15 +384,21 @@ export default function SportsbookPage() {
     await db.from('sb_games').update({ ml_a: mlA, ml_b: mlB }).eq('id', gameId)
   }
 
+  const CUSTOM_MARKET_TYPES = new Set(['win_total', 'seed_total', 'h2h_finish'])
   const rebalanceFuture = async (futureId) => {
-    const { data: f } = await db.from('sb_futures').select('fair_p').eq('id', futureId).single()
+    const { data: f } = await db.from('sb_futures').select('fair_p, market_type').eq('id', futureId).single()
     if (!f || f.fair_p == null) return
     const { data: bets } = await db.from('sb_bets').select('pick, amount').eq('future_id', futureId).eq('status', 'pending')
     const amtYes = (bets || []).filter(b => b.pick === 'yes').reduce((s, b) => s + b.amount, 0)
     const amtNo = (bets || []).filter(b => b.pick === 'no').reduce((s, b) => s + b.amount, 0)
     const total = amtYes + amtNo
     const imbalance = total ? (amtYes - amtNo) / total : 0
-    const [oddsYes, oddsNo] = priceTwoWay(clampP(f.fair_p - MAX_ACTION_SHIFT * imbalance))
+    // fair_p already has any temper (finishes-ahead-of) or generation-time
+    // tempering (playoffs/etc) baked in from when it was first computed --
+    // action only ever nudges from there, never re-applies it. Custom
+    // markets keep their heavier hold + underdog cap on every reprice too.
+    const adjP = clampP(f.fair_p - MAX_ACTION_SHIFT * imbalance)
+    const [oddsYes, oddsNo] = CUSTOM_MARKET_TYPES.has(f.market_type) ? priceCustomMarket(adjP) : priceTwoWay(adjP)
     await db.from('sb_futures').update({ odds_yes: oddsYes, odds_no: oddsNo }).eq('id', futureId)
   }
 
@@ -426,14 +440,21 @@ export default function SportsbookPage() {
     const pUnder = Object.entries(t.seed_probs || {}).reduce((s, [seed, p]) => s + (parseFloat(seed) < line ? p : 0), 0)
     return 1 - pUnder
   }
+  // "Finishes ahead of" is a team-quality read (you pick two teams, not a
+  // number), same as playoffs/bye/semis/finals/title -- so it gets the same
+  // early-season tempering they do, unlike win total/final seed where you
+  // deliberately chose the line yourself.
   const aheadProbOf = (teamId, oppId) => {
     const t = simFor(teamId)
     if (!t) return null
-    return t.ahead_probs?.[oppId] ?? null
+    const raw = t.ahead_probs?.[oppId]
+    return raw == null ? null : temperProb(raw, weeksPlayed)
   }
 
   const addCustomFuture = async ({ marketType, teamId, oppTeamId = null, teamName, oppTeamName = null, line = null, fairP, pick, label, subLabel }) => {
-    const { future, error } = await getOrCreateFuture(db, { season: SEASON, marketType, teamId, oppTeamId, teamName, oppTeamName, line, fairP: clampP(fairP) })
+    const p = clampP(fairP)
+    const [oddsYes, oddsNo] = priceCustomMarket(p)
+    const { future, error } = await getOrCreateFuture(db, { season: SEASON, marketType, teamId, oppTeamId, teamName, oppTeamName, line, fairP: p, oddsYes, oddsNo })
     if (error || !future) return showFlash(`Failed: ${error || 'unknown error'}`, false)
     toggleBet({ family: 'future', refId: future.id, betType: 'future', pick, odds: pick === 'yes' ? future.odds_yes : future.odds_no, label, subLabel })
     fetchFutures()
@@ -549,7 +570,7 @@ export default function SportsbookPage() {
 
   const futureLabel = (f, pick) => {
     if (f.market_type === 'win_total') return `${f.team_name} ${pick === 'yes' ? 'Over' : 'Under'} ${f.line} Wins`
-    if (f.market_type === 'seed_total') return `${f.team_name} ${pick === 'yes' ? 'Over' : 'Under'} Seed ${f.line}`
+    if (f.market_type === 'seed_total') return `${f.team_name} ${pick === 'yes' ? 'Worse' : 'Better'} than Seed ${f.line}`
     if (f.market_type === 'h2h_finish') return pick === 'yes' ? `${f.team_name} finishes ahead of ${f.opp_team_name}` : `${f.opp_team_name} finishes ahead of ${f.team_name}`
     return `${f.team_name} — ${FUTURE_LABELS[f.market_type] || f.market_type} (${pick === 'yes' ? 'Yes' : 'No'})`
   }
@@ -941,17 +962,21 @@ export default function SportsbookPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {/* Win Total */}
                 <div style={{ background: cardBg, border: `1px solid ${border}`, padding: '14px 16px' }}>
-                  <div style={{ fontSize: '11px', color: muted, marginBottom: '8px' }}>Win Total</div>
+                  <div style={{ fontSize: '11px', color: muted, marginBottom: '2px' }}>Win Total</div>
+                  <div style={{ fontSize: '10px', color: muted, marginBottom: '8px' }}>Regular-season wins only — playoff games don't count.</div>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <select value={wtTeam} onChange={e => setWtTeam(e.target.value)} style={inp}>
                       <option value="">Team…</option>
                       {leagueTeams.map(t => <option key={t.id} value={t.id}>{teamLabel(t.id)}</option>)}
                     </select>
-                    <input type="number" step="0.5" value={wtLine} onChange={e => setWtLine(e.target.value)} placeholder="Line (e.g. 7.5)" style={{ ...inp, width: '130px' }} />
+                    <select value={wtLine} onChange={e => setWtLine(e.target.value)} style={inp}>
+                      <option value="">Line…</option>
+                      {winTotalLines.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
                     {wtTeam && wtLine !== '' && (() => {
                       const p = winOverProb(wtTeam, parseFloat(wtLine))
                       if (p == null) return <span style={{ fontSize: '12px', color: muted }}>No sim data for this team yet</span>
-                      const [oddsYes, oddsNo] = priceTwoWay(clampP(p))
+                      const [oddsYes, oddsNo] = priceCustomMarket(clampP(p))
                       const name = teamLabel(wtTeam)
                       return (
                         <>
@@ -965,22 +990,26 @@ export default function SportsbookPage() {
 
                 {/* Final Seed */}
                 <div style={{ background: cardBg, border: `1px solid ${border}`, padding: '14px 16px' }}>
-                  <div style={{ fontSize: '11px', color: muted, marginBottom: '8px' }}>Final Regular-Season Seed</div>
+                  <div style={{ fontSize: '11px', color: muted, marginBottom: '2px' }}>Final Regular-Season Seed</div>
+                  <div style={{ fontSize: '10px', color: muted, marginBottom: '8px' }}>1 seed is the top seed — "Better than 1.5" is a bet they finish as the 1 seed.</div>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                     <select value={seedTeam} onChange={e => setSeedTeam(e.target.value)} style={inp}>
                       <option value="">Team…</option>
                       {leagueTeams.map(t => <option key={t.id} value={t.id}>{teamLabel(t.id)}</option>)}
                     </select>
-                    <input type="number" step="0.5" value={seedLine} onChange={e => setSeedLine(e.target.value)} placeholder="Line (e.g. 4.5)" style={{ ...inp, width: '130px' }} />
+                    <select value={seedLine} onChange={e => setSeedLine(e.target.value)} style={inp}>
+                      <option value="">Line…</option>
+                      {seedLines.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
                     {seedTeam && seedLine !== '' && (() => {
-                      const pOver = seedOverProb(seedTeam, parseFloat(seedLine))
-                      if (pOver == null) return <span style={{ fontSize: '12px', color: muted }}>No sim data for this team yet</span>
-                      const [oddsOver, oddsUnder] = priceTwoWay(clampP(pOver))
+                      const pWorse = seedOverProb(seedTeam, parseFloat(seedLine))
+                      if (pWorse == null) return <span style={{ fontSize: '12px', color: muted }}>No sim data for this team yet</span>
+                      const [oddsWorse, oddsBetter] = priceCustomMarket(clampP(pWorse))
                       const name = teamLabel(seedTeam)
                       return (
                         <>
-                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: pOver, pick: 'yes', label: `${name} Over Seed ${seedLine}`, subLabel: 'Final Seed' })} style={betBtn(false)}>Over <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsOver)}</span></button>
-                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: 1 - pOver, pick: 'no', label: `${name} Under Seed ${seedLine}`, subLabel: 'Final Seed' })} style={betBtn(false)}>Under <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsUnder)}</span></button>
+                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: pWorse, pick: 'yes', label: `${name} Worse than Seed ${seedLine}`, subLabel: 'Final Seed' })} style={betBtn(false)}>Worse <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsWorse)}</span></button>
+                          <button onClick={() => addCustomFuture({ marketType: 'seed_total', teamId: seedTeam, teamName: name, line: parseFloat(seedLine), fairP: 1 - pWorse, pick: 'no', label: `${name} Better than Seed ${seedLine}`, subLabel: 'Final Seed' })} style={betBtn(false)}>Better <span style={{ color: muted, fontSize: '10px' }}>{fmtOdds(oddsBetter)}</span></button>
                         </>
                       )
                     })()}
@@ -1002,7 +1031,7 @@ export default function SportsbookPage() {
                     {aheadTeamA && aheadTeamB && aheadTeamA !== aheadTeamB && (() => {
                       const p = aheadProbOf(aheadTeamA, aheadTeamB)
                       if (p == null) return <span style={{ fontSize: '12px', color: muted }}>No sim data yet</span>
-                      const [oddsYes, oddsNo] = priceTwoWay(clampP(p))
+                      const [oddsYes, oddsNo] = priceCustomMarket(clampP(p))
                       const nameA = teamLabel(aheadTeamA), nameB = teamLabel(aheadTeamB)
                       return (
                         <>
