@@ -4,6 +4,7 @@ import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { projectedWeekLineup, lineupEfficiency, actualWeekLineup } from '../../lib/predictions'
+import { useSortableTable } from '../../hooks/useSortableTable'
 import { resolveSchedule } from '../../lib/schedule'
 export const dynamic = 'force-dynamic'
 
@@ -232,7 +233,10 @@ export default function CurrentSeasonPage() {
   const ranked = rows.map(r => ({
     ...r,
     powerScore: parseFloat(((r.winPct / maxWin * 100 * 2) + (r.avgScore / maxAvg * 100 * 4) + (r.allPlayWinPct / maxAp * 100 * 2) + (r.medScore / maxMed * 100 * 2)) / 10),
+    diff: parseFloat((r.pf - r.pa).toFixed(2)),
   })).sort((a, b) => b.powerScore - a.powerScore)
+
+  const powerTable = useSortableTable(ranked, { defaultKey: 'powerScore', defaultDir: 'desc', filterKeys: ['name', 'teamName'] })
 
   const standings = [...rows].sort((a, b) => b.wins - a.wins || b.pf - a.pf)
   const ljRanked = [...rows].sort((a, b) => b.allPlayWinPct - a.allPlayWinPct)
@@ -442,6 +446,7 @@ export default function CurrentSeasonPage() {
   if (!mounted) return null
 
   const hStyle = (align = 'left') => ({ padding: '10px 14px', fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: align, borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' })
+  const sortHStyle = (align = 'left') => ({ ...hStyle(align), cursor: 'pointer', userSelect: 'none' })
   const cStyle = (align = 'left') => ({ padding: '12px 14px', fontSize: '13px', textAlign: align, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
 
   // `id` is the anchor the 2026-27 menu links to; scroll-margin-top in Nav
@@ -738,29 +743,35 @@ export default function CurrentSeasonPage() {
         {ranked.length > 0 && (
           <div style={{ marginBottom: '64px' }}>
             <SectionLabel id="power-rankings">Power Rankings</SectionLabel>
+            <input
+              value={powerTable.filterText}
+              onChange={e => powerTable.setFilterText(e.target.value)}
+              placeholder="Filter manager or team…"
+              style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
+            />
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                 <thead>
                   <tr style={{ background: cardBg }}>
                     <th style={hStyle('center')}>Rk</th>
-                    <th style={hStyle()}>Manager</th>
-                    {!effectiveMobile && <th style={hStyle()}>Team</th>}
-                    <th style={hStyle('center')}>W-L</th>
-                    {!effectiveMobile && <th style={hStyle('right')}>PF</th>}
-                    {!effectiveMobile && <th style={hStyle('right')}>Max PF</th>}
-                    {!effectiveMobile && <th style={hStyle('right')}>PA</th>}
-                    {!effectiveMobile && <th style={hStyle('right')}>Diff</th>}
-                    <th style={hStyle('right')}>Avg PPG</th>
-                    {!effectiveMobile && <th style={hStyle('right')}>Max Avg</th>}
-                    <th style={hStyle('right')}>All-Play %</th>
-                    {!effectiveMobile && <th style={hStyle('right')}>Luck</th>}
-                    {!effectiveMobile && <th style={hStyle('right')}>Correct Start %</th>}
-                    <th style={hStyle('right')}>Power</th>
+                    <th style={sortHStyle()} {...powerTable.thSort('name', 'Manager')} />
+                    {!effectiveMobile && <th style={sortHStyle()} {...powerTable.thSort('teamName', 'Team')} />}
+                    <th style={sortHStyle('center')} {...powerTable.thSort('wins', 'W-L')} />
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('pf', 'PF')} />}
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('maxPf', 'Max PF')} />}
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('pa', 'PA')} />}
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('diff', 'Diff')} />}
+                    <th style={sortHStyle('right')} {...powerTable.thSort('avgScore', 'Avg PPG')} />
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('maxAvg', 'Max Avg')} />}
+                    <th style={sortHStyle('right')} {...powerTable.thSort('allPlayWinPct', 'All-Play %')} />
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('luckRaw', 'Luck')} />}
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('startPct', 'Correct Start %')} />}
+                    <th style={sortHStyle('right')} {...powerTable.thSort('powerScore', 'Power')} />
                     {!effectiveMobile && <th style={hStyle('right')}>Trend</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {ranked.map((r, i) => {
+                  {powerTable.rows.map((r, i) => {
                     const prev = prevRanked.findIndex(p => p.name === r.name)
                     const move = prev >= 0 ? prev - i : 0
                     const diff = parseFloat((r.pf - r.pa).toFixed(2))
