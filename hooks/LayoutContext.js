@@ -32,14 +32,14 @@ export function LayoutProvider({ children }) {
   const d = theme === 'dark'
 
   const tokens = {
-    bg:        d ? '#000'                   : '#f4f1ec',
+    bg:        d ? '#0a0e1a'                : '#f4f1ec',
     text:      d ? '#fff'                   : '#0d2152',
     muted:     d ? 'rgba(255,255,255,0.38)' : 'rgba(13,33,82,0.75)',
     border:    d ? 'rgba(255,255,255,0.1)'  : 'rgba(13,33,82,0.14)',
-    cardBg:    d ? '#0a0a0a'                : '#ede9e2',
-    rowAlt:    d ? '#080808'                : '#e8e4dc',
-    statsBg:   d ? '#050505'                : '#e4e0d8',
-    highlight: d ? '#0d0d1a'                : '#e8edf5',
+    cardBg:    d ? '#0f1524'                : '#ede9e2',
+    rowAlt:    d ? '#0c111f'                : '#e8e4dc',
+    statsBg:   d ? '#080b15'                : '#e4e0d8',
+    highlight: d ? '#111a30'                : '#e8edf5',
     green:     d ? '#6ee7b7'                : '#0d6e3f',
     red:       d ? '#f87171'                : '#9b1c1c',
     gold:      d ? '#fcd34d'                : '#92400e',

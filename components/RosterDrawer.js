@@ -79,12 +79,12 @@ export default function RosterDrawer({ team, onClose }) {
           alignItems: 'center',
           padding: '10px 16px',
           borderBottom: `1px solid ${border}`,
-          background: isBench ? (i % 2 === 0 ? 'transparent' : (d ? '#080808' : '#e8e4dc')) : 'transparent',
+          background: isBench ? (i % 2 === 0 ? 'transparent' : (d ? '#0c111f' : '#e8e4dc')) : 'transparent',
           cursor: 'pointer',
         }}
         onClick={() => { router.push(`/players/${entry.player?.id}`); onClose() }}
         onMouseEnter={e => e.currentTarget.style.background = d ? '#0d0d1a' : '#e8edf5'}
-        onMouseLeave={e => e.currentTarget.style.background = isBench ? (i % 2 === 0 ? 'transparent' : (d ? '#080808' : '#e8e4dc')) : 'transparent'}
+        onMouseLeave={e => e.currentTarget.style.background = isBench ? (i % 2 === 0 ? 'transparent' : (d ? '#0c111f' : '#e8e4dc')) : 'transparent'}
       >
         <span style={{
           fontSize: '9px', fontWeight: '700', letterSpacing: '0.08em',

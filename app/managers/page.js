@@ -317,7 +317,7 @@ export default function ManagersPage() {
         {isSelected && (
           <div style={{ borderTop: `1px solid ${border}` }}>
             {/* Tab bar */}
-            <div style={{ display: 'flex', borderBottom: `1px solid ${border}`, background: d ? '#080808' : '#e8e4dc', paddingLeft: '8px' }}>
+            <div style={{ display: 'flex', borderBottom: `1px solid ${border}`, background: d ? '#0c111f' : '#e8e4dc', paddingLeft: '8px' }}>
               <TabBtn id={m.id} tab="stats" label="Stats" />
               <TabBtn id={m.id} tab="players" label="Players" />
               <TabBtn id={m.id} tab="seasons" label="Seasons" />
@@ -442,7 +442,7 @@ export default function ManagersPage() {
                     </thead>
                     <tbody>
                       {m.seasonBreakdown.map((s, i) => (
-                        <tr key={s.year} style={{ background: i % 2 === 0 ? 'transparent' : (d ? '#080808' : '#e8e4dc') }}>
+                        <tr key={s.year} style={{ background: i % 2 === 0 ? 'transparent' : (d ? '#0c111f' : '#e8e4dc') }}>
                           <td style={{ padding: '10px', fontSize: '12px', color: muted, borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' }}>{s.year}</td>
                           <td style={{ padding: '10px', fontSize: '12px', color: text, borderBottom: `1px solid ${border}`, fontFamily: "'Playfair Display', serif", whiteSpace: 'nowrap' }}>{s.team_name}</td>
                           <td style={{ padding: '10px', fontSize: '12px', color: text, borderBottom: `1px solid ${border}`, textAlign: 'right', whiteSpace: 'nowrap' }}>{s.wins}</td>

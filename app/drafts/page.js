@@ -981,7 +981,7 @@ export default function DraftsPage() {
                               const drawerRow = (
                                 <tr key={`drawer-${yr}`}>
                                   <td colSpan={4} style={{ padding: 0, borderBottom: `1px solid ${border}` }}>
-                                    <div style={{ background: d ? '#080808' : '#f8f5ee' }}>
+                                    <div style={{ background: d ? '#0c111f' : '#f8f5ee' }}>
                                       <div style={{ overflowX: 'auto' }}>
                                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                           <thead>
@@ -1167,7 +1167,7 @@ export default function DraftsPage() {
                                     <svg width={pieSize} height={pieSize} viewBox={`0 0 ${pieSize} ${pieSize}`}>
                                       {arcs.map(a => (
                                         <g key={a.pos}>
-                                          <path d={a.path} fill={a.color} stroke={d ? '#0a0a0a' : '#fff'} strokeWidth="1.5" />
+                                          <path d={a.path} fill={a.color} stroke={d ? '#0f1524' : '#fff'} strokeWidth="1.5" />
                                           {a.sweep > 0.28 && (
                                             <>
                                               <text x={a.lx} y={a.ly} textAnchor="middle" dominantBaseline="middle" fill="rgba(0,0,0,0.35)" fontSize="13" fontWeight="700" fontFamily="Inter, sans-serif">{a.pos}</text>
@@ -1507,7 +1507,7 @@ export default function DraftsPage() {
                               const drawerRow = (
                                 <tr key={`${rowKey}-drawer`}>
                                   <td colSpan={6} style={{ padding: 0, borderBottom: `1px solid ${border}` }}>
-                                    <div style={{ background: d ? '#080808' : '#f8f5ee' }}>
+                                    <div style={{ background: d ? '#0c111f' : '#f8f5ee' }}>
                                       <div style={{ overflowX: 'auto' }}>
                                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                           <thead>

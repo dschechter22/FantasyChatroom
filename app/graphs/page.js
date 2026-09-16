@@ -368,7 +368,7 @@ export default function GraphsPage() {
     </div>
   )
 
-  const chartBg = d ? '#0a0a0a' : '#ede9e2'
+  const chartBg = d ? '#0f1524' : '#ede9e2'
   const gridColor = d ? 'rgba(255,255,255,0.06)' : 'rgba(13,33,82,0.08)'
   const tooltipStyle = {
     background: d ? '#111' : '#fff',

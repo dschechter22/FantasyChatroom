@@ -13,7 +13,7 @@ export default function Nav() {
   const rowRef = useRef(null)
 
   const navBg = d ? 'rgba(0,0,0,0.95)' : 'rgba(244,241,236,0.97)'
-  const dropBg = d ? '#0a0a0a' : '#faf8f5'
+  const dropBg = d ? '#0f1524' : '#faf8f5'
   const activeBorder = d ? '#fff' : '#0d2152'
 
   // Open whichever accordion section holds the current page, so the mobile

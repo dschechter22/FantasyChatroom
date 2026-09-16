@@ -129,12 +129,12 @@ export default function H2HPage() {
         {/* Modal */}
         <div style={{
           position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-          zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec',
+          zIndex: 201, background: d ? '#0f1524' : '#f4f1ec',
           border: `1px solid ${border}`, width: effectiveMobile ? '95vw' : '680px',
           maxHeight: '85vh', overflowY: 'auto',
         }}>
           {/* Header */}
-          <div style={{ padding: effectiveMobile ? '20px 16px 16px' : '28px 32px 20px', borderBottom: `1px solid ${border}`, position: 'sticky', top: 0, background: d ? '#0a0a0a' : '#f4f1ec', zIndex: 1 }}>
+          <div style={{ padding: effectiveMobile ? '20px 16px 16px' : '28px 32px 20px', borderBottom: `1px solid ${border}`, position: 'sticky', top: 0, background: d ? '#0f1524' : '#f4f1ec', zIndex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
                 <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '20px' : '28px', fontWeight: '400', color: text, marginBottom: '4px' }}>
@@ -205,7 +205,7 @@ export default function H2HPage() {
                   const win = myScore > theirScore
                   const tie = myScore === theirScore
                   return (
-                    <tr key={m.id} style={{ background: i % 2 === 0 ? 'transparent' : (d ? '#080808' : '#e8e4dc') }}>
+                    <tr key={m.id} style={{ background: i % 2 === 0 ? 'transparent' : (d ? '#0c111f' : '#e8e4dc') }}>
                       <td style={{ ...cStyle('center'), color: muted }}>{m.season?.year}</td>
                       <td style={{ ...cStyle('center'), color: muted }}>{m.week}</td>
                       <td style={{ ...cStyle('right'), fontWeight: win ? '600' : '400', color: win ? text : muted }}>{myScore}</td>

@@ -548,7 +548,7 @@ export default function WriteupsPage() {
       {pinModal && (
         <>
           <div onClick={() => { setPinModal(null); setPinInput(''); setPinError('') }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '90vw' : '360px' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '90vw' : '360px' }}>
             <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, marginBottom: '8px' }}>
               {pinModal.action === 'delete' ? 'Delete Writeup' : 'Edit Writeup'}
             </h3>
@@ -569,7 +569,7 @@ export default function WriteupsPage() {
       {adminModal && (
         <>
           <div onClick={() => { setAdminModal(null); setAdminPinInput(''); setAdminPinError('') }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '90vw' : '360px' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '90vw' : '360px' }}>
             <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, marginBottom: '8px' }}>
               {adminModal.writeupId ? '🔒 Locked Writeup' : 'Admin Access'}
             </h3>
@@ -590,7 +590,7 @@ export default function WriteupsPage() {
       {commentPinModal && (
         <>
           <div onClick={() => { setCommentPinModal(null); setCommentPinInput(''); setCommentPinError('') }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '90vw' : '360px' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '90vw' : '360px' }}>
             <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, marginBottom: '8px' }}>Delete Comment</h3>
             <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>Enter your PIN to delete this comment.</p>
             <input type="password" placeholder="PIN" value={commentPinInput} onChange={e => { setCommentPinInput(e.target.value); setCommentPinError('') }} onKeyDown={e => e.key === 'Enter' && handleCommentPinSubmit()} style={{ ...inputStyle, marginBottom: '8px' }} />
@@ -607,7 +607,7 @@ export default function WriteupsPage() {
       {gateOpen && gateQIndex !== null && (
         <>
           <div onClick={() => { setGateOpen(false); setGatePendingId(null) }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '92vw' : '440px' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, padding: '32px', width: effectiveMobile ? '92vw' : '440px' }}>
             <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, marginBottom: '8px' }}>Prove You Belong Here</h3>
             <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>Answer correctly to unlock writeups on this device. Don't know it? Skip to a different question.</p>
             <p style={{ fontSize: '14px', color: text, marginBottom: '12px', lineHeight: 1.5 }}>{SECURITY_QUESTIONS[gateQIndex].q}</p>

@@ -55,6 +55,11 @@ export default function SportsbookPage() {
   const [isNewAccount, setIsNewAccount] = useState(false)
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
+  const [showForgotPin, setShowForgotPin] = useState(false)
+  const [resetPinInput, setResetPinInput] = useState('')
+  const [resetPinError, setResetPinError] = useState('')
+  const [resetPinSubmitted, setResetPinSubmitted] = useState(false)
+  const [pendingPinResets, setPendingPinResets] = useState([])
 
   // ── bet slip (a floating, closable popup -- see near the bottom of the
   // render for its markup -- shared across every tab so a game leg, a
@@ -108,7 +113,7 @@ export default function SportsbookPage() {
       .then(({ data }) => { if (data?.length) setWeek(data[0].week) })
   }, [])
   useEffect(() => { if (mounted) { fetchGames(); fetchFutures(); fetchTeamSim(); fetchProps(); fetchAccounts() } }, [mounted, week])
-  useEffect(() => { if (mounted) { fetchActivityLog(); fetchAllPendingBets() } }, [mounted])
+  useEffect(() => { if (mounted) { fetchActivityLog(); fetchAllPendingBets(); fetchPendingPinResets() } }, [mounted])
 
   useEffect(() => {
     db.from('seasons').select('year').eq('league_id', LEAGUE_ID).order('year', { ascending: false }).limit(1)
@@ -193,6 +198,14 @@ export default function SportsbookPage() {
     setAllPendingBets(data || [])
   }
 
+  const fetchPendingPinResets = async () => {
+    const { data } = await db.from('sb_pin_resets')
+      .select('*, account:account_id(manager_name)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+    setPendingPinResets(data || [])
+  }
+
   const fetchMyBets = async (accountId) => {
     const { data: bets } = await db.from('sb_bets')
       .select(`*,
@@ -254,6 +267,27 @@ export default function SportsbookPage() {
       setNameStep('name'); setNameInput(''); setPinInput('')
       fetchMyBets(data.id)
     }
+  }
+
+  // Forgot-PIN: sits pending until an admin approves it from the Activity
+  // tab -- the account's real PIN never changes until then, so a wrong
+  // guess at "whose account is this" can't lock someone else out.
+  const requestPinReset = async () => {
+    if (!resetPinInput || resetPinInput.length < 4) return setResetPinError('New PIN must be 4+ digits')
+    const escaped = pendingName.replace(/[%_]/g, c => `\\${c}`)
+    const { data: acc } = await db.from('gb_accounts').select('id, manager_name').ilike('manager_name', escaped).eq('season', SEASON).maybeSingle()
+    if (!acc) return setResetPinError("Couldn't find that account — check the name")
+    const { error } = await db.from('sb_pin_resets').insert({ account_id: acc.id, requested_pin: resetPinInput })
+    if (error) return setResetPinError(`Couldn't submit request: ${error.message}`)
+    logActivity('pin_reset_requested', acc.manager_name, `${acc.manager_name} requested a PIN reset`)
+    setResetPinSubmitted(true)
+  }
+
+  const resolvePinReset = async (reset, approve) => {
+    if (approve) await db.from('gb_accounts').update({ pin: reset.requested_pin }).eq('id', reset.account_id)
+    await db.from('sb_pin_resets').update({ status: approve ? 'approved' : 'denied', resolved_at: new Date().toISOString() }).eq('id', reset.id)
+    logActivity('pin_reset_resolved', 'Admin', `Admin ${approve ? 'approved' : 'denied'} ${reset.account?.manager_name || 'a'} PIN reset`)
+    fetchPendingPinResets(); fetchActivityLog()
   }
 
   // Fixtures for this season -- used only to build the Props tab's "this
@@ -819,7 +853,7 @@ export default function SportsbookPage() {
 
     if (effectiveMobile) {
       return (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 150, background: d ? '#0a0a0a' : '#f4f1ec', boxShadow: '0 -8px 24px rgba(0,0,0,0.35)' }}>
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 150, background: d ? '#0f1524' : '#f4f1ec', boxShadow: '0 -8px 24px rgba(0,0,0,0.35)' }}>
           <button
             onClick={() => setSlipOpen(o => !o)}
             style={{ width: '100%', background: gold, color: '#000', border: 'none', padding: '14px 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: '600', letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", cursor: 'pointer' }}
@@ -843,7 +877,7 @@ export default function SportsbookPage() {
           Bet Slip ({slip.length}) <span style={{ fontSize: '10px' }}>{caret}</span>
         </button>
         {slipOpen && (
-          <div style={{ background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, marginTop: '10px', maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
+          <div style={{ background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, marginTop: '10px', maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
             <SlipContent />
           </div>
         )}
@@ -887,7 +921,7 @@ export default function SportsbookPage() {
                 {isNewAccount ? `Create account for ` : `Welcome back, `}
                 <strong style={{ color: text }}>{pendingName}</strong>
                 {' '}
-                <button onClick={() => { setNameStep('name'); setPinError('') }} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", textDecoration: 'underline', padding: 0 }}>change</button>
+                <button onClick={() => { setNameStep('name'); setPinError(''); setShowForgotPin(false); setResetPinInput(''); setResetPinError(''); setResetPinSubmitted(false) }} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", textDecoration: 'underline', padding: 0 }}>change</button>
               </p>
               <input
                 type="password"
@@ -905,6 +939,34 @@ export default function SportsbookPage() {
               >
                 {isNewAccount ? 'Create Account' : 'Log In'}
               </button>
+
+              {!isNewAccount && !resetPinSubmitted && (
+                showForgotPin ? (
+                  <div style={{ borderTop: `1px solid ${border}`, marginTop: '8px', paddingTop: '14px', textAlign: 'left' }}>
+                    <p style={{ fontSize: '11px', color: muted, marginBottom: '8px' }}>
+                      Pick a new PIN — it won't take effect until an admin approves it.
+                    </p>
+                    <input
+                      type="password"
+                      value={resetPinInput}
+                      onChange={e => { setResetPinInput(e.target.value); setResetPinError('') }}
+                      onKeyDown={e => e.key === 'Enter' && requestPinReset()}
+                      placeholder="New PIN (4+ digits)"
+                      style={{ ...inp, width: '100%', textAlign: 'center', padding: '10px', marginBottom: '8px' }}
+                    />
+                    {resetPinError && <p style={{ fontSize: '12px', color: red, margin: '0 0 8px' }}>{resetPinError}</p>}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={requestPinReset} style={{ background: gold, color: '#000', border: 'none', padding: '10px 16px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", fontWeight: '600', flex: 1 }}>Request Reset</button>
+                      <button onClick={() => { setShowForgotPin(false); setResetPinInput(''); setResetPinError('') }} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '10px 16px', cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowForgotPin(true)} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '12px', fontFamily: "'Inter', sans-serif", textDecoration: 'underline', padding: 0, marginTop: '4px' }}>Forgot PIN?</button>
+                )
+              )}
+              {resetPinSubmitted && (
+                <p style={{ fontSize: '12px', color: green, margin: 0 }}>Reset requested — check back once an admin approves it.</p>
+              )}
             </div>
           )}
 
@@ -926,7 +988,7 @@ export default function SportsbookPage() {
       {showPinModal && (
         <>
           <div onClick={() => setShowPinModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '28px', width: effectiveMobile ? '90vw' : '320px' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, padding: '28px', width: effectiveMobile ? '90vw' : '320px' }}>
             <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', marginBottom: '16px', color: text }}>Admin Access</h3>
             <input type="password" placeholder="PIN" value={adminPinInput}
               onChange={e => { setAdminPinInput(e.target.value); setAdminPinError('') }}
@@ -946,7 +1008,7 @@ export default function SportsbookPage() {
       {settleTarget && (
         <>
           <div onClick={() => setSettleTarget(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, padding: '28px', width: effectiveMobile ? '90vw' : '380px' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, padding: '28px', width: effectiveMobile ? '90vw' : '380px' }}>
             <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', marginBottom: '4px', color: text }}>Settle Game</h3>
             <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>{settleTarget.team_a} vs {settleTarget.team_b}</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
@@ -974,7 +1036,7 @@ export default function SportsbookPage() {
         return (
           <>
             <div onClick={() => setProjModalTeamId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0a0a0a' : '#f4f1ec', border: `1px solid ${border}`, width: effectiveMobile ? '92vw' : '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#0f1524' : '#f4f1ec', border: `1px solid ${border}`, width: effectiveMobile ? '92vw' : '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
               <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', color: text, margin: 0 }}>
                   Week {week} Projections {oppId ? `— ${teamLabel(projModalTeamId)} vs ${teamLabel(oppId)}` : `— ${teamLabel(projModalTeamId)}`}
@@ -1569,6 +1631,23 @@ export default function SportsbookPage() {
         {tab === 'activity' && (
           <>
             <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>Everything that's happened in the sportsbook — accounts created, bets and parlays placed, picks submitted, and admin actions.</p>
+
+            {adminUnlocked && pendingPinResets.length > 0 && (
+              <div style={{ marginBottom: '28px' }}>
+                <p style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, marginBottom: '10px' }}>Pending PIN Resets</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {pendingPinResets.map(r => (
+                    <div key={r.id} style={{ background: cardBg, border: `1px solid ${border}`, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <span style={{ fontSize: '12px', color: text }}>{r.account?.manager_name || '—'} wants a new PIN</span>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button onClick={() => resolvePinReset(r, true)} style={{ background: 'none', border: `1px solid ${green}`, color: green, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Approve</button>
+                        <button onClick={() => resolvePinReset(r, false)} style={{ background: 'none', border: `1px solid ${red}`, color: red, padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontFamily: "'Inter', sans-serif" }}>Deny</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {adminUnlocked && (
               <div style={{ marginBottom: '28px' }}>
