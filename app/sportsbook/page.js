@@ -1741,12 +1741,24 @@ export default function SportsbookPage() {
                         <div style={{ fontSize: '13px', color: text }}>{p.player_name} <span style={{ color: muted, fontSize: '11px' }}>{p.position}{p.team_name ? ` · ${p.team_name}` : ''}</span></div>
                         <div style={{ fontSize: '11px', color: muted }}>Line: {p.line} pts</div>
                       </div>
-                      <div style={{ textAlign: 'center', flex: '1 1 auto', minWidth: '180px' }}>
-                        <div style={{ fontSize: '14px', fontWeight: '700', color: text }}>
-                          Avg {fmt1(s?.avgPts)} · Last Wk {fmt1(s?.lastWeekPts)} · L3 {fmt1(s?.l3Avg)}
-                          {s?.posRank ? ` · ${p.position}${s.posRank}` : ''}
-                        </div>
-                        {opp && <div style={{ fontSize: '11px', color: muted, marginTop: '2px' }}>{s.nflTeam} {opp.homeAway} {opp.opp}</div>}
+                      <div style={{ display: 'flex', justifyContent: 'center', flex: '1 1 auto', minWidth: '180px' }}>
+                        {[
+                          ['Avg', fmt1(s?.avgPts)],
+                          ['Last Wk', fmt1(s?.lastWeekPts)],
+                          ['L3', fmt1(s?.l3Avg)],
+                          ...(s?.posRank ? [[p.position, `#${s.posRank}`]] : []),
+                        ].map(([label, val], i) => (
+                          <div key={label} style={{ padding: '0 12px', borderLeft: i > 0 ? `1px solid ${border}` : 'none', textAlign: 'center' }}>
+                            <div style={{ fontSize: '9px', color: muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+                            <div style={{ fontSize: '13px', fontWeight: '700', color: text }}>{val}</div>
+                          </div>
+                        ))}
+                        {opp && (
+                          <div style={{ padding: '0 12px', borderLeft: `1px solid ${border}`, textAlign: 'center' }}>
+                            <div style={{ fontSize: '9px', color: muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Opp</div>
+                            <div style={{ fontSize: '13px', fontWeight: '700', color: text }}>{opp.homeAway} {opp.opp}</div>
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => toggleBet({ family: 'prop', refId: p.id, betType: 'prop', pick: 'over', odds: p.odds_over, label: `${p.player_name} Over ${p.line}`, subLabel: `Week ${p.week} prop` })}
