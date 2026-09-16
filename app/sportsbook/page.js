@@ -149,9 +149,15 @@ export default function SportsbookPage() {
       setLeagueTeams(t)
       setLeagueMatchups((mRes.data || []).filter(x => x.season?.year === latestSeasonYear))
       if (t.length) {
-        const { data } = await db.from('roster_entries')
+        const { data, error } = await db.from('roster_entries')
           .select('id, team_id, player_id, stats, player:player_id(id, name, position, nfl_team)')
           .in('team_id', t.map(x => x.id))
+        // A single unrecognized column (e.g. nfl_team before its migration
+        // has run) fails this whole query, not just that field -- surface it
+        // instead of silently leaving rosterEntries empty, which quietly
+        // breaks every prop stat downstream (avg/last-week/L3/position rank),
+        // not just the one new column.
+        if (error) console.error('roster_entries fetch failed:', error.message)
         setRosterEntries(data || [])
       }
     })
