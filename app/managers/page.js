@@ -19,6 +19,7 @@ export default function ManagersPage() {
   const [rosterEntries, setRosterEntries] = useState([])
   const [selectedManager, setSelectedManager] = useState(null)
   const [activeTab, setActiveTab] = useState({}) // manager id -> tab
+  const [seasonSort, setSeasonSort] = useState({}) // manager id -> { key, dir }
   const [searchText, setSearchText] = useState('')
   const [showRetired, setShowRetired] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -260,6 +261,18 @@ export default function ManagersPage() {
   const getTab = (id) => activeTab[id] || 'stats'
   const setTab = (id, tab) => setActiveTab(prev => ({ ...prev, [id]: tab }))
 
+  // Sort state for each manager's Seasons tab lives here (in the parent),
+  // not inside ManagerCard -- ManagerCard is redefined every render, so any
+  // useState called inside it would reset on every keystroke/click
+  // elsewhere on the page. Keyed by manager id, same pattern as activeTab.
+  const getSeasonSort = (id) => seasonSort[id] || { key: 'year', dir: 'desc' }
+  const handleSeasonSort = (id, key) => {
+    setSeasonSort(prev => {
+      const cur = prev[id] || { key: 'year', dir: 'desc' }
+      return { ...prev, [id]: { key, dir: cur.key === key ? (cur.dir === 'asc' ? 'desc' : 'asc') : 'desc' } }
+    })
+  }
+
   const TabBtn = ({ id, tab, label }) => (
     <button
       onClick={() => setTab(id, tab)}
@@ -430,18 +443,28 @@ export default function ManagersPage() {
               )}
 
               {/* SEASONS TAB */}
-              {tab === 'seasons' && (
+              {tab === 'seasons' && (() => {
+                const { key: sKey, dir: sDir } = getSeasonSort(m.id)
+                const sortedSeasons = [...m.seasonBreakdown].sort((a, b) => {
+                  const av = a[sKey], bv = b[sKey]
+                  const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv
+                  return sDir === 'asc' ? cmp : -cmp
+                })
+                const cols = [['year', 'Year'], ['team_name', 'Team'], ['wins', 'W'], ['losses', 'L'], ['pf', 'PF'], ['diff', 'Diff'], ['ps', 'PS'], ['playoff_result', 'Result']]
+                return (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                     <thead>
                       <tr style={{ background: d ? '#111' : '#e4e0d8' }}>
-                        {['Year', 'Team', 'W', 'L', 'PF', 'Diff', 'PS', 'Result'].map((h, i) => (
-                          <th key={h} style={{ padding: '8px 10px', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, textAlign: i <= 1 ? 'left' : 'right', borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' }}>{h}</th>
+                        {cols.map(([key, h], i) => (
+                          <th key={key} onClick={() => handleSeasonSort(m.id, key)} style={{ padding: '8px 10px', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: sKey === key ? text : muted, textAlign: i <= 1 ? 'left' : 'right', borderBottom: `1px solid ${border}`, fontWeight: sKey === key ? '700' : '500', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                            {h}{sKey === key ? (sDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                          </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {m.seasonBreakdown.map((s, i) => (
+                      {sortedSeasons.map((s, i) => (
                         <tr key={s.year} style={{ background: i % 2 === 0 ? 'transparent' : (d ? '#0c111f' : '#e8e4dc') }}>
                           <td style={{ padding: '10px', fontSize: '12px', color: muted, borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' }}>{s.year}</td>
                           <td style={{ padding: '10px', fontSize: '12px', color: text, borderBottom: `1px solid ${border}`, fontFamily: "'Playfair Display', serif", whiteSpace: 'nowrap' }}>{s.team_name}</td>
@@ -462,7 +485,8 @@ export default function ManagersPage() {
                     </tbody>
                   </table>
                 </div>
-              )}
+                )
+              })()}
             </div>
           </div>
         )}
