@@ -29,7 +29,7 @@ const FUTURE_LABELS = {
 }
 
 export default function SportsbookPage() {
-  const { d, effectiveMobile, bg, text, muted, border, cardBg, green, red, gold } = useLayout()
+  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold } = useLayout()
 
   const [tab, setTab] = useState('lines')
   const [week, setWeek] = useState(1)
