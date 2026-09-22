@@ -818,8 +818,8 @@ export default function CurrentSeasonPage() {
           <div style={{ marginBottom: '64px' }}>
             <SectionLabel id="lj-index">LJ Index — All-Play Win %</SectionLabel>
             {ljPlotData.length > 0 && (() => {
-              const W = effectiveMobile ? 340 : 680
-              const H = effectiveMobile ? 280 : 440
+              const W = effectiveMobile ? 380 : 760
+              const H = effectiveMobile ? 310 : 500
               const PAD = { top: 26, right: 20, bottom: 44, left: effectiveMobile ? 45 : 60 }
               const chartW = W - PAD.left - PAD.right
               const chartH = H - PAD.top - PAD.bottom
@@ -833,8 +833,8 @@ export default function CurrentSeasonPage() {
               const clamp = v => Math.max(-AXIS_MAX, Math.min(AXIS_MAX, v))
               const toSvgX = x => PAD.left + ((clamp(x) + xMax) / (2 * xMax)) * chartW
               const toSvgY = y => PAD.top + ((yMax - clamp(y)) / (2 * yMax)) * chartH
-              const minBubble = effectiveMobile ? 7 : 10
-              const maxBubble = effectiveMobile ? 16 : 22
+              const minBubble = effectiveMobile ? 11 : 16
+              const maxBubble = effectiveMobile ? 20 : 29
               const axisColor = d ? 'rgba(255,255,255,0.2)' : 'rgba(13,33,82,0.25)'
               const gridColor = d ? 'rgba(255,255,255,0.06)' : 'rgba(13,33,82,0.08)'
               const gridStep = 25
@@ -865,11 +865,9 @@ export default function CurrentSeasonPage() {
                         <g key={r.name || i}>
                           <title>{`${r.name} — ${r.wins}-${r.losses} · All-Play ${r.allPlayWinPct}% · Luck ${r.luckRaw > 0 ? '+' : ''}${r.luckRaw} · Avg ${r.avgScore}`}</title>
                           <circle cx={cx} cy={cy} r={radius} fill={color} fillOpacity={0.85} stroke={d ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'} strokeWidth={1.5} />
-                          {radius > 16 && (
-                            <text x={cx} y={cy + 4} textAnchor="middle" fontSize={effectiveMobile ? '8' : '9'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
-                              {r.name?.split('/')[0]?.split(' ')[0]}
-                            </text>
-                          )}
+                          <text x={cx} y={cy + 3} textAnchor="middle" fontSize={effectiveMobile ? '7.5' : '9'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
+                            {r.name?.split('/')[0]?.split(' ')[0]}
+                          </text>
                         </g>
                       )
                     })}

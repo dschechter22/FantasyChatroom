@@ -178,8 +178,8 @@ export default function LJIndexPage() {
   }, [managers, allMatchups, allTimeYearFrom, allTimeYearTo])
   // activeData declared AFTER allTimeData
   const activeData = ljView === 'season' ? plotData : allTimeData
-  const W = effectiveMobile ? 340 : 680
-  const H = effectiveMobile ? 280 : 480
+  const W = effectiveMobile ? 380 : 760
+  const H = effectiveMobile ? 310 : 540
   const PAD = { top: 30, right: 20, bottom: 50, left: effectiveMobile ? 45 : 65 }
   const chartW = W - PAD.left - PAD.right
   const chartH = H - PAD.top - PAD.bottom
@@ -194,8 +194,8 @@ export default function LJIndexPage() {
   const clamp = v => Math.max(-AXIS_MAX, Math.min(AXIS_MAX, v))
   const toSvgX = (x) => PAD.left + ((clamp(x) + xMax) / (2 * xMax)) * chartW
   const toSvgY = (y) => PAD.top + ((yMax - clamp(y)) / (2 * yMax)) * chartH
-  const minBubble = effectiveMobile ? 7 : 10
-  const maxBubble = effectiveMobile ? 16 : 22
+  const minBubble = effectiveMobile ? 11 : 16
+  const maxBubble = effectiveMobile ? 20 : 29
   const gridStep = 25
   const gridLines = []
   for (let v = -AXIS_MAX; v <= AXIS_MAX; v += gridStep) {
@@ -281,11 +281,9 @@ export default function LJIndexPage() {
                     onMouseLeave={() => setTooltip(null)}
                   >
                     <circle cx={cx} cy={cy} r={radius} fill={color} fillOpacity={0.85} stroke={d ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'} strokeWidth={1.5} />
-                    {radius > 16 && (
-                      <text x={cx} y={cy + 4} textAnchor="middle" fontSize={effectiveMobile ? '8' : '9'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
-                        {r.managerName?.split('/')[0]?.split(' ')[0]}
-                      </text>
-                    )}
+                    <text x={cx} y={cy + 3} textAnchor="middle" fontSize={effectiveMobile ? '7.5' : '9'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
+                      {r.managerName?.split('/')[0]?.split(' ')[0]}
+                    </text>
                   </g>
                 )
               })}
