@@ -1,0 +1,233 @@
+-- Fantasy Chatroom 2026-27 Week 2 individual player fantasy points.
+-- Companion to week2_results_seed_2026.sql (team scores/records), needed
+-- because the "Sync ESPN" button did not successfully populate
+-- roster_entries.stats for Week 2 (likely the Vercel Hobby 10s function
+-- cap cutting the sync off partway through its per-player loop).
+--
+-- Writes the same fields /api/espn-sync writes per player per week:
+--   stats.actual[2]  -- real fantasy points scored
+--   stats.started[2] -- true for a starting slot, false for bench/IR
+--   stats.proj[2]    -- ESPN's own pre-game projection
+-- These feed lineup efficiency (postweek Luck), the player prop stat
+-- panel (avg/L3/last week) on the Sportsbook page, player pages' season
+-- stats table, and the matchup drawer's actual-score view.
+--
+-- Player names are matched against the players table with punctuation,
+-- spacing and case stripped (same normalization app/api/espn-sync/route.js
+-- uses), so "A.J. Brown" vs "AJ Brown" style differences don't cause a
+-- miss. A diagnostic query at the end lists any of the 166 rows that
+-- still found no roster_entries row to update -- if it returns anything,
+-- send me that list and I'll patch those individually.
+--
+-- Safe to re-run: jsonb_set on '{actual,2}' etc. always sets the same
+-- absolute Week 2 values and never touches any other week's stats.
+
+create temporary table w2_player_stats (
+  manager_name text, player_name text, proj_pts numeric, actual_pts numeric, started boolean
+);
+
+insert into w2_player_stats (manager_name, player_name, proj_pts, actual_pts, started) values
+  ('Dan','Lamar Jackson',22.8,16.3,true),
+  ('Dan','Kenneth Walker III',19.2,25.3,true),
+  ('Dan','Javonte Williams',18.2,6.5,true),
+  ('Dan','Amon-Ra St. Brown',18.7,34.2,true),
+  ('Dan','Luther Burden III',11.8,5.2,true),
+  ('Dan','Colston Loveland',10.6,0.8,true),
+  ('Dan','Matthew Golden',10.2,9.8,true),
+  ('Dan','Jalen Coker',11.0,13.1,true),
+  ('Dan','Brandon Aubrey',11.1,16.9,true),
+  ('Dan','TreVeyon Henderson',9.8,15.1,false),
+  ('Dan','Alec Pierce',10.4,2.1,false),
+  ('Dan','Dak Prescott',20.5,30.76,false),
+  ('Dan','Emmett Johnson',6.8,6.5,false),
+  ('Dan','Juwan Johnson',7.9,9.6,false),
+  ('Dan','Demond Claiborne',3.5,0.7,false),
+  ('Dan','Antonio Williams',5.6,4.4,false),
+  ('Dan','Michael Pittman Jr.',0.0,0.0,false),
+
+  ('Braden','Tyler Shough',15.6,23.88,true),
+  ('Braden','Christian McCaffrey',22.3,23.6,true),
+  ('Braden','Kyren Williams',15.5,16.7,true),
+  ('Braden','Justin Jefferson',17.1,8.0,true),
+  ('Braden','Tetairoa McMillan',12.9,14.6,true),
+  ('Braden','Tyler Warren',10.3,12.4,true),
+  ('Braden','Josh Downs',8.5,13.7,true),
+  ('Braden','Rashod Bateman',9.8,19.8,true),
+  ('Braden','Tyler Loop',9.5,5.9,true),
+  ('Braden','Zay Flowers',0.0,0.0,false),
+  ('Braden','Joe Burrow',16.9,16.18,false),
+  ('Braden','Jayden Reed',9.3,0.9,false),
+  ('Braden','George Kittle',9.8,17.5,false),
+  ('Braden','Kenny Gainwell',10.0,7.0,false),
+  ('Braden','Xavier Worthy',10.6,12.0,false),
+  ('Braden','Alvin Kamara',6.7,5.2,false),
+
+  ('John','Jalen Hurts',20.9,17.16,true),
+  ('John','James Cook III',20.0,23.9,true),
+  ('John','Breece Hall',16.9,13.7,true),
+  ('John','CeeDee Lamb',16.9,34.8,true),
+  ('John','DJ Moore',11.9,-0.1,true),
+  ('John','Trey McBride',12.8,15.6,true),
+  ('John','David Montgomery',15.4,3.4,true),
+  ('John','Deebo Samuel Sr.',13.7,6.5,true),
+  ('John','Jason Myers',9.9,7.3,true),
+  ('John','DK Metcalf',11.5,5.2,false),
+  ('John','Jordan Addison',10.0,3.6,false),
+  ('John','Kyle Monangai',10.7,8.3,false),
+  ('John','Rachaad White',8.6,13.8,false),
+  ('John','Romeo Doubs',9.9,12.1,false),
+  ('John','Woody Marks',9.1,8.0,false),
+  ('John','Braelon Allen',8.2,9.0,false),
+
+  ('Reid','Jayden Daniels',21.0,17.24,true),
+  ('Reid','Saquon Barkley',19.3,3.0,true),
+  ('Reid','Travis Etienne Jr.',13.4,6.6,true),
+  ('Reid','Jaxon Smith-Njigba',17.3,42.0,true),
+  ('Reid','Rashee Rice',14.0,11.8,true),
+  ('Reid','Sam LaPorta',10.1,16.2,true),
+  ('Reid','Ladd McConkey',13.5,6.0,true),
+  ('Reid','Tee Higgins',11.5,14.5,true),
+  ('Reid','Cameron Dicker',10.3,2.0,true),
+  ('Reid','Jonathon Brooks',9.3,1.6,false),
+  ('Reid','J.K. Dobbins',13.9,4.1,false),
+  ('Reid','Wan''Dale Robinson',8.4,1.9,false),
+  ('Reid','Dallas Goedert',9.8,0.9,false),
+  ('Reid','Patrick Mahomes',18.8,29.48,false),
+  ('Reid','Tyjae Spears',8.6,9.0,false),
+  ('Reid','Chris Bell',6.4,0.0,false),
+
+  ('Caden','Josh Allen',23.8,44.82,true),
+  ('Caden','Ashton Jeanty',18.7,8.8,true),
+  ('Caden','Bucky Irving',15.5,12.5,true),
+  ('Caden','Ja''Marr Chase',17.6,24.5,true),
+  ('Caden','Chris Olave',14.8,21.6,true),
+  ('Caden','Harold Fannin Jr.',9.0,9.4,true),
+  ('Caden','Terry McLaurin',11.6,7.0,true),
+  ('Caden','Rhamondre Stevenson',13.6,4.6,true),
+  ('Caden','Cairo Santos',9.5,4.0,true),
+  ('Caden','Michael Wilson',9.0,3.3,false),
+  ('Caden','Jakobi Meyers',9.0,3.8,false),
+  ('Caden','Tyler Allgeier',7.7,3.9,false),
+  ('Caden','Mike Washington Jr.',4.4,0.7,false),
+  ('Caden','Malik Washington',9.9,9.7,false),
+  ('Caden','Rashid Shaheed',11.4,7.9,false),
+  ('Caden','Jared Goff',17.2,29.78,false),
+  ('Caden','Jordan Mason',0.0,0.0,false),
+
+  ('Mamby/Tenner','Drake Maye',19.1,8.52,true),
+  ('Mamby/Tenner','Bijan Robinson',23.8,10.6,true),
+  ('Mamby/Tenner','Aaron Jones Sr.',15.3,12.0,true),
+  ('Mamby/Tenner','Garrett Wilson',14.6,16.2,true),
+  ('Mamby/Tenner','Courtland Sutton',11.2,4.5,true),
+  ('Mamby/Tenner','Kyle Pitts Sr.',9.4,2.5,true),
+  ('Mamby/Tenner','D''Andre Swift',14.8,12.9,true),
+  ('Mamby/Tenner','Tony Pollard',12.2,8.5,true),
+  ('Mamby/Tenner','Ka''imi Fairbairn',10.4,8.2,true),
+  ('Mamby/Tenner','Nico Collins',0.0,0.0,false),
+  ('Mamby/Tenner','Stefon Diggs',9.3,21.2,false),
+  ('Mamby/Tenner','RJ Harvey',0.0,0.0,false),
+  ('Mamby/Tenner','Mark Andrews',9.7,9.9,false),
+  ('Mamby/Tenner','Brian Robinson Jr.',8.0,9.2,false),
+  ('Mamby/Tenner','Baker Mayfield',17.3,13.68,false),
+  ('Mamby/Tenner','Khalil Shakir',9.4,6.3,false),
+  ('Mamby/Tenner','A.J. Brown',0.0,0.0,false),
+
+  ('Wally','Caleb Williams',20.1,8.72,true),
+  ('Wally','Omarion Hampton',17.1,20.0,true),
+  ('Wally','Chase Brown',15.9,11.2,true),
+  ('Wally','DeVonta Smith',12.9,26.2,true),
+  ('Wally','Jameson Williams',11.8,5.3,true),
+  ('Wally','Tucker Kraft',9.7,2.5,true),
+  ('Wally','Malik Nabers',14.0,0.6,true),
+  ('Wally','Quentin Johnston',9.6,2.4,true),
+  ('Wally','Cam Little',8.6,7.7,true),
+  ('Wally','Jadarian Price',14.5,6.0,false),
+  ('Wally','MarShawn Lloyd',12.3,8.6,false),
+  ('Wally','De''Zhaun Stribling',0.0,0.0,false),
+  ('Wally','Kaelon Black',9.4,2.5,false),
+  ('Wally','Kimani Vidal',1.5,1.0,false),
+  ('Wally','T.J. Hockenson',8.4,5.4,false),
+  ('Wally','Malachi Fields',5.7,5.0,false),
+  ('Wally','Jordyn Tyson',0.0,0.0,false),
+
+  ('Freed','Justin Herbert',20.2,7.88,true),
+  ('Freed','Derrick Henry',19.9,19.2,true),
+  ('Freed','Bhayshul Tuten',10.8,15.2,true),
+  ('Freed','Mike Evans',12.4,8.4,true),
+  ('Freed','Christian Watson',12.1,13.1,true),
+  ('Freed','Michael Mayer',8.8,4.3,true),
+  ('Freed','Jaylen Waddle',11.3,20.8,true),
+  ('Freed','Jacory Croskey-Merritt',11.3,5.3,true),
+  ('Freed','Harrison Mevis',9.9,3.0,true),
+  ('Freed','Puka Nacua',0.0,0.0,false),
+  ('Freed','Jaylen Warren',12.0,9.7,false),
+  ('Freed','Brian Thomas Jr.',9.2,7.0,false),
+  ('Freed','Blake Corum',11.0,12.7,false),
+  ('Freed','KC Concepcion',9.0,5.7,false),
+  ('Freed','Matthew Stafford',18.4,26.98,false),
+  ('Freed','Caleb Douglas',8.7,3.9,false),
+  ('Freed','Brock Bowers',0.0,0.0,false),
+
+  ('JM/Cameron','Jaxson Dart',19.1,0.8,true),
+  ('JM/Cameron','Jahmyr Gibbs',25.6,23.8,true),
+  ('JM/Cameron','Quinshon Judkins',13.1,8.3,true),
+  ('JM/Cameron','Drake London',11.7,8.9,true),
+  ('JM/Cameron','Carnell Tate',10.6,4.7,true),
+  ('JM/Cameron','Dalton Kincaid',9.6,21.5,true),
+  ('JM/Cameron','Jeremiyah Love',13.3,6.5,true),
+  ('JM/Cameron','Cam Skattebo',14.2,8.5,true),
+  ('JM/Cameron','Eddy Pineiro',10.4,5.0,true),
+  ('JM/Cameron','Marvin Harrison Jr.',8.7,0.0,false),
+  ('JM/Cameron','Josh Jacobs',0.0,0.0,false),
+  ('JM/Cameron','Chris Godwin Jr.',9.3,9.3,false),
+  ('JM/Cameron','Makai Lemon',8.4,1.9,false),
+  ('JM/Cameron','Brock Purdy',21.2,29.98,false),
+  ('JM/Cameron','Malik Willis',15.0,12.98,false),
+  ('JM/Cameron','Ted Hurst III',5.1,4.2,false),
+
+  ('Big E','Trevor Lawrence',16.5,6.66,true),
+  ('Big E','Jonathan Taylor',19.9,31.7,true),
+  ('Big E','De''Von Achane',17.8,12.3,true),
+  ('Big E','George Pickens',14.0,9.0,true),
+  ('Big E','Emeka Egbuka',13.3,9.3,true),
+  ('Big E','Isaiah Likely',10.0,7.3,true),
+  ('Big E','Davante Adams',14.7,39.0,true),
+  ('Big E','Chuba Hubbard',15.3,15.9,true),
+  ('Big E','Harrison Butker',9.5,17.5,true),
+  ('Big E','Rome Odunze',11.4,6.8,false),
+  ('Big E','Parker Washington',11.4,14.8,false),
+  ('Big E','Rico Dowdle',10.8,6.9,false),
+  ('Big E','Travis Kelce',9.6,24.1,false),
+  ('Big E','Jonah Coleman',9.6,14.8,false),
+  ('Big E','Bo Nix',19.2,15.12,false),
+  ('Big E','Devaughn Vele',8.6,10.4,false),
+  ('Big E','Zach Charbonnet',0.0,0.0,false);
+
+-- Apply: set stats.actual[2] / stats.started[2] / stats.proj[2] on whichever
+-- roster_entries row matches this manager's team + this player.
+update roster_entries re
+set stats = jsonb_set(
+  jsonb_set(
+    jsonb_set(coalesce(re.stats, '{}'::jsonb), '{actual,2}', to_jsonb(w.actual_pts), true),
+    '{started,2}', to_jsonb(w.started), true
+  ),
+  '{proj,2}', to_jsonb(w.proj_pts), true
+)
+from w2_player_stats w
+join managers m on m.name = w.manager_name
+join seasons s on s.year = 2026
+join teams t on t.manager_id = m.id and t.season_id = s.id
+join players p on regexp_replace(lower(p.name), '[^a-z0-9]', '', 'g') = regexp_replace(lower(w.player_name), '[^a-z0-9]', '', 'g')
+where re.team_id = t.id and re.player_id = p.id;
+
+-- Diagnostic: rows above that found no roster_entries row to update.
+select w.manager_name, w.player_name
+from w2_player_stats w
+left join managers m on m.name = w.manager_name
+left join seasons s on s.year = 2026
+left join teams t on t.manager_id = m.id and t.season_id = s.id
+left join players p on regexp_replace(lower(p.name), '[^a-z0-9]', '', 'g') = regexp_replace(lower(w.player_name), '[^a-z0-9]', '', 'g')
+left join roster_entries re on re.team_id = t.id and re.player_id = p.id
+where re.id is null;
+
+drop table w2_player_stats;
