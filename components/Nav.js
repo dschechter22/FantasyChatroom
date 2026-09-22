@@ -4,6 +4,53 @@ import { usePathname } from 'next/navigation'
 import { useLayout } from '../hooks/LayoutContext'
 import { SECTIONS, sectionHasPath } from '../lib/nav'
 
+// Self-contained so it can sit in the nav without any of the sportsbook
+// page's state -- hits the same admin-sync proxy the Sportsbook page's own
+// "Sync Live From ESPN Now" button uses, letting the current week's real
+// ESPN scores land without digging into Sportsbook -> Props -> admin first.
+function SyncEspnButton({ muted, border }) {
+  const [status, setStatus] = useState('idle') // idle | working | done | error
+  const [msg, setMsg] = useState('')
+
+  const run = async () => {
+    if (status === 'working') return
+    setStatus('working')
+    setMsg('')
+    try {
+      const res = await fetch('/api/sportsbook-admin-sync', { cache: 'no-store' })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setStatus('error')
+        setMsg(data.error || `HTTP ${res.status}`)
+      } else if (data.errors?.length) {
+        setStatus('error')
+        setMsg(`${data.errors.length} error(s)`)
+      } else {
+        setStatus('done')
+        setMsg(`Week ${data.week} synced`)
+      }
+    } catch (e) {
+      setStatus('error')
+      setMsg(e.message || 'Failed')
+    }
+    setTimeout(() => { setStatus('idle'); setMsg('') }, 6000)
+  }
+
+  const label = status === 'working' ? 'Syncing…' : status === 'done' ? 'Synced ✓' : status === 'error' ? 'Sync failed' : 'Sync ESPN'
+
+  return (
+    <button
+      onClick={run}
+      disabled={status === 'working'}
+      className="fc-btn"
+      title={msg || 'Pull the current week\'s live scores from ESPN'}
+      style={{ color: status === 'error' ? '#c0392b' : status === 'done' ? '#2a9d5c' : muted, borderColor: border }}
+    >
+      {label}
+    </button>
+  )
+}
+
 export default function Nav() {
   const pathname = usePathname()
   const { d, effectiveMobile, text, muted, border, toggleTheme, toggleLayout } = useLayout()
@@ -127,8 +174,9 @@ export default function Nav() {
             const active = sectionHasPath(section, pathname)
             if (!section.items) {
               return (
-                <div className="fc-item" key={section.href}>
+                <div className="fc-item" key={section.href} style={section.href === '/export' ? { display: 'flex', alignItems: 'center', gap: '8px' } : undefined}>
                   <a href={section.href} className={`fc-link${active ? ' active' : ''}`}>{section.label}</a>
+                  {section.href === '/export' && <SyncEspnButton muted={muted} border={border} />}
                 </div>
               )
             }
@@ -167,14 +215,21 @@ export default function Nav() {
           {SECTIONS.map(section => {
             if (!section.items) {
               return (
-                <a
-                  key={section.href}
-                  href={section.href}
-                  className={pathname === section.href ? 'active' : ''}
-                  onClick={closeAll}
-                >
-                  {section.label}
-                </a>
+                <div key={section.href} style={section.href === '/export' ? { display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${border}` } : undefined}>
+                  <a
+                    href={section.href}
+                    className={pathname === section.href ? 'active' : ''}
+                    onClick={closeAll}
+                    style={section.href === '/export' ? { flex: 1, border: 0 } : undefined}
+                  >
+                    {section.label}
+                  </a>
+                  {section.href === '/export' && (
+                    <span style={{ paddingRight: 16 }}>
+                      <SyncEspnButton muted={muted} border={border} />
+                    </span>
+                  )}
+                </div>
               )
             }
             const open = openGroup === section.label
