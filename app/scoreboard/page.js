@@ -54,10 +54,13 @@ export default function ScoreboardPage() {
 
   const weekMatchups = useMemo(() => {
     const real = matchups.filter(m => m.week === week)
-    const realPairs = new Set(real.map(m => `${m.home_team_id}-${m.away_team_id}`))
+    // Keyed by team, not by home/away pair: the DB row and the fixed schedule
+    // don't always agree on who's home, and a reversed pair would otherwise
+    // show the same game twice (once final, once "Not yet played").
+    const booked = new Set(real.flatMap(m => [m.home_team_id, m.away_team_id]))
     const teamsById = Object.fromEntries(teams.map(t => [t.id, t]))
     const fixed = fixedGames
-      .filter(g => g.week === week && !realPairs.has(`${g.homeId}-${g.awayId}`))
+      .filter(g => g.week === week && !booked.has(g.homeId) && !booked.has(g.awayId))
       .map(g => ({
         id: `fixed-${g.homeId}-${g.awayId}`,
         home_team_id: g.homeId, away_team_id: g.awayId,

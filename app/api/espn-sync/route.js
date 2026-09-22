@@ -111,12 +111,20 @@ export async function GET(request) {
         result.errors.push(`Unmatched ESPN team id in a Week ${week} matchup: ${m.espnHomeId} vs ${m.espnAwayId}`)
         continue
       }
-      const { data: existing } = await supabase.from('matchups').select('id')
+      // Match either orientation -- manually seeded weeks don't always list
+      // the same team as home that ESPN does, and an exact-order lookup
+      // would insert a second, reversed copy of the same game.
+      const { data: existingRows } = await supabase.from('matchups').select('id, home_team_id')
         .eq('season_id', season.id).eq('week', week)
-        .eq('home_team_id', home.id).eq('away_team_id', away.id)
-        .maybeSingle()
+        .or(`and(home_team_id.eq.${home.id},away_team_id.eq.${away.id}),and(home_team_id.eq.${away.id},away_team_id.eq.${home.id})`)
+        .limit(1)
+      const existing = existingRows?.[0]
       if (existing) {
-        await supabase.from('matchups').update({ home_score: m.homeScore, away_score: m.awayScore }).eq('id', existing.id)
+        const flipped = existing.home_team_id === away.id
+        await supabase.from('matchups').update({
+          home_score: flipped ? m.awayScore : m.homeScore,
+          away_score: flipped ? m.homeScore : m.awayScore,
+        }).eq('id', existing.id)
       } else {
         await supabase.from('matchups').insert({
           season_id: season.id, week, home_team_id: home.id, away_team_id: away.id,

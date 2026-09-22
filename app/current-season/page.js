@@ -126,10 +126,12 @@ export default function CurrentSeasonPage() {
   const thisWeekMatchups = (() => {
     const wk = nflWeek || (weeks.length ? Math.max(...weeks) : 1)
     const real = matchups.filter(m => m.week === wk)
-    const realPairs = new Set(real.map(m => `${m.home_team?.id}-${m.away_team?.id}`))
+    // Keyed by team, not home/away pair -- a reversed pair would otherwise
+    // show the same game twice.
+    const booked = new Set(real.flatMap(m => [m.home_team?.id, m.away_team?.id]))
     const fixed = teams.length ? resolveSchedule(teams).games : []
     const fromFixed = fixed
-      .filter(g => g.week === wk && !realPairs.has(`${g.homeId}-${g.awayId}`))
+      .filter(g => g.week === wk && !booked.has(g.homeId) && !booked.has(g.awayId))
       .map(g => ({
         id: `fixed-${g.homeId}-${g.awayId}`,
         home_team: teams.find(t => t.id === g.homeId),
