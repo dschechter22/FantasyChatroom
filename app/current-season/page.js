@@ -857,20 +857,79 @@ export default function CurrentSeasonPage() {
                     ))}
                     <text x={PAD.left + chartW / 2} y={H - 4} textAnchor="middle" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif" letterSpacing="1.5">ALL-PLAY WIN %</text>
                     <text x={10} y={PAD.top + chartH / 2} textAnchor="middle" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif" letterSpacing="1.5" transform={`rotate(-90, 10, ${PAD.top + chartH / 2})`}>LUCK</text>
-                    {ljPlotData.map((r, i) => {
-                      const cx = toSvgX(r.x), cy = toSvgY(r.y)
-                      const radius = minBubble + r.powerNorm * (maxBubble - minBubble)
-                      const color = MANAGER_COLORS[r.slug] || '#888'
-                      return (
-                        <g key={r.name || i}>
-                          <title>{`${r.name} — ${r.wins}-${r.losses} · All-Play ${r.allPlayWinPct}% · Luck ${r.luckRaw > 0 ? '+' : ''}${r.luckRaw} · Avg ${r.avgScore}`}</title>
-                          <circle cx={cx} cy={cy} r={radius} fill={color} fillOpacity={0.85} stroke={d ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'} strokeWidth={1.5} />
-                          <text x={cx} y={cy + 3} textAnchor="middle" fontSize={effectiveMobile ? '7.5' : '9'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
-                            {r.name?.split('/')[0]?.split(' ')[0]}
-                          </text>
-                        </g>
-                      )
-                    })}
+                    {(() => {
+                      const items = ljPlotData.map((r, i) => ({
+                        r, i,
+                        cx: toSvgX(r.x),
+                        cy: toSvgY(r.y),
+                        radius: minBubble + r.powerNorm * (maxBubble - minBubble),
+                        color: MANAGER_COLORS[r.slug] || '#888',
+                      }))
+                      // An exact All-Play Win%/luck tie puts two+ teams at
+                      // the literal same point, hiding one bubble behind
+                      // another -- group anything within a few px and split
+                      // it into equal wedges (a yin-yang for the common
+                      // two-way case) instead.
+                      const COLLISION_PX = 8
+                      const used = new Set()
+                      const clusters = []
+                      items.forEach((item, idx) => {
+                        if (used.has(idx)) return
+                        const cluster = [item]
+                        used.add(idx)
+                        items.forEach((other, j) => {
+                          if (used.has(j)) return
+                          if (Math.hypot(other.cx - item.cx, other.cy - item.cy) < COLLISION_PX) {
+                            cluster.push(other)
+                            used.add(j)
+                          }
+                        })
+                        clusters.push(cluster)
+                      })
+                      const title = r => `${r.name} — ${r.wins}-${r.losses} · All-Play ${r.allPlayWinPct}% · Luck ${r.luckRaw > 0 ? '+' : ''}${r.luckRaw} · Avg ${r.avgScore}`
+                      return clusters.map((cluster, ci) => {
+                        if (cluster.length === 1) {
+                          const { r, i, cx, cy, radius, color } = cluster[0]
+                          return (
+                            <g key={r.name || i}>
+                              <title>{title(r)}</title>
+                              <circle cx={cx} cy={cy} r={radius} fill={color} fillOpacity={0.85} stroke={d ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'} strokeWidth={1.5} />
+                              <text x={cx} y={cy + 3} textAnchor="middle" fontSize={effectiveMobile ? '7.5' : '9'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
+                                {r.name?.split('/')[0]?.split(' ')[0]}
+                              </text>
+                            </g>
+                          )
+                        }
+                        const cx = cluster.reduce((s, it) => s + it.cx, 0) / cluster.length
+                        const cy = cluster.reduce((s, it) => s + it.cy, 0) / cluster.length
+                        const radius = Math.max(...cluster.map(it => it.radius))
+                        const n = cluster.length
+                        return (
+                          <g key={`cluster-${ci}`}>
+                            {cluster.map((item, k) => {
+                              const a0 = (k / n) * 2 * Math.PI
+                              const a1 = ((k + 1) / n) * 2 * Math.PI
+                              const x0 = cx + radius * Math.sin(a0), y0 = cy - radius * Math.cos(a0)
+                              const x1 = cx + radius * Math.sin(a1), y1 = cy - radius * Math.cos(a1)
+                              const largeArc = (a1 - a0) > Math.PI ? 1 : 0
+                              const mid = (a0 + a1) / 2
+                              const lx = cx + radius * 0.58 * Math.sin(mid)
+                              const ly = cy - radius * 0.58 * Math.cos(mid) + 3
+                              return (
+                                <g key={item.r.name || item.i}>
+                                  <title>{title(item.r)}</title>
+                                  <path d={`M ${cx} ${cy} L ${x0} ${y0} A ${radius} ${radius} 0 ${largeArc} 1 ${x1} ${y1} Z`}
+                                    fill={item.color} fillOpacity={0.85} stroke={d ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'} strokeWidth={1.5} />
+                                  <text x={lx} y={ly} textAnchor="middle" fontSize={effectiveMobile ? '7' : '8'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
+                                    {item.r.name?.split('/')[0]?.split(' ')[0]}
+                                  </text>
+                                </g>
+                              )
+                            })}
+                          </g>
+                        )
+                      })
+                    })()}
                   </svg>
                   <p style={{ color: muted, fontSize: '11px', marginTop: '8px' }}>All-Play Win% vs Luck · bubble size = power score · axes centered at league average</p>
                 </div>

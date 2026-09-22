@@ -270,23 +270,81 @@ export default function LJIndexPage() {
               {!effectiveMobile && quadrants.map((q, i) => (
                 <text key={i} x={q.x} y={q.y} textAnchor="middle" fontSize="9" fill={q.color} fontFamily="Inter, sans-serif" letterSpacing="1.2" fontWeight="500">{q.label.toUpperCase()}</text>
               ))}
-              {activeData.map((r, i) => {
-                const cx = toSvgX(r.x)
-                const cy = toSvgY(r.y)
-                const radius = minBubble + r.powerNorm * (maxBubble - minBubble)
-                const color = MANAGER_COLORS[r.managerSlug] || '#888'
-                return (
-                  <g key={r.managerId || i} style={{ cursor: 'pointer' }}
-                    onMouseEnter={() => setTooltip({ r, cx, cy })}
-                    onMouseLeave={() => setTooltip(null)}
-                  >
-                    <circle cx={cx} cy={cy} r={radius} fill={color} fillOpacity={0.85} stroke={d ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'} strokeWidth={1.5} />
-                    <text x={cx} y={cy + 3} textAnchor="middle" fontSize={effectiveMobile ? '7.5' : '9'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
-                      {r.managerName?.split('/')[0]?.split(' ')[0]}
-                    </text>
-                  </g>
-                )
-              })}
+              {(() => {
+                const items = activeData.map((r, i) => ({
+                  r, i,
+                  cx: toSvgX(r.x),
+                  cy: toSvgY(r.y),
+                  radius: minBubble + r.powerNorm * (maxBubble - minBubble),
+                  color: MANAGER_COLORS[r.managerSlug] || '#888',
+                }))
+                // An exact All-Play Win%/luck tie puts two+ teams at the
+                // literal same point, so one bubble fully hides the other(s)
+                // -- group anything within a few px and split it into equal
+                // wedges (a yin-yang for the common two-way case) instead.
+                const COLLISION_PX = 8
+                const used = new Set()
+                const clusters = []
+                items.forEach((item, idx) => {
+                  if (used.has(idx)) return
+                  const cluster = [item]
+                  used.add(idx)
+                  items.forEach((other, j) => {
+                    if (used.has(j)) return
+                    if (Math.hypot(other.cx - item.cx, other.cy - item.cy) < COLLISION_PX) {
+                      cluster.push(other)
+                      used.add(j)
+                    }
+                  })
+                  clusters.push(cluster)
+                })
+                return clusters.map((cluster, ci) => {
+                  if (cluster.length === 1) {
+                    const { r, i, cx, cy, radius, color } = cluster[0]
+                    return (
+                      <g key={r.managerId || i} style={{ cursor: 'pointer' }}
+                        onMouseEnter={() => setTooltip({ r, cx, cy })}
+                        onMouseLeave={() => setTooltip(null)}
+                      >
+                        <circle cx={cx} cy={cy} r={radius} fill={color} fillOpacity={0.85} stroke={d ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'} strokeWidth={1.5} />
+                        <text x={cx} y={cy + 3} textAnchor="middle" fontSize={effectiveMobile ? '7.5' : '9'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
+                          {r.managerName?.split('/')[0]?.split(' ')[0]}
+                        </text>
+                      </g>
+                    )
+                  }
+                  const cx = cluster.reduce((s, it) => s + it.cx, 0) / cluster.length
+                  const cy = cluster.reduce((s, it) => s + it.cy, 0) / cluster.length
+                  const radius = Math.max(...cluster.map(it => it.radius))
+                  const n = cluster.length
+                  return (
+                    <g key={`cluster-${ci}`}>
+                      {cluster.map((item, k) => {
+                        const a0 = (k / n) * 2 * Math.PI
+                        const a1 = ((k + 1) / n) * 2 * Math.PI
+                        const x0 = cx + radius * Math.sin(a0), y0 = cy - radius * Math.cos(a0)
+                        const x1 = cx + radius * Math.sin(a1), y1 = cy - radius * Math.cos(a1)
+                        const largeArc = (a1 - a0) > Math.PI ? 1 : 0
+                        const mid = (a0 + a1) / 2
+                        const lx = cx + radius * 0.58 * Math.sin(mid)
+                        const ly = cy - radius * 0.58 * Math.cos(mid) + 3
+                        return (
+                          <g key={item.r.managerId || item.i} style={{ cursor: 'pointer' }}
+                            onMouseEnter={() => setTooltip({ r: item.r, cx, cy })}
+                            onMouseLeave={() => setTooltip(null)}
+                          >
+                            <path d={`M ${cx} ${cy} L ${x0} ${y0} A ${radius} ${radius} 0 ${largeArc} 1 ${x1} ${y1} Z`}
+                              fill={item.color} fillOpacity={0.85} stroke={d ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'} strokeWidth={1.5} />
+                            <text x={lx} y={ly} textAnchor="middle" fontSize={effectiveMobile ? '7' : '8'} fill="white" fontFamily="Inter, sans-serif" fontWeight="600" style={{ pointerEvents: 'none' }}>
+                              {item.r.managerName?.split('/')[0]?.split(' ')[0]}
+                            </text>
+                          </g>
+                        )
+                      })}
+                    </g>
+                  )
+                })
+              })()}
               {tooltip && (() => {
                 const { r, cx, cy } = tooltip
                 const tw = 175, th = 105
