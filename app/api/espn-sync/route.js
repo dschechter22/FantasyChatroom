@@ -134,9 +134,19 @@ export async function GET(request) {
       result.matchupsSynced++
     }
 
+    // ESPN occasionally serves a roster snapshot with no lineup at all --
+    // every player in a bench slot, 0 actual, 0 projection. Saving that
+    // wiped good Week 2 stats once, so a team with zero starters in the
+    // payload is treated as a bad read and its player lines are skipped.
+    const espnTeamsWithStarters = new Set(playerLines.filter(l => l.started).map(l => l.espnTeamId))
+    for (const espnId of new Set(playerLines.map(l => l.espnTeamId))) {
+      if (!espnTeamsWithStarters.has(espnId)) result.errors.push(`ESPN returned no starters for team ${espnId} in Week ${week} -- skipped its player stats`)
+    }
+
     for (const line of playerLines) {
       const team = teamsByEspnId[line.espnTeamId]
       if (!team) continue
+      if (!espnTeamsWithStarters.has(line.espnTeamId)) continue
       const key = norm(line.playerName)
       let entry = entryByTeamAndName.get(`${team.id}|${key}`)
 
