@@ -183,12 +183,16 @@ export default function LJIndexPage() {
   const PAD = { top: 30, right: 20, bottom: 50, left: effectiveMobile ? 45 : 65 }
   const chartW = W - PAD.left - PAD.right
   const chartH = H - PAD.top - PAD.bottom
-  // Both axes are percentage-point values, so both are fixed to the same
-  // -100%..100% domain rather than scaled to whatever this season's data
-  // happens to span -- a data-driven scale made the two axes disagree on
-  // where a given tick actually sits, pushing gridlines and labels outside
-  // the plotted area whenever luck's spread differed from all-play%'s.
-  const AXIS_MAX = 100
+  // Both axes are percentage-point values, so they share one symmetric
+  // domain (keeps the two axes agreeing on where a tick sits), but that
+  // domain is fitted to the data -- a fixed -100%..100% crushed every
+  // bubble into the middle, since real spreads are usually a few points.
+  // The domain snaps to a multiple of 4 grid steps so the labels land on
+  // round numbers.
+  const dataMax = Math.max(1, ...activeData.flatMap(r => [Math.abs(r.x), Math.abs(r.y)]))
+  const padded = dataMax * 1.25
+  const gridStep = [1, 2, 2.5, 5, 10, 20, 25].find(s => s * 4 >= padded) || 25
+  const AXIS_MAX = Math.min(100, gridStep * 4)
   const xMax = AXIS_MAX
   const yMax = AXIS_MAX
   const clamp = v => Math.max(-AXIS_MAX, Math.min(AXIS_MAX, v))
@@ -196,7 +200,6 @@ export default function LJIndexPage() {
   const toSvgY = (y) => PAD.top + ((yMax - clamp(y)) / (2 * yMax)) * chartH
   const minBubble = effectiveMobile ? 11 : 16
   const maxBubble = effectiveMobile ? 20 : 29
-  const gridStep = 25
   const gridLines = []
   for (let v = -AXIS_MAX; v <= AXIS_MAX; v += gridStep) {
     gridLines.push(v)
