@@ -197,11 +197,18 @@ export default function CurrentSeasonPage() {
   // of compared against the real total.
   const maxStatsFor = (teamId) => {
     const entries = rosterEntries.filter(e => e.team_id === teamId)
+    const log = teamData[teamId]?.gameLog || []
     const totals = weeks.map(wk => {
+      // Only players with a score on file for the week are candidates, so
+      // players added later (no data for earlier weeks) don't sink the week
+      // below the completeness gate; 9 = a full starting lineup's worth.
       const withActual = entries.filter(e => e.stats?.actual?.[wk] != null)
-      if (!entries.length || withActual.length < entries.length * 0.8) return null
-      const optimal = actualWeekLineup(entries, wk)
-      return optimal.total || null
+      if (withActual.length < 9) return null
+      const optimal = actualWeekLineup(withActual, wk)
+      // Dropped players aren't in roster_entries, so the best lineup found
+      // can undershoot what the team really scored -- never report less.
+      const real = log.find(g => g.week === wk)?.score || 0
+      return Math.max(optimal.total, real) || null
     }).filter(t => t != null)
     if (!totals.length) return { maxPf: null, maxAvg: null }
     const maxPf = parseFloat(totals.reduce((s, t) => s + t, 0).toFixed(1))
