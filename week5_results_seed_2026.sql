@@ -49,6 +49,30 @@ where not exists (
       or (m2.home_team_id = at.id and m2.away_team_id = ht.id))
 );
 
+-- 1b. Overwrite the scores on any Week 5 rows that already exist. The daily
+-- ESPN sync creates the current week's matchups mid-week with whatever partial
+-- scores ESPN had at that moment, and the insert above skips a pair that's
+-- already there -- so without this, a game keeps its stale score and the
+-- standings never see the final result.
+update matchups m set
+  home_score = case when m.home_team_id = ht.id then v.home_score else v.away_score end,
+  away_score = case when m.home_team_id = ht.id then v.away_score else v.home_score end
+from (values
+  ('Freed', 'Reid', 158.26, 171.56),
+  ('Mamby/Tenner', 'Big E', 153.16, 173.44),
+  ('Braden', 'JM/Cameron', 137.70, 119.56),
+  ('John', 'Wally', 96.40, 131.38),
+  ('Dan', 'Caden', 79.64, 143.78)
+) as v(home_manager, away_manager, home_score, away_score)
+join managers hm on hm.name = v.home_manager
+join managers am on am.name = v.away_manager
+cross join (select id from seasons where year = 2026) s
+join teams ht on ht.season_id = s.id and ht.manager_id = hm.id
+join teams at on at.season_id = s.id and at.manager_id = am.id
+where m.season_id = s.id and m.week = 5
+  and ((m.home_team_id = ht.id and m.away_team_id = at.id)
+    or (m.home_team_id = at.id and m.away_team_id = ht.id));
+
 -- 2. Team records/points through Week 5 (Week 4 totals + Week 5 result)
 update teams t set
   wins = v.wins,
