@@ -11,7 +11,7 @@
 -- 1. Matchups
 insert into matchups (season_id, week, home_team_id, away_team_id, home_score, away_score, league_id)
 select s.id, 4, ht.id, at.id, v.home_score, v.away_score,
-  (select league_id from managers where league_id is not null limit 1)
+  ht.league_id
 from (values
   ('Dan', 'JM/Cameron', 142.98, 130.22),
   ('Mamby/Tenner', 'Reid', 162.16, 97.90),

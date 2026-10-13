@@ -11,7 +11,7 @@
 -- 1. Matchups (home/away pairing per the fixed schedule in lib/schedule.js)
 insert into matchups (season_id, week, home_team_id, away_team_id, home_score, away_score, league_id)
 select s.id, 1, ht.id, at.id, v.home_score, v.away_score,
-  (select league_id from managers where league_id is not null limit 1)
+  ht.league_id
 from (values
   ('Dan', 'Reid', 145.26, 113.46),
   ('Caden', 'John', 147.36, 161.32),

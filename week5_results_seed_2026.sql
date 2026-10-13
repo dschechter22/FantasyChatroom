@@ -9,11 +9,27 @@
 -- inserted Week 5 with the teams the other way round, the sync's own
 -- either-orientation match keeps it from duplicating -- and the teams update
 -- always sets the same absolute through-Week-5 totals rather than incrementing.
+--
+-- Step 0 repairs a real gap this surfaced: the ESPN sync's matchups insert
+-- didn't set league_id at all, and this script's own insert used to pull it
+-- from a `limit 1` subquery on managers with no order by -- non-deterministic,
+-- and whichever row it grabbed could be wrong. Either way, a Week 5 row with
+-- a missing/wrong league_id is invisible to every page's .eq('league_id', ...)
+-- filter even though the matchup row and the teams update both look fine.
+-- This backfills it from the home team's own (reliable) league_id so
+-- re-running this script fixes it regardless of which path inserted the row.
+
+-- 0. Repair league_id on any Week 5 row already inserted (by this script on
+-- a prior run, or by the ESPN sync beating it to the row)
+update matchups m set league_id = ht.league_id
+from teams ht, (select id from seasons where year = 2026) s
+where m.home_team_id = ht.id and m.season_id = s.id and m.week = 5
+  and (m.league_id is distinct from ht.league_id);
 
 -- 1. Matchups (home/away per the league's fixed schedule)
 insert into matchups (season_id, week, home_team_id, away_team_id, home_score, away_score, league_id)
 select s.id, 5, ht.id, at.id, v.home_score, v.away_score,
-  (select league_id from managers where league_id is not null limit 1)
+  ht.league_id
 from (values
   ('Freed', 'Reid', 158.26, 171.56),
   ('Mamby/Tenner', 'Big E', 153.16, 173.44),

@@ -76,7 +76,7 @@ export async function GET(request) {
   }
 
   const { data: teams } = await supabase.from('teams')
-    .select('id, espn_team_id, manager:manager_id(name)')
+    .select('id, espn_team_id, league_id, manager:manager_id(name)')
     .eq('season_id', season.id)
   const teamsByEspnId = Object.fromEntries((teams || []).filter(t => t.espn_team_id != null).map(t => [t.espn_team_id, t]))
   if (!teams?.length) {
@@ -128,7 +128,7 @@ export async function GET(request) {
       } else {
         await supabase.from('matchups').insert({
           season_id: season.id, week, home_team_id: home.id, away_team_id: away.id,
-          home_score: m.homeScore, away_score: m.awayScore,
+          home_score: m.homeScore, away_score: m.awayScore, league_id: home.league_id,
         })
       }
       result.matchupsSynced++
