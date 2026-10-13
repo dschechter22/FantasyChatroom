@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { projectedWeekLineup, lineupEfficiency, actualWeekLineup } from '../../lib/predictions'
@@ -86,10 +86,10 @@ export default function CurrentSeasonPage() {
   }, [scheduleWeek])
 
   useEffect(() => {
-    supabase.from('matchups')
+    fetchAll(() => supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)
-      .eq('is_playoff', false)
+      .eq('is_playoff', false))
       .then(({ data }) => setMatchups((data || []).filter(m => m.season?.year === SEASON_YEAR)))
     supabase.from('teams')
       .select('*, manager:manager_id(name, slug, id), season:season_id(year)')

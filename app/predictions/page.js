@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { useSortableTable } from '../../hooks/useSortableTable'
@@ -62,9 +62,9 @@ export default function PredictionsPage() {
     setLoading(true)
     setWeekTouched(false)
     Promise.all([
-      supabase.from('matchups')
+      fetchAll(() => supabase.from('matchups')
         .select('*, home_team:home_team_id(id, team_name), away_team:away_team_id(id, team_name), season:season_id(year)')
-        .eq('league_id', LEAGUE_ID).eq('is_playoff', false),
+        .eq('league_id', LEAGUE_ID).eq('is_playoff', false)),
       supabase.from('teams')
         .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
         .eq('league_id', LEAGUE_ID),

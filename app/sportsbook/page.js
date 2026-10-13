@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-import { LEAGUE_ID } from '../../lib/supabase'
+import { LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import { priceTwoWay, actualWeekLineup, projectedWeekLineup } from '../../lib/predictions'
 import { groupEntriesByTeam } from '../../lib/rosters'
 import { buildFixtures, REG_SEASON_WEEKS } from '../../lib/schedule'
@@ -145,9 +145,9 @@ export default function SportsbookPage() {
     if (!latestSeasonYear) return
     Promise.all([
       db.from('teams').select('*, manager:manager_id(name), season:season_id(year)').eq('league_id', LEAGUE_ID),
-      db.from('matchups')
+      fetchAll(() => db.from('matchups')
         .select('*, home_team:home_team_id(id, team_name), away_team:away_team_id(id, team_name), season:season_id(year)')
-        .eq('league_id', LEAGUE_ID).eq('is_playoff', false),
+        .eq('league_id', LEAGUE_ID).eq('is_playoff', false)),
     ]).then(async ([tRes, mRes]) => {
       const t = (tRes.data || []).filter(x => x.season?.year === latestSeasonYear)
       setLeagueTeams(t)

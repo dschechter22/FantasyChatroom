@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, Cell
@@ -42,7 +42,7 @@ export default function GraphsPage() {
     const load = async () => {
       const [{ data: teamsData }, { data: matchupsData }, { data: draftPicksData }] = await Promise.all([
         supabase.from('teams').select('*, manager:manager_id(name, slug), season:season_id(year)').eq('league_id', LEAGUE_ID),
-        supabase.from('matchups').select('*, season:season_id(year), home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id)').eq('league_id', LEAGUE_ID).eq('is_playoff', false),
+        fetchAll(() => supabase.from('matchups').select('*, season:season_id(year), home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id)').eq('league_id', LEAGUE_ID).eq('is_playoff', false)),
         supabase.from('draft_picks').select('season, manager_name, pick_in_round, round').eq('league_id', LEAGUE_ID).eq('round', 1).limit(500),
       ])
       setDraftPicks((draftPicksData || []).map(p => ({ ...p, season: parseInt(p.season), pick_in_round: parseInt(p.pick_in_round) })))

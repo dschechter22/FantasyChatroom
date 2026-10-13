@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import { FPTS_STATIC } from '../../lib/fptsStatic'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
@@ -179,7 +179,7 @@ export default function DraftsPage() {
     const load = async () => {
       const [{ data: teams }, { data: mups }] = await Promise.all([
         supabase.from('teams').select('id, manager_id, wins, losses, points_for, final_standing, playoff_result, made_playoffs, season:season_id(year), manager:manager_id(name)').eq('league_id', LEAGUE_ID).limit(500),
-        supabase.from('matchups').select('week, home_score, away_score, home_team:home_team_id(manager_id), away_team:away_team_id(manager_id), season:season_id(year)').eq('league_id', LEAGUE_ID).eq('is_playoff', false).limit(2000),
+        fetchAll(() => supabase.from('matchups').select('week, home_score, away_score, home_team:home_team_id(manager_id), away_team:away_team_id(manager_id), season:season_id(year)').eq('league_id', LEAGUE_ID).eq('is_playoff', false).limit(2000)),
       ])
       if (teams) setTeamSeasons(teams)
       if (mups) setSeasonMatchups(mups)

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import { downloadCSV, downloadJSON } from '../../lib/exportUtils'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
@@ -46,13 +46,13 @@ export default function ExportPage() {
         supabase.from('managers').select('*').eq('league_id', LEAGUE_ID),
         supabase.from('seasons').select('*, champion:champion_id(id, name), mol_bowl_loser:mol_bowl_loser_id(id, name)').eq('league_id', LEAGUE_ID),
         supabase.from('teams').select('*, manager:manager_id(id, name, slug), season:season_id(id, year)').eq('league_id', LEAGUE_ID),
-        supabase.from('matchups')
+        fetchAll(() => supabase.from('matchups')
           .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)')
           .eq('league_id', LEAGUE_ID)
-          .eq('is_playoff', false),
-        supabase.from('matchups')
+          .eq('is_playoff', false)),
+        fetchAll(() => supabase.from('matchups')
           .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
-          .eq('league_id', LEAGUE_ID),
+          .eq('league_id', LEAGUE_ID)),
       ])
       setManagers(mgrs || [])
       setSeasons(szns || [])

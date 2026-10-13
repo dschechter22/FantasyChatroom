@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
@@ -30,10 +30,10 @@ export default function ManagersPage() {
     supabase.from('managers').select('*').eq('league_id', LEAGUE_ID).then(({ data }) => setManagers(data || []))
     supabase.from('teams').select('*, season:season_id(year)').eq('league_id', LEAGUE_ID).then(({ data }) => setTeams(data || []))
     supabase.from('seasons').select('*, champion:champion_id(id), mol_bowl_loser:mol_bowl_loser_id(id)').eq('league_id', LEAGUE_ID).then(({ data }) => setSeasons(data || []))
-    supabase.from('matchups')
+    fetchAll(() => supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)
-      .eq('is_playoff', false)
+      .eq('is_playoff', false))
       .then(({ data }) => setMatchups(data || []))
 
     // Fetch all roster entries in batches

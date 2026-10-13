@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import {
@@ -56,9 +56,9 @@ export default function PreweekPage() {
   useEffect(() => {
     Promise.all([
       supabase.from('teams').select('id, team_name, manager_id, season:season_id(year)').eq('league_id', LEAGUE_ID),
-      supabase.from('matchups')
+      fetchAll(() => supabase.from('matchups')
         .select('id, week, is_playoff, home_score, away_score, home_team:home_team_id(id), away_team:away_team_id(id), season:season_id(year)')
-        .eq('league_id', LEAGUE_ID),
+        .eq('league_id', LEAGUE_ID)),
     ]).then(([t, m]) => {
       setAllTeams(t.data || [])
       setAllMatchups(m.data || [])
@@ -70,9 +70,9 @@ export default function PreweekPage() {
     setLoading(true)
     setWeekTouched(false)
     Promise.all([
-      supabase.from('matchups')
+      fetchAll(() => supabase.from('matchups')
         .select('*, home_team:home_team_id(id, team_name), away_team:away_team_id(id, team_name), season:season_id(year)')
-        .eq('league_id', LEAGUE_ID).eq('is_playoff', false),
+        .eq('league_id', LEAGUE_ID).eq('is_playoff', false)),
       supabase.from('teams')
         .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
         .eq('league_id', LEAGUE_ID),

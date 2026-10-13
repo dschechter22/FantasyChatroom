@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { lineupEfficiency } from '../../lib/predictions'
@@ -30,9 +30,9 @@ export default function PowerRankingsPage() {
     setMatchups([])
     setTeams([])
     setSelectedWeek(null)
-    supabase.from('matchups')
+    fetchAll(() => supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
-      .eq('league_id', LEAGUE_ID)
+      .eq('league_id', LEAGUE_ID))
       .then(({ data }) => {
         const filtered = (data || []).filter(m => m.season?.year === selectedYear && !m.is_playoff)
         setMatchups(filtered)

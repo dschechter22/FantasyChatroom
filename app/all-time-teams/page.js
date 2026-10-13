@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, LEAGUE_ID } from '../../lib/supabase'
+import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import RosterDrawer from '../../components/RosterDrawer'
@@ -33,10 +33,10 @@ export default function AllTimeTeamsPage() {
       .select('*, manager:manager_id(name, slug), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)
       .then(({ data }) => setTeams(data || []))
-    supabase.from('matchups')
+    fetchAll(() => supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)
-      .eq('is_playoff', false)
+      .eq('is_playoff', false))
       .then(({ data }) => setMatchups(data || []))
   }, [])
 
