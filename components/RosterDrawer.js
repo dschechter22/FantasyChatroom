@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase, LEAGUE_ID } from '../lib/supabase'
+import { weekEntries } from '../lib/rosters'
 import { useRouter } from 'next/navigation'
 import { useLayout } from '../hooks/useLayout'
 
@@ -58,7 +59,7 @@ export default function RosterDrawer({ team, onClose }) {
       .from('roster_entries')
       .select('*, player:player_id(id, name, position)')
       .eq('team_id', team.id)
-      .then(({ data }) => { setEntries(data || []); setLoading(false) })
+      .then(({ data }) => { setEntries(weekEntries(data || [], team.id)); setLoading(false) })
   }, [team?.id])
 
   if (!team) return null

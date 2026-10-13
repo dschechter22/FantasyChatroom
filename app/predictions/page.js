@@ -10,6 +10,7 @@ import {
   projectedStarterPoints, projectedWeekScore, fmtOdds, fmtSpread, leagueBaseline,
 } from '../../lib/predictions'
 import { REG_SEASON_WEEKS, resolveSchedule } from '../../lib/schedule'
+import { groupEntriesByTeam } from '../../lib/rosters'
 export const dynamic = 'force-dynamic'
 
 const ADMIN_PIN = '2910'
@@ -79,8 +80,7 @@ export default function PredictionsPage() {
         const { data } = await supabase.from('roster_entries')
           .select('team_id, avg_pts, stats, player:player_id(position)')
           .in('team_id', t.map(x => x.id))
-        const byTeam = {}
-        ;(data || []).forEach(e => { (byTeam[e.team_id] ||= []).push(e) })
+        const byTeam = groupEntriesByTeam(data || [])
         setEntriesByTeam(byTeam)
       } else {
         setEntriesByTeam({})

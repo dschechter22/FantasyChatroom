@@ -4,6 +4,7 @@ import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { lineupEfficiency, actualWeekLineup, projectedWeekLineup } from '../../lib/predictions'
+import { groupEntriesByTeam } from '../../lib/rosters'
 import { resolveSchedule, REG_SEASON_WEEKS } from '../../lib/schedule'
 export const dynamic = 'force-dynamic'
 
@@ -74,10 +75,12 @@ export default function ScoreboardPage() {
   const regWeeks = Math.max(matchups.length ? Math.max(...matchups.map(m => m.week)) : 0, REG_SEASON_WEEKS)
 
   const entriesByTeam = useMemo(() => {
+    // Each team's roster as it stood in the selected week, not today's.
+    const grouped = groupEntriesByTeam(rosterEntries, week)
     const byTeam = {}
-    teams.forEach(t => { byTeam[t.id] = rosterEntries.filter(e => e.team_id === t.id) })
+    teams.forEach(t => { byTeam[t.id] = grouped[t.id] || [] })
     return byTeam
-  }, [teams, rosterEntries])
+  }, [teams, rosterEntries, week])
 
   if (!mounted) return null
 

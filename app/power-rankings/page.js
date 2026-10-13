@@ -4,6 +4,7 @@ import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { lineupEfficiency } from '../../lib/predictions'
+import { weekEntries, latestRosterWeek } from '../../lib/rosters'
 import { useSortableTable } from '../../hooks/useSortableTable'
 
 export default function PowerRankingsPage() {
@@ -122,9 +123,9 @@ export default function PowerRankingsPage() {
     // a team's real starters scored versus what its best possible lineup
     // would have scored that week.
     const startPct = (teamId) => {
-      const entries = rosterEntries.filter(e => e.team_id === teamId)
+      const latest = latestRosterWeek(rosterEntries)
       const pcts = weeksIncluded
-        .map(wk => lineupEfficiency(entries, wk))
+        .map(wk => lineupEfficiency(weekEntries(rosterEntries, teamId, wk, latest), wk))
         .filter(Boolean)
         .map(e => e.pct)
       return pcts.length ? parseFloat((pcts.reduce((s, p) => s + p, 0) / pcts.length).toFixed(1)) : null

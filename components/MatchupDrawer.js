@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useRouter } from 'next/navigation'
 import { useLayout } from '../hooks/useLayout'
 import { projectedWeekLineup } from '../lib/predictions'
+import { weekEntries } from '../lib/rosters'
 
 const posColor = pos => {
   const map = { QB: '#4285F4', RB: '#34A853', WR: '#FBBC04', TE: '#EA4335', K: '#46BDC6', 'D/ST': '#7BAAF7' }
@@ -21,7 +22,7 @@ export default function MatchupDrawer({ homeTeam, awayTeam, week, regWeeks, onCl
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, gold } = useLayout()
   const router = useRouter()
   const [selectedWeek, setSelectedWeek] = useState(week)
-  const [entriesByTeam, setEntriesByTeam] = useState({})
+  const [allEntries, setAllEntries] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { setSelectedWeek(week) }, [week, homeTeam?.id, awayTeam?.id])
@@ -29,25 +30,32 @@ export default function MatchupDrawer({ homeTeam, awayTeam, week, regWeeks, onCl
   useEffect(() => {
     if (!homeTeam || !awayTeam) return
     setLoading(true)
-    supabase
-      .from('roster_entries')
-      .select('*, player:player_id(id, name, position)')
-      .in('team_id', [homeTeam.id, awayTeam.id])
-      .then(({ data }) => {
-        const byTeam = { [homeTeam.id]: [], [awayTeam.id]: [] }
-        ;(data || []).forEach(e => { (byTeam[e.team_id] ||= []).push(e) })
-        setEntriesByTeam(byTeam)
-        setLoading(false)
-      })
+    // A week's roster can include players who have since moved to another
+    // team, so pull the whole season's entries and pick by that week's
+    // ownership snapshot rather than by today's team_id.
+    let cancelled = false
+    ;(async () => {
+      const { data: t } = await supabase.from('teams').select('season_id').eq('id', homeTeam.id).single()
+      const { data: seasonTeams } = await supabase.from('teams').select('id').eq('season_id', t?.season_id)
+      const ids = (seasonTeams?.length ? seasonTeams : [homeTeam, awayTeam]).map(x => x.id)
+      const { data } = await supabase
+        .from('roster_entries')
+        .select('*, player:player_id(id, name, position)')
+        .in('team_id', ids)
+      if (cancelled) return
+      setAllEntries(data || [])
+      setLoading(false)
+    })()
+    return () => { cancelled = true }
   }, [homeTeam?.id, awayTeam?.id])
 
   const homeLineup = useMemo(
-    () => projectedWeekLineup(entriesByTeam[homeTeam?.id] || [], selectedWeek),
-    [entriesByTeam, homeTeam?.id, selectedWeek],
+    () => projectedWeekLineup(weekEntries(allEntries, homeTeam?.id, selectedWeek), selectedWeek),
+    [allEntries, homeTeam?.id, selectedWeek],
   )
   const awayLineup = useMemo(
-    () => projectedWeekLineup(entriesByTeam[awayTeam?.id] || [], selectedWeek),
-    [entriesByTeam, awayTeam?.id, selectedWeek],
+    () => projectedWeekLineup(weekEntries(allEntries, awayTeam?.id, selectedWeek), selectedWeek),
+    [allEntries, awayTeam?.id, selectedWeek],
   )
 
   if (!homeTeam || !awayTeam) return null

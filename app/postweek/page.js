@@ -9,6 +9,7 @@ import {
   projectedStarterPoints, fmtSpread, leagueBaseline,
 } from '../../lib/predictions'
 import { REG_SEASON_WEEKS, buildFixtures } from '../../lib/schedule'
+import { groupEntriesByTeam } from '../../lib/rosters'
 import { gradeWeek, modelRecord, superlatives } from '../../lib/postweek'
 export const dynamic = 'force-dynamic'
 
@@ -64,10 +65,9 @@ export default function PostweekPage() {
       setBaseline(leagueBaseline((mRes.data || []).filter(x => x.season?.year < selectedYear)))
       if (t.length) {
         const { data } = await supabase.from('roster_entries')
-          .select('team_id, avg_pts, player:player_id(position)')
+          .select('team_id, avg_pts, stats, player:player_id(position)')
           .in('team_id', t.map(x => x.id))
-        const byTeam = {}
-        ;(data || []).forEach(e => { (byTeam[e.team_id] ||= []).push(e) })
+        const byTeam = groupEntriesByTeam(data || [])
         setRosterProj(Object.fromEntries(Object.entries(byTeam).map(([k, v]) => [k, projectedStarterPoints(v)])))
       } else {
         setRosterProj({})

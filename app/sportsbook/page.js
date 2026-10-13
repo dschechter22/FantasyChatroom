@@ -5,6 +5,7 @@ import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { LEAGUE_ID } from '../../lib/supabase'
 import { priceTwoWay, actualWeekLineup, projectedWeekLineup } from '../../lib/predictions'
+import { groupEntriesByTeam } from '../../lib/rosters'
 import { buildFixtures, REG_SEASON_WEEKS } from '../../lib/schedule'
 import { generateWeekBoard, generateFutures, generateProps, getOrCreateFuture, priceCustomMarket, temperProb } from '../../lib/sportsbookGen'
 export const dynamic = 'force-dynamic'
@@ -357,9 +358,7 @@ export default function SportsbookPage() {
   const genArgs = () => ({ season: SEASON, week, teams: leagueTeams, matchups: leagueMatchups, rosterEntries })
 
   const entriesByTeamId = useMemo(() => {
-    const byTeam = {}
-    rosterEntries.forEach(e => { (byTeam[e.team_id] ||= []).push(e) })
-    return byTeam
+    return groupEntriesByTeam(rosterEntries)
   }, [rosterEntries])
 
   // Real NFL team abbreviation -> this week's opponent, from the site-wide

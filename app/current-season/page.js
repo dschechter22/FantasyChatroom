@@ -4,8 +4,10 @@ import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { projectedWeekLineup, lineupEfficiency, actualWeekLineup } from '../../lib/predictions'
+import { weekEntries, latestRosterWeek } from '../../lib/rosters'
 import { useSortableTable } from '../../hooks/useSortableTable'
-import { resolveSchedule } from '../../lib/schedule'
+import { resolveSchedule, REG_SEASON_WEEKS } from '../../lib/schedule'
+import { computeByeImpact } from '../../lib/byeWeeks'
 export const dynamic = 'force-dynamic'
 
 const SEASON = '2026-27'
@@ -57,6 +59,7 @@ export default function CurrentSeasonPage() {
 
   // ── rosters state ──
   const [rosterEntries, setRosterEntries] = useState([])
+  const [byeTeamId, setByeTeamId] = useState(null)
   const [rosterTeamId, setRosterTeamId] = useState(null)
   const [rosterWeek, setRosterWeek] = useState(1)
 
@@ -106,10 +109,20 @@ export default function CurrentSeasonPage() {
 
   useEffect(() => {
     if (!teams.length) { setRosterEntries([]); return }
+    const teamIds = teams.map(t => t.id)
+    // nfl_team drives the bye-week analysis; if its migration hasn't run the
+    // whole select errors, so fall back to the old columns rather than an
+    // empty roster.
     supabase.from('roster_entries')
-      .select('*, player:player_id(id, name, position)')
-      .in('team_id', teams.map(t => t.id))
-      .then(({ data }) => setRosterEntries(data || []))
+      .select('*, player:player_id(id, name, position, nfl_team)')
+      .in('team_id', teamIds)
+      .then(({ data, error }) => {
+        if (!error) { setRosterEntries(data || []); return }
+        supabase.from('roster_entries')
+          .select('*, player:player_id(id, name, position)')
+          .in('team_id', teamIds)
+          .then(({ data: fallback }) => setRosterEntries(fallback || []))
+      })
     if (!rosterTeamId) {
       const sorted = [...teams].sort((a, b) => (a.manager?.name || '').localeCompare(b.manager?.name || ''))
       setRosterTeamId(sorted[0]?.id || null)
@@ -185,9 +198,9 @@ export default function CurrentSeasonPage() {
   // Rankings for the full explanation): average, across weeks with
   // per-player stats on file, of real-starters points vs. best-possible-
   // lineup points.
+  const latestRoster = latestRosterWeek(rosterEntries)
   const startPctFor = (teamId) => {
-    const entries = rosterEntries.filter(e => e.team_id === teamId)
-    const pcts = weeks.map(wk => lineupEfficiency(entries, wk)).filter(Boolean).map(e => e.pct)
+    const pcts = weeks.map(wk => lineupEfficiency(weekEntries(rosterEntries, teamId, wk, latestRoster), wk)).filter(Boolean).map(e => e.pct)
     return pcts.length ? parseFloat((pcts.reduce((s, p) => s + p, 0) / pcts.length).toFixed(1)) : null
   }
 
@@ -196,19 +209,13 @@ export default function CurrentSeasonPage() {
   // per-week data-completeness gate as Start % above, just summed instead
   // of compared against the real total.
   const maxStatsFor = (teamId) => {
-    const entries = rosterEntries.filter(e => e.team_id === teamId)
-    const log = teamData[teamId]?.gameLog || []
     const totals = weeks.map(wk => {
-      // Only players with a score on file for the week are candidates, so
-      // players added later (no data for earlier weeks) don't sink the week
-      // below the completeness gate; 9 = a full starting lineup's worth.
-      const withActual = entries.filter(e => e.stats?.actual?.[wk] != null)
+      // The roster as it stood that week (players since dropped or traded
+      // included, players added later excluded). Only players with a score on
+      // file count; 9 = a full starting lineup's worth.
+      const withActual = weekEntries(rosterEntries, teamId, wk, latestRoster).filter(e => e.stats?.actual?.[wk] != null)
       if (withActual.length < 9) return null
-      const optimal = actualWeekLineup(withActual, wk)
-      // Dropped players aren't in roster_entries, so the best lineup found
-      // can undershoot what the team really scored -- never report less.
-      const real = log.find(g => g.week === wk)?.score || 0
-      return Math.max(optimal.total, real) || null
+      return actualWeekLineup(withActual, wk).total || null
     }).filter(t => t != null)
     if (!totals.length) return { maxPf: null, maxAvg: null }
     const maxPf = parseFloat(totals.reduce((s, t) => s + t, 0).toFixed(1))
@@ -246,6 +253,22 @@ export default function CurrentSeasonPage() {
   })).sort((a, b) => b.powerScore - a.powerScore)
 
   const powerTable = useSortableTable(ranked, { defaultKey: 'powerScore', defaultDir: 'desc', filterKeys: ['name', 'teamName'] })
+
+  // Bye-week schedule luck: the starting ppg each team's remaining opponents
+  // lose to NFL byes. Opponents only -- a team's own losses scale with roster
+  // strength, not schedule.
+  const byeFromWeek = (weeks.length ? Math.max(...weeks) : 0) + 1
+  const byeImpact = teams.length > 0 && rosterEntries.length > 0 && byeFromWeek <= REG_SEASON_WEEKS
+    ? computeByeImpact({
+        teams,
+        games: resolveSchedule(teams).games,
+        fromWeek: byeFromWeek,
+        toWeek: REG_SEASON_WEEKS,
+        getPpg: e => actualStatsFor(e).avg,
+        rosterFor: id => weekEntries(rosterEntries, id, undefined, latestRoster),
+      })
+    : []
+  const byeTable = useSortableTable(byeImpact, { defaultKey: 'oppLost', defaultDir: 'desc', filterKeys: ['name', 'teamName'] })
 
   const standings = [...rows].sort((a, b) => b.wins - a.wins || b.pf - a.pf)
   const ljRanked = [...rows].sort((a, b) => b.allPlayWinPct - a.allPlayWinPct)
@@ -650,7 +673,7 @@ export default function CurrentSeasonPage() {
           const rosterPosColor = pos => ({ QB: '#4285F4', RB: '#34A853', WR: '#FBBC04', TE: '#EA4335', K: '#46BDC6', 'D/ST': '#7BAAF7' }[pos] || muted)
           const sortedTeams = [...teams].sort((a, b) => (a.manager?.name || '').localeCompare(b.manager?.name || ''))
           const activeTeam = teams.find(t => t.id === rosterTeamId) || sortedTeams[0]
-          const entries = rosterEntries.filter(e => e.team_id === activeTeam?.id)
+          const entries = weekEntries(rosterEntries, activeTeam?.id, rosterWeek, latestRoster)
           const lineup = projectedWeekLineup(entries, rosterWeek)
           const seasonFpts = arr => arr.reduce((s, e) => s + actualStatsFor(e).total, 0)
           const seasonAvg = arr => arr.reduce((s, e) => s + (actualStatsFor(e).avg || 0), 0)
@@ -821,6 +844,87 @@ export default function CurrentSeasonPage() {
             </div>
           </div>
         )}
+
+        {/* ── SECTION: BYE WEEK SCHEDULE LUCK ── */}
+        {byeImpact.length > 0 && (() => {
+          const detail = byeImpact.find(r => r.id === byeTeamId) || byeTable.rows[0] || byeImpact[0]
+          return (
+            <div style={{ marginBottom: '64px' }}>
+              <SectionLabel id="bye-weeks">Bye Week Schedule Luck</SectionLabel>
+              <p style={{ fontSize: '12px', color: muted, marginBottom: '16px', maxWidth: '720px', lineHeight: 1.6 }}>
+                Starting-lineup PPG each team's opponents lose to NFL byes across Weeks {byeFromWeek}–{REG_SEASON_WEEKS}. Only opponents count, so
+                this measures the schedule rather than how strong a roster is. Starters are each roster's best lineup by season PPG today;
+                "After bench" lets the next-best bench player fill in, which is what the bye really costs. Click a team for its week-by-week.
+              </p>
+              <input
+                value={byeTable.filterText}
+                onChange={e => byeTable.setFilterText(e.target.value)}
+                placeholder="Filter manager or team…"
+                style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
+              />
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                  <thead>
+                    <tr style={{ background: cardBg }}>
+                      <th style={hStyle('center')}>Rk</th>
+                      <th style={sortHStyle()} {...byeTable.thSort('name', 'Manager')} />
+                      {!effectiveMobile && <th style={sortHStyle()} {...byeTable.thSort('teamName', 'Team')} />}
+                      <th style={sortHStyle('right')} {...byeTable.thSort('oppLost', 'Opp PPG Lost')} />
+                      <th style={sortHStyle('right')} {...byeTable.thSort('oppEffective', 'After Bench')} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byeTable.rows.map((r, i) => (
+                      <tr
+                        key={r.id}
+                        onClick={() => setByeTeamId(r.id)}
+                        style={{ background: r.id === detail.id ? (d ? '#161d2e' : '#e3e9f4') : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}
+                      >
+                        <td style={{ ...cStyle('center'), fontWeight: '700', color: i === 0 ? gold : muted }}>{i + 1}</td>
+                        <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{r.name}</td>
+                        {!effectiveMobile && <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{r.teamName}</td>}
+                        <td style={{ ...cStyle('right'), fontWeight: '600', color: r.oppLost > 0 ? green : muted }}>{r.oppLost.toFixed(1)}</td>
+                        <td style={{ ...cStyle('right'), color: muted }}>{r.oppEffective.toFixed(1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, margin: '28px 0 10px' }}>
+                {detail.name} — week by week
+              </p>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                  <thead>
+                    <tr style={{ background: cardBg }}>
+                      <th style={hStyle('center')}>Wk</th>
+                      <th style={hStyle()}>Opponent</th>
+                      {!effectiveMobile && <th style={hStyle()}>NFL Byes</th>}
+                      <th style={hStyle()}>Opponent Starters Out</th>
+                      <th style={hStyle('right')}>PPG Lost</th>
+                      <th style={hStyle('right')}>After Bench</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.weeks.map((w, i) => (
+                      <tr key={w.week} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                        <td style={{ ...cStyle('center'), color: muted }}>{w.week}</td>
+                        <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '14px' }}>{w.oppName}</td>
+                        {!effectiveMobile && <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{w.byeTeams.length ? w.byeTeams.join(', ') : 'none'}</td>}
+                        <td style={{ ...cStyle(), whiteSpace: 'normal', fontSize: '12px', color: w.oppPlayers.length ? text : muted }}>
+                          {w.oppPlayers.length ? w.oppPlayers.map(p => `${p.name} (${p.ppg.toFixed(1)})`).join(', ') : '—'}
+                        </td>
+                        <td style={{ ...cStyle('right'), fontWeight: '600', color: w.oppLost > 0 ? green : muted }}>{w.oppLost > 0 ? w.oppLost.toFixed(1) : '—'}</td>
+                        <td style={{ ...cStyle('right'), color: muted }}>{w.oppEffective > 0 ? w.oppEffective.toFixed(1) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* ── SECTION 4: LJ INDEX ── */}
         {ljRanked.length > 0 && (
