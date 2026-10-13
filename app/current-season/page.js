@@ -163,6 +163,10 @@ export default function CurrentSeasonPage() {
       if (td[hId]) { td[hId].scores.push(m.home_score); td[hId].pf += m.home_score; td[hId].pa += m.away_score; td[hId].gameLog.push({ week: m.week, score: m.home_score, oppScore: m.away_score, won: m.home_score > m.away_score }); if (m.home_score > m.away_score) td[hId].wins++; else if (m.home_score < m.away_score) td[hId].losses++ }
       if (td[aId]) { td[aId].scores.push(m.away_score); td[aId].pf += m.away_score; td[aId].pa += m.home_score; td[aId].gameLog.push({ week: m.week, score: m.away_score, oppScore: m.home_score, won: m.away_score > m.home_score }); if (m.away_score > m.home_score) td[aId].wins++; else if (m.away_score < m.home_score) td[aId].losses++ }
     })
+    // teams.wins/losses is the source of truth (set directly by the weekly
+    // results seed) -- trust it over a recount from matchups, which can lag
+    // a week behind if a row hasn't synced/paged through yet.
+    teams.forEach(t => { if (td[t.id]) { td[t.id].wins = t.wins; td[t.id].losses = t.losses } })
     weeks.forEach(wk => {
       const wkGames = matchups.filter(m => m.week === wk)
       const allScores = []
