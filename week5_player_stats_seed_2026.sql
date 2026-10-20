@@ -232,7 +232,7 @@ from (values
 -- 3. Roster rows for players who don't have one yet
 insert into roster_entries (player_id, team_id, season_id, league_id, stats)
 select distinct on (regexp_replace(lower(w.player_name), '[^a-z0-9]', '', 'g')) p.id, t.id, s.id,
-       (select league_id from managers where league_id is not null limit 1), '{}'::jsonb
+       t.league_id, '{}'::jsonb
 from week_box_2026 w
 join managers m on m.name = w.manager_name
 cross join (select id from seasons where year = 2026) s

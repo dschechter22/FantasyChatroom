@@ -1157,7 +1157,7 @@ with mem as (
 )
 insert into roster_entries (player_id, team_id, season_id, league_id, stats)
 select distinct on (mem.nk) p.id, mem.last_team_id, s.id,
-       (select league_id from managers where league_id is not null limit 1), '{}'::jsonb
+       (select t2.league_id from teams t2 where t2.id = mem.last_team_id), '{}'::jsonb
 from mem
 join players p on regexp_replace(lower(p.name), '[^a-z0-9]', '', 'g') = mem.nk
 cross join (select id from seasons where year = 2026) s
@@ -1167,6 +1167,14 @@ where not exists (
   where re.team_id in (select t.id from teams t join seasons s on s.id = t.season_id and s.year = 2026) and regexp_replace(lower(p2.name), '[^a-z0-9]', '', 'g') = mem.nk
 )
 order by mem.nk, p.id;
+
+-- 5b. Repair league_id on any roster row an earlier run inserted from the old
+-- `limit 1` managers subquery (non-deterministic) -- take it from the team.
+update roster_entries re set league_id = t.league_id
+from teams t
+where t.id = re.team_id
+  and re.team_id in (select t3.id from teams t3 join seasons s on s.id = t3.season_id and s.year = 2026)
+  and re.league_id is distinct from t.league_id;
 
 -- 6. Per-week ownership snapshot, current team, and week-clean stats
 with mem as (
@@ -1201,7 +1209,7 @@ select s.id, v.txn_key, v.week, v.occurred_at::timestamptz, pl.id,
        case when v.move_type = 'dropped' then t.id when v.move_type = 'moved' then ft.id end,
        case when v.move_type in ('added', 'moved') then t.id end,
        v.move_type, v.source, v.bid,
-       (select league_id from managers where league_id is not null limit 1)
+       t.league_id
 from (values
   ('2026-09-07T02:01|Big E|0', 1, '2026-09-07 02:01:00-04', 'Big E', 'Bo Nix', 'added', 'Waivers', 1, null::text),
   ('2026-09-07T02:01|Mamby/Tenner|0', 1, '2026-09-07 02:01:00-04', 'Mamby/Tenner', 'Baker Mayfield', 'added', 'Waivers', 1, null::text),
