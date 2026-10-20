@@ -1,1 +1,6 @@
-
+/* Never let the page itself pan sideways -- wide tables scroll inside their own
+   overflow-x wrappers instead, so nothing on a phone needs a left-right swipe. */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}

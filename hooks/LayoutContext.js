@@ -34,8 +34,8 @@ export function LayoutProvider({ children }) {
   // On a phone, lay the page out at a wider virtual width so the browser scales
   // the whole site down to fit: smaller text, charts and tables everywhere at
   // once, with fixed-position pieces and vw units still lining up. Raise this
-  // for smaller, lower for larger (a ~390px phone shows about 78% at 500).
-  const PHONE_LAYOUT_WIDTH = 500
+  // for smaller, lower for larger (an iPhone 16, 393px, shows about 70% at 560).
+  const PHONE_LAYOUT_WIDTH = 560
   useEffect(() => {
     if (!mounted) return
     const meta = document.querySelector('meta[name="viewport"]')
