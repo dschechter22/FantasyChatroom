@@ -31,6 +31,18 @@ export function LayoutProvider({ children }) {
   const effectiveMobile = mobileOverride ? mobileOverride === 'mobile' : isMobile
   const d = theme === 'dark'
 
+  // On a phone, lay the page out at a wider virtual width so the browser scales
+  // the whole site down to fit: smaller text, charts and tables everywhere at
+  // once, with fixed-position pieces and vw units still lining up. Raise this
+  // for smaller, lower for larger (a ~390px phone shows about 78% at 500).
+  const PHONE_LAYOUT_WIDTH = 500
+  useEffect(() => {
+    if (!mounted) return
+    const meta = document.querySelector('meta[name="viewport"]')
+    if (!meta) return
+    meta.setAttribute('content', effectiveMobile ? `width=${PHONE_LAYOUT_WIDTH}` : 'width=device-width, initial-scale=1')
+  }, [mounted, effectiveMobile])
+
   const tokens = {
     bg:        d ? '#1b202c'                : '#f4f1ec',
     text:      d ? '#f2ead8'                : '#0d2152',
