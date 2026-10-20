@@ -35,12 +35,12 @@ const ordinal = (n) => {
 // fpts/avg_pts are legacy season-cache columns that were never backfilled
 // for 2026-27 -- real per-week numbers live in stats.actual[week] from the
 // box-score seed files instead.
-const actualStatsFor = (e) => {
+const actualStatsFor = (e, beforeWeek = Infinity) => {
   const actual = e.stats?.actual || {}
   const weeksWithData = Object.keys(actual).map(Number)
   const total = weeksWithData.reduce((s, w) => s + (actual[w] || 0), 0)
   // avg is per game actually played -- weeks out injured or on IR don't count as 0-point games
-  return { total, avg: playedAvg(e.stats), weeksPlayed: weeksWithData.length }
+  return { total, avg: playedAvg(e.stats, beforeWeek), weeksPlayed: weeksWithData.length }
 }
 
 export default function CurrentSeasonPage() {
@@ -141,6 +141,8 @@ export default function CurrentSeasonPage() {
 
   // ── computed stats ──
   const weeks = [...new Set(matchups.map(m => m.week))].sort((a, b) => a - b)
+  // per-player stats count completed weeks only: the sync stores 0.0 for games not yet played
+  const statsFor = e => actualStatsFor(e, (weeks.length ? Math.max(...weeks) : 0) + 1)
 
   // This week's fantasy matchups: real matchup rows once they exist, the
   // fixed schedule filling in for weeks that haven't synced yet -- same
@@ -196,7 +198,7 @@ export default function CurrentSeasonPage() {
   const posRankMap = (() => {
     const byPos = {}
     rosterEntries.forEach(e => {
-      const avg = actualStatsFor(e).avg
+      const avg = statsFor(e).avg
       const pos = e.player?.position
       if (avg == null || !pos) return
       ;(byPos[pos] ||= []).push({ id: e.id, avg })
@@ -278,7 +280,7 @@ export default function CurrentSeasonPage() {
         games: resolveSchedule(teams).games,
         fromWeek: byeFromWeek,
         toWeek: REG_SEASON_WEEKS,
-        getPpg: e => actualStatsFor(e).avg,
+        getPpg: e => statsFor(e).avg,
         rosterFor: id => weekEntries(rosterEntries, id, undefined, latestRoster),
       })
     : []
@@ -701,8 +703,8 @@ export default function CurrentSeasonPage() {
           const activeTeam = teams.find(t => t.id === rosterTeamId) || sortedTeams[0]
           const entries = weekEntries(rosterEntries, activeTeam?.id, rosterWeek, latestRoster)
           const lineup = projectedWeekLineup(entries, rosterWeek)
-          const seasonFpts = arr => arr.reduce((s, e) => s + actualStatsFor(e).total, 0)
-          const seasonAvg = arr => arr.reduce((s, e) => s + (actualStatsFor(e).avg || 0), 0)
+          const seasonFpts = arr => arr.reduce((s, e) => s + statsFor(e).total, 0)
+          const seasonAvg = arr => arr.reduce((s, e) => s + (statsFor(e).avg || 0), 0)
           const weekPtsTotal = arr => arr.reduce((s, e) => s + (e.stats?.actual?.[rosterWeek] ?? 0), 0)
 
           const gridCols = effectiveMobile ? '50px 1fr 50px' : '56px 1fr 55px 55px 70px 55px 60px'
@@ -721,7 +723,7 @@ export default function CurrentSeasonPage() {
 
           const rRow = (e, i, slot) => {
             const weekPts = e.stats?.actual?.[rosterWeek] ?? null
-            const stats = actualStatsFor(e)
+            const stats = statsFor(e)
             const posRank = posRankMap[e.id]
             return (
               <div key={e.id} style={{ display: 'grid', gridTemplateColumns: gridCols, alignItems: 'center', padding: '9px 14px', borderBottom: `1px solid ${border}`, background: i % 2 === 0 ? 'transparent' : rowAlt }}>

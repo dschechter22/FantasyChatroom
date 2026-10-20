@@ -110,7 +110,7 @@ export default function TeamPanel({ teamId, startTab = 'schedule' }) {
     if (!hist || !profile || !data) return null
     const week = profile.weekly.length
     if (!week) return { empty: true }
-    const players = es => es.filter(e => e.player?.position).map(e => ({ pos: e.player.position, ppg: seasonAvg(e) || 0 }))
+    const players = es => es.filter(e => e.player?.position).map(e => ({ pos: e.player.position, ppg: seasonAvg(e, profile.nextWeek) || 0 }))
     // this team, measured the same way as every historical team: through `week` games
     const currentRosters = new Map(Object.entries(groupEntriesByTeam(data.entries)).map(([id, es]) => [id, players(es)]))
     const target = seasonFeatures({ teams: data.teams, matchups: data.matchups, rosters: currentRosters, week }).get(teamId)

@@ -331,7 +331,7 @@ export default function SimilarTeamsPage() {
                   const tr = p && index.tierOf(slot, p.ppg)
                   const isBest = p && best > 0 && p.ppg === best && chosen.length > 1
                   return (
-                    <div key={t.id} style={{ padding: '8px 8px', textAlign: 'center', background: tr ? tr.bg : 'transparent', color: tr ? tr.fg : muted, boxShadow: isBest ? `inset 0 0 0 2px ${d ? '#fff' : '#0d2152'}` : 'none', minHeight: '46px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div key={t.id} title={p ? `${p.name} · ${p.ppg.toFixed(1)} ppg${p.games ? ` over ${p.games} games` : ' (season average)'}` : ''} style={{ padding: '8px 8px', textAlign: 'center', background: tr ? tr.bg : 'transparent', color: tr ? tr.fg : muted, boxShadow: isBest ? `inset 0 0 0 2px ${d ? '#fff' : '#0d2152'}` : 'none', minHeight: '46px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                       <div style={{ fontSize: '15px', fontWeight: 700 }}>{p ? p.ppg.toFixed(1) : '—'}</div>
                       <div style={{ fontSize: '10px', opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p?.name || ''}</div>
                     </div>
