@@ -9,6 +9,7 @@ import { useSortableTable } from '../../hooks/useSortableTable'
 import { resolveSchedule, REG_SEASON_WEEKS } from '../../lib/schedule'
 import { computeByeImpact } from '../../lib/byeWeeks'
 import TeamPanel from '../../components/TeamPanel'
+import { loadEspnAvgs, normName } from '../../lib/espnAvgs'
 export const dynamic = 'force-dynamic'
 
 const SEASON = '2026-27'
@@ -67,6 +68,8 @@ export default function CurrentSeasonPage() {
   const [rosterEntries, setRosterEntries] = useState([])
   const [byeTeamId, setByeTeamId] = useState(null)
   const [openTeamId, setOpenTeamId] = useState(null) // standings row whose team panel is open
+  const [espnAvgs, setEspnAvgs] = useState({}) // ESPN's real season PPG by player name
+  useEffect(() => { loadEspnAvgs().then(setEspnAvgs) }, [])
   const [rosterTeamId, setRosterTeamId] = useState(null)
   const [rosterWeek, setRosterWeek] = useState(1)
 
@@ -142,7 +145,12 @@ export default function CurrentSeasonPage() {
   // ── computed stats ──
   const weeks = [...new Set(matchups.map(m => m.week))].sort((a, b) => a - b)
   // per-player stats count completed weeks only: the sync stores 0.0 for games not yet played
-  const statsFor = e => actualStatsFor(e, (weeks.length ? Math.max(...weeks) : 0) + 1)
+  const statsFor = e => {
+    const s = actualStatsFor(e, (weeks.length ? Math.max(...weeks) : 0) + 1)
+    // ESPN's season average counts every game played, even before he joined this team
+    const real = espnAvgs[normName(e.player?.name)]
+    return real ? { ...s, avg: real.avg } : s
+  }
 
   // This week's fantasy matchups: real matchup rows once they exist, the
   // fixed schedule filling in for weeks that haven't synced yet -- same

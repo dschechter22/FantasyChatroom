@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import { loadEspnAvgs } from '../../lib/espnAvgs'
 import { loadLeagueHistory, buildIndex, similarityToAnchor, similarityMatrix, finishOf, TIERS, SLOT_ORDER } from '../../lib/teamCompare'
 
 const MAX_TEAMS = 4
@@ -33,10 +34,10 @@ export default function SimilarTeamsPage() {
 
   useEffect(() => {
     let cancelled = false
-    loadLeagueHistory()
-      .then(raw => {
+    Promise.all([loadLeagueHistory(), loadEspnAvgs()])
+      .then(([raw, espn]) => {
         if (cancelled) return
-        const idx = buildIndex(raw)
+        const idx = buildIndex(raw, espn)
         setIndex(idx)
         // /team-comparison?team=<id> (linked from a team's Similar Teams tab) starts with that team
         const id = new URLSearchParams(window.location.search).get('team')

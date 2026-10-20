@@ -7,6 +7,7 @@ import { buildLeagueProfiles, rankOf, seasonAvg } from '../lib/teamProfile'
 import { groupEntriesByTeam } from '../lib/rosters'
 import { seasonFeatures, findSimilar } from '../lib/similarTeams'
 import { useLayout } from '../hooks/useLayout'
+import { loadEspnAvgs, normName } from '../lib/espnAvgs'
 
 const TABS = [
   ['schedule', 'Schedule'],
@@ -79,6 +80,8 @@ export default function TeamPanel({ teamId, startTab = 'schedule' }) {
   const [tab, setTab] = useState(startTab)
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [espn, setEspn] = useState({})
+  useEffect(() => { loadEspnAvgs().then(setEspn) }, [])
 
   useEffect(() => {
     if (!teamId) return
@@ -94,9 +97,11 @@ export default function TeamPanel({ teamId, startTab = 'schedule' }) {
     if (!data) return {}
     // The fixed league schedule only applies to the current season.
     const games = data.year === 2026 ? resolveSchedule(data.teams).games : []
-    const all = buildLeagueProfiles({ teams: data.teams, matchups: data.matchups, entries: data.entries, games })
+    // current season: ESPN's real season PPG (every game played, even before he joined this team)
+    const avgFor = data.year === 2026 ? (e, nextWeek) => espn[normName(e.player?.name)]?.avg ?? seasonAvg(e, nextWeek) : undefined
+    const all = buildLeagueProfiles({ teams: data.teams, matchups: data.matchups, entries: data.entries, games, avgFor })
     return { profiles: all, profile: all.find(p => p.id === teamId) }
-  }, [data, teamId])
+  }, [data, teamId, espn])
 
   // ── similar historical teams (loaded the first time the tab is opened) ──
   const [hist, setHist] = useState(null)
@@ -110,7 +115,7 @@ export default function TeamPanel({ teamId, startTab = 'schedule' }) {
     if (!hist || !profile || !data) return null
     const week = profile.weekly.length
     if (!week) return { empty: true }
-    const players = es => es.filter(e => e.player?.position).map(e => ({ pos: e.player.position, ppg: seasonAvg(e, profile.nextWeek) || 0 }))
+    const players = es => es.filter(e => e.player?.position).map(e => ({ pos: e.player.position, ppg: (data.year === 2026 ? espn[normName(e.player.name)]?.avg : null) ?? seasonAvg(e, profile.nextWeek) ?? 0 }))
     // this team, measured the same way as every historical team: through `week` games
     const currentRosters = new Map(Object.entries(groupEntriesByTeam(data.entries)).map(([id, es]) => [id, players(es)]))
     const target = seasonFeatures({ teams: data.teams, matchups: data.matchups, rosters: currentRosters, week }).get(teamId)
