@@ -130,7 +130,7 @@ export default function MatchupDrawer({ homeTeam, awayTeam, week, regWeeks, onCl
               <select
                 value={selectedWeek}
                 onChange={e => setSelectedWeek(parseInt(e.target.value))}
-                style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '5px 8px', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}
+                style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '5px 8px', fontSize: '12px', fontFamily: "'Inter', sans-serif" }}
               >
                 {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>

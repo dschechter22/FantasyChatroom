@@ -17,7 +17,6 @@ export default function StandingsPage() {
   const [sortDir, setSortDir] = useState('desc')
   const [era, setEra] = useState('all')
   const [includePlayoffs, setIncludePlayoffs] = useState(false)
-  const [panelTeamId, setPanelTeamId] = useState(null)
 
   // Filters
   const [searchText, setSearchText] = useState('')
@@ -207,7 +206,7 @@ export default function StandingsPage() {
     <div style={{ background: cardBg, marginBottom: '1px', padding: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
         <div>
-          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', color: text }}>{currentTeamId(m) ? <button onClick={e => { e.stopPropagation(); setPanelTeamId(currentTeamId(m)) }} title="Open team" style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: border, textUnderlineOffset: '4px' }}>{m.name}</button> : m.name}</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', color: text }}>{m.name}</div>
           {!m.active && <span style={{ fontSize: '10px', color: muted, letterSpacing: '0.1em' }}>RETIRED</span>}
         </div>
         <button onClick={() => toggleExpand(m.slug)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }}>
@@ -233,6 +232,7 @@ export default function StandingsPage() {
       </div>
       {expanded[m.slug] && (
         <div style={{ marginTop: '16px', borderTop: `1px solid ${border}`, paddingTop: '12px' }}>
+          {currentTeamId(m) && <div style={{ margin: '0 -16px 12px' }}><TeamPanel teamId={currentTeamId(m)} /></div>}
           {m.seasonBreakdown.map(s => (
             <div key={s.year} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${border}`, fontSize: '12px' }}>
               <div>
@@ -255,7 +255,6 @@ export default function StandingsPage() {
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
-      {panelTeamId && <TeamPanel teamId={panelTeamId} onClose={() => setPanelTeamId(null)} />}
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
 
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', marginBottom: '8px', letterSpacing: '-0.02em' }}>
@@ -324,7 +323,7 @@ export default function StandingsPage() {
                   <>
                     <tr key={m.slug} onClick={() => toggleExpand(m.slug)} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}>
                       <td style={{ ...cStyle('left', true), fontFamily: "'Playfair Display', serif", fontSize: '16px' }}>
-                        {currentTeamId(m) && m.active ? <button onClick={e => { e.stopPropagation(); setPanelTeamId(currentTeamId(m)) }} title="Open team" style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: border, textUnderlineOffset: '4px' }}>{m.name}</button> : m.name}
+                        {m.name}
                         {!m.active && <span style={{ fontSize: '10px', color: muted, marginLeft: '8px', letterSpacing: '0.1em' }}>retired</span>}
                       </td>
                       <td style={cStyle()}>{m.wins}</td>
@@ -352,6 +351,13 @@ export default function StandingsPage() {
                     {expanded[m.slug] && (
                       <tr key={`${m.slug}-exp`}>
                         <td colSpan={12} style={{ padding: 0, borderBottom: `1px solid ${border}` }}>
+                          {currentTeamId(m) && (
+                            <>
+                              <div style={{ padding: '12px 16px 8px', fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, background: statsBg }}>This season</div>
+                              <TeamPanel teamId={currentTeamId(m)} />
+                              <div style={{ padding: '12px 16px 8px', fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, background: statsBg }}>Season by season</div>
+                            </>
+                          )}
                           <table style={{ width: '100%', borderCollapse: 'collapse', background: statsBg }}>
                             <thead>
                               <tr>

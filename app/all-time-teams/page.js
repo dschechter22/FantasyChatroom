@@ -324,7 +324,7 @@ export default function AllTimeTeamsPage() {
               <tbody>
                 {filteredTeams.map((t, i) => (
                   <tr key={t.id} onClick={() => setRosterTeam(t)} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.background = d ? '#0d0d1a' : '#e8edf5'}
+                    onMouseEnter={e => e.currentTarget.style.background = d ? '#26355c' : '#e8edf5'}
                     onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : rowAlt}
                   >
                     <td style={{ ...cStyle('center'), color: muted }}>{t.final_standing}</td>

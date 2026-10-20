@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
@@ -65,7 +65,7 @@ export default function CurrentSeasonPage() {
   // ── rosters state ──
   const [rosterEntries, setRosterEntries] = useState([])
   const [byeTeamId, setByeTeamId] = useState(null)
-  const [panelTeamId, setPanelTeamId] = useState(null)
+  const [openTeamId, setOpenTeamId] = useState(null) // standings row whose team panel is open
   const [rosterTeamId, setRosterTeamId] = useState(null)
   const [rosterWeek, setRosterWeek] = useState(1)
 
@@ -511,7 +511,6 @@ export default function CurrentSeasonPage() {
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
-      {panelTeamId && <TeamPanel teamId={panelTeamId} onClose={() => setPanelTeamId(null)} />}
 
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px,6vw,72px)', fontWeight: '400', letterSpacing: '-0.02em', marginBottom: '4px' }}>2026-27 Season</h1>
@@ -533,6 +532,7 @@ export default function CurrentSeasonPage() {
                     <th style={hStyle('right')}>PA</th>
                     <th style={hStyle('right')}>Diff</th>
                     <th style={hStyle('right')}>Avg</th>
+                    <th style={hStyle('center')}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -540,12 +540,14 @@ export default function CurrentSeasonPage() {
                     const diff = parseFloat((r.pf - r.pa).toFixed(2))
                     const playoff = i < 6
                     const bubble = i === 5
+                    const open = openTeamId === r.id
                     return (
-                      <tr key={r.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                      <Fragment key={r.name}>
+                      <tr onClick={() => setOpenTeamId(open ? null : r.id)} style={{ background: open ? (d ? '#26355c' : '#e3e9f4') : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}>
                         <td style={{ ...cStyle('center'), color: playoff ? (bubble ? gold : green) : muted, fontWeight: '600' }}>{ordinal(i + 1)}</td>
                         <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                            <button onClick={e => { e.stopPropagation(); setPanelTeamId(r.id) }} title="Open team" style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: border, textUnderlineOffset: '4px' }}>{r.name}</button>
+                            {r.name}
                             {playoff && !bubble && <span style={{ fontSize: '9px', color: green, border: `1px solid ${green}`, padding: '1px 4px', letterSpacing: '0.1em' }}>IN</span>}
                             {bubble && <span style={{ fontSize: '9px', color: gold, border: `1px solid ${gold}`, padding: '1px 4px', letterSpacing: '0.1em' }}>BUBBLE</span>}
                           </span>
@@ -556,7 +558,16 @@ export default function CurrentSeasonPage() {
                         <td style={cStyle('right')}>{r.pa.toFixed(1)}</td>
                         <td style={{ ...cStyle('right'), color: diff >= 0 ? green : red }}>{diff >= 0 ? '+' : ''}{diff.toFixed(1)}</td>
                         <td style={cStyle('right')}>{r.avgScore.toFixed(1)}</td>
+                        <td style={{ ...cStyle('center'), color: muted, fontSize: '11px', width: '34px' }}>{open ? '▲' : '▼'}</td>
                       </tr>
+                      {open && (
+                        <tr>
+                          <td colSpan={9} style={{ padding: 0, borderBottom: `1px solid ${border}` }}>
+                            <TeamPanel teamId={r.id} />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     )
                   })}
                 </tbody>
@@ -744,10 +755,10 @@ export default function CurrentSeasonPage() {
             <div style={{ marginBottom: '64px' }}>
               <SectionLabel id="rosters">Rosters</SectionLabel>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-                <select value={activeTeam?.id || ''} onChange={e => setRosterTeamId(e.target.value)} style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }}>
+                <select value={activeTeam?.id || ''} onChange={e => setRosterTeamId(e.target.value)} style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }}>
                   {sortedTeams.map(t => <option key={t.id} value={t.id}>{t.manager?.name || t.team_name}</option>)}
                 </select>
-                <select value={rosterWeek} onChange={e => setRosterWeek(parseInt(e.target.value))} style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }}>
+                <select value={rosterWeek} onChange={e => setRosterWeek(parseInt(e.target.value))} style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }}>
                   {Array.from({ length: 17 }, (_, i) => i + 1).map(w => <option key={w} value={w}>Week {w}</option>)}
                 </select>
               </div>
@@ -793,7 +804,7 @@ export default function CurrentSeasonPage() {
               value={powerTable.filterText}
               onChange={e => powerTable.setFilterText(e.target.value)}
               placeholder="Filter manager or team…"
-              style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
+              style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
             />
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
@@ -874,7 +885,7 @@ export default function CurrentSeasonPage() {
                 value={byeTable.filterText}
                 onChange={e => byeTable.setFilterText(e.target.value)}
                 placeholder="Filter manager or team…"
-                style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
+                style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
               />
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
@@ -892,7 +903,7 @@ export default function CurrentSeasonPage() {
                       <tr
                         key={r.id}
                         onClick={() => setByeTeamId(r.id)}
-                        style={{ background: r.id === detail.id ? (d ? '#161d2e' : '#e3e9f4') : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}
+                        style={{ background: r.id === detail.id ? (d ? '#26355c' : '#e3e9f4') : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}
                       >
                         <td style={{ ...cStyle('center'), fontWeight: '700', color: i === 0 ? gold : muted }}>{i + 1}</td>
                         <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{r.name}</td>
@@ -1096,35 +1107,70 @@ export default function CurrentSeasonPage() {
         )}
 
         {/* ── SECTION 5: SUPERLATIVES ── */}
-        {superlatives && (
-          <div style={{ marginBottom: '64px' }}>
-            <SectionLabel>Season Superlatives</SectionLabel>
-            <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1px', background: border }}>
-              <StatCard label="🔥 High Score" value={`${superlatives.highScore?.name} — ${superlatives.highScore?.score?.toFixed(2)}`} sub={`Week ${superlatives.highScore?.week} · ${superlatives.highScore?.won ? 'Won' : 'Still lost'}`} color={green} />
-              <StatCard label="💀 Low Score" value={`${superlatives.lowScore?.name} — ${superlatives.lowScore?.score?.toFixed(2)}`} sub={`Week ${superlatives.lowScore?.week} · ${superlatives.lowScore?.won ? 'Still won' : 'Lost'}`} color={red} />
-              <StatCard label="📈 Biggest Win" value={`${superlatives.biggestWin?.winner} def. ${superlatives.biggestWin?.loser}`} sub={`${superlatives.biggestWin?.winScore?.toFixed(2)} – ${superlatives.biggestWin?.loseScore?.toFixed(2)} · Margin: ${superlatives.biggestWin?.margin} · Wk ${superlatives.biggestWin?.week}`} color={gold} />
-              <StatCard label="😰 Closest Game" value={`${superlatives.closestGame?.winner} def. ${superlatives.closestGame?.loser}`} sub={`${superlatives.closestGame?.winScore?.toFixed(2)} – ${superlatives.closestGame?.loseScore?.toFixed(2)} · Margin: ${superlatives.closestGame?.margin} · Wk ${superlatives.closestGame?.week}`} color={blue} />
-              <StatCard label="🏆 Best Loss" value={`${superlatives.highLoss?.name} — ${superlatives.highLoss?.score?.toFixed(2)}`} sub={`Week ${superlatives.highLoss?.week} · Lost to ${superlatives.highLoss?.oppScore?.toFixed(2)}`} color={gold} />
-              <StatCard label="🎯 Median Man" value={superlatives.medianMan?.name} sub={`Avg ${superlatives.medianMan?.avgScore?.toFixed(1)} PPG — closest to league median`} color={border} />
-              <StatCard label="🍀 Luckiest Week" value={superlatives.mostLuckyWeek?.name || '—'} sub={superlatives.mostLuckyWeek ? `Week ${superlatives.mostLuckyWeek.week} · Won H2H (${superlatives.mostLuckyWeek.score?.toFixed(1)}) despite poor all-play` : 'No data yet'} color={green} />
-              <StatCard label="😤 Unluckiest Week" value={superlatives.mostUnluckyWeek?.name || '—'} sub={superlatives.mostUnluckyWeek ? `Week ${superlatives.mostUnluckyWeek.week} · Lost H2H (${superlatives.mostUnluckyWeek.score?.toFixed(1)}) despite strong all-play` : 'No data yet'} color={red} />
-              <StatCard label="👑 Season Leader" value={superlatives.leader?.name} sub={`${superlatives.leader?.wins}-${superlatives.leader?.losses} · ${superlatives.leader?.pf?.toFixed(1)} PF`} color={gold} />
-              <StatCard label="🗑️ Basement" value={superlatives.basement?.name} sub={`${superlatives.basement?.wins}-${superlatives.basement?.losses} · ${superlatives.basement?.pf?.toFixed(1)} PF`} color={red} />
-              <StatCard label="⚡ Hot Streak" value={superlatives.hotStreak ? `${superlatives.hotStreak.name} — ${superlatives.hotStreak.streak}W` : 'No active streak'} sub={superlatives.hotStreak ? `${superlatives.hotStreak.streak} straight wins` : ''} color={green} />
-              <StatCard label="❄️ Cold Streak" value={superlatives.coldStreak ? `${superlatives.coldStreak.name} — ${superlatives.coldStreak.streak}L` : 'No active streak'} sub={superlatives.coldStreak ? `${superlatives.coldStreak.streak} straight losses` : ''} color={red} />
-              <StatCard label="🎢 Boom or Bust" value={superlatives.mostVolatile?.name} sub={`Std dev: ${superlatives.mostVolatile?.std} · Avg: ${superlatives.mostVolatile?.avgScore?.toFixed(1)} PPG`} color={red} />
-              <StatCard label="🏹 Most Consistent" value={superlatives.mostConsistent?.name} sub={`Std dev: ${superlatives.mostConsistent?.std} · Avg: ${superlatives.mostConsistent?.avgScore?.toFixed(1)} PPG`} color={green} />
-              <StatCard label="📊 Most PF" value={`${superlatives.mostPF?.name} — ${superlatives.mostPF?.pf?.toFixed(1)}`} sub={`${superlatives.mostPF?.avgScore?.toFixed(1)} PPG`} color={green} />
-              <StatCard label="🥶 Most PA" value={`${superlatives.mostPA?.name} — ${superlatives.mostPA?.pa?.toFixed(1)}`} sub="Most points allowed this season" color={red} />
-              <StatCard label="🔝 Power #1" value={superlatives.prLeader?.name} sub={`Power score: ${superlatives.prLeader?.powerScore?.toFixed(1)}`} color={gold} />
-              <StatCard label="📉 PR Drop" value={superlatives.prDrop ? `${superlatives.prDrop.name}` : '—'} sub={superlatives.prDrop && superlatives.prDrop.move < 0 ? `Fell ${Math.abs(superlatives.prDrop.move)} spot${Math.abs(superlatives.prDrop.move) > 1 ? 's' : ''} (${ordinal(superlatives.prDrop.from)} → ${ordinal(superlatives.prDrop.to)})` : 'Needs 2+ weeks'} color={red} />
-              <StatCard label="📈 PR Rise" value={superlatives.prRise ? `${superlatives.prRise.name}` : '—'} sub={superlatives.prRise && superlatives.prRise.move > 0 ? `Rose ${superlatives.prRise.move} spot${superlatives.prRise.move > 1 ? 's' : ''} (${ordinal(superlatives.prRise.from)} → ${ordinal(superlatives.prRise.to)})` : 'Needs 2+ weeks'} color={green} />
-              <StatCard label="🧮 LJ Leader" value={superlatives.ljLeader?.name} sub={`${(superlatives.ljLeader?.allPlayWinPct * 100)?.toFixed(1)}% all-play · ${superlatives.ljLeader?.luckRaw > 0 ? '+' : ''}${superlatives.ljLeader?.luckRaw} luck`} color={blue} />
-              <StatCard label="🎯 Best Starter" value={superlatives.bestStarter?.name || '—'} sub={superlatives.bestStarter ? `${superlatives.bestStarter.startPct}% season Correct Start %` : 'Needs per-player stats on file'} color={green} />
-              <StatCard label="🪑 Worst Starter" value={superlatives.worstStarter?.name || '—'} sub={superlatives.worstStarter ? `${superlatives.worstStarter.startPct}% season Correct Start %` : 'Needs per-player stats on file'} color={red} />
+        {superlatives && (() => {
+          const C = { green: '#34A853', blue: '#4285F4', gold: '#FBBC04', red: '#EA4335', teal: '#46BDC6', purple: '#9B72CB', orange: '#F4811F' }
+          const sg = n => (n >= 0 ? '+' : '') + n
+          const sl = superlatives
+          // [icon + label, manager, big number, caption, colour] -- one tile each, grouped by theme.
+          const groups = [
+            { title: 'Scoring', color: C.green, tiles: [
+              sl.highScore && ['🔥 High score', sl.highScore.name, sl.highScore.score?.toFixed(1), `Week ${sl.highScore.week} · ${sl.highScore.won ? 'Won' : 'Still lost'}`, C.green],
+              sl.lowScore && ['💀 Low score', sl.lowScore.name, sl.lowScore.score?.toFixed(1), `Week ${sl.lowScore.week} · ${sl.lowScore.won ? 'Still won' : 'Lost'}`, C.red],
+              sl.highLoss && ['🏆 Best loss', sl.highLoss.name, sl.highLoss.score?.toFixed(1), `Week ${sl.highLoss.week} · lost to ${sl.highLoss.oppScore?.toFixed(1)}`, C.gold],
+              sl.mostPF && ['📊 Most PF', sl.mostPF.name, sl.mostPF.pf?.toFixed(1), `${sl.mostPF.avgScore?.toFixed(1)} PPG`, C.teal],
+              sl.mostPA && ['🥶 Most PA', sl.mostPA.name, sl.mostPA.pa?.toFixed(1), 'most points allowed', C.orange],
+            ] },
+            { title: 'Matchups', color: C.blue, tiles: [
+              sl.biggestWin && ['📈 Biggest win', `${sl.biggestWin.winner} def. ${sl.biggestWin.loser}`, sl.biggestWin.margin, `${sl.biggestWin.winScore?.toFixed(2)} – ${sl.biggestWin.loseScore?.toFixed(2)} · Wk ${sl.biggestWin.week}`, C.blue],
+              sl.closestGame && ['😰 Closest game', `${sl.closestGame.winner} def. ${sl.closestGame.loser}`, sl.closestGame.margin, `${sl.closestGame.winScore?.toFixed(2)} – ${sl.closestGame.loseScore?.toFixed(2)} · Wk ${sl.closestGame.week}`, C.purple],
+            ] },
+            { title: 'Standings & streaks', color: C.gold, tiles: [
+              sl.leader && ['👑 Season leader', sl.leader.name, `${sl.leader.wins}-${sl.leader.losses}`, `${sl.leader.pf?.toFixed(1)} PF`, C.gold],
+              sl.basement && ['🗑️ Basement', sl.basement.name, `${sl.basement.wins}-${sl.basement.losses}`, `${sl.basement.pf?.toFixed(1)} PF`, C.red],
+              ['⚡ Hot streak', sl.hotStreak ? sl.hotStreak.name : 'No active streak', sl.hotStreak ? `${sl.hotStreak.streak}W` : '—', sl.hotStreak ? 'straight wins' : '', C.green],
+              ['❄️ Cold streak', sl.coldStreak ? sl.coldStreak.name : 'No active streak', sl.coldStreak ? `${sl.coldStreak.streak}L` : '—', sl.coldStreak ? 'straight losses' : '', C.blue],
+            ] },
+            { title: 'Luck & consistency', color: C.purple, tiles: [
+              sl.ljLeader && ['🧮 LJ leader', sl.ljLeader.name, `${(sl.ljLeader.allPlayWinPct * 100)?.toFixed(1)}%`, `all-play · ${sg(sl.ljLeader.luckRaw)} luck`, C.purple],
+              sl.mostLuckyWeek && ['🍀 Luckiest week', sl.mostLuckyWeek.name, sl.mostLuckyWeek.score?.toFixed(1), `Week ${sl.mostLuckyWeek.week} · won despite a poor all-play`, C.green],
+              sl.mostUnluckyWeek && ['😤 Unluckiest week', sl.mostUnluckyWeek.name, sl.mostUnluckyWeek.score?.toFixed(1), `Week ${sl.mostUnluckyWeek.week} · lost despite a strong all-play`, C.red],
+              sl.medianMan && ['🎯 Median man', sl.medianMan.name, sl.medianMan.avgScore?.toFixed(1), 'PPG, closest to the league median', C.teal],
+              sl.mostConsistent && ['🏹 Most consistent', sl.mostConsistent.name, sl.mostConsistent.std, `std dev · ${sl.mostConsistent.avgScore?.toFixed(1)} PPG`, C.green],
+              sl.mostVolatile && ['🎢 Boom or bust', sl.mostVolatile.name, sl.mostVolatile.std, `std dev · ${sl.mostVolatile.avgScore?.toFixed(1)} PPG`, C.orange],
+            ] },
+            { title: 'Power & lineups', color: C.orange, tiles: [
+              sl.prLeader && ['🔝 Power #1', sl.prLeader.name, sl.prLeader.powerScore?.toFixed(1), 'power score', C.gold],
+              ['📈 Power rise', sl.prRise ? sl.prRise.name : '—', sl.prRise && sl.prRise.move > 0 ? `▲${sl.prRise.move}` : '—', sl.prRise && sl.prRise.move > 0 ? `${ordinal(sl.prRise.from)} → ${ordinal(sl.prRise.to)}` : 'needs 2+ weeks', C.green],
+              ['📉 Power drop', sl.prDrop ? sl.prDrop.name : '—', sl.prDrop && sl.prDrop.move < 0 ? `▼${Math.abs(sl.prDrop.move)}` : '—', sl.prDrop && sl.prDrop.move < 0 ? `${ordinal(sl.prDrop.from)} → ${ordinal(sl.prDrop.to)}` : 'needs 2+ weeks', C.red],
+              ['🎯 Best starter', sl.bestStarter?.name || '—', sl.bestStarter ? `${sl.bestStarter.startPct}%` : '—', 'correct start %', C.teal],
+              ['🪑 Worst starter', sl.worstStarter?.name || '—', sl.worstStarter ? `${sl.worstStarter.startPct}%` : '—', 'correct start %', C.orange],
+            ] },
+          ]
+          return (
+            <div style={{ marginBottom: '64px' }}>
+              <SectionLabel>Season Superlatives</SectionLabel>
+              {groups.map(g => (
+                <div key={g.title} style={{ marginBottom: '28px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: g.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: '11px', letterSpacing: '0.22em', textTransform: 'uppercase', color: text, fontWeight: 600 }}>{g.title}</span>
+                    <span style={{ flex: 1, height: '1px', background: border }} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(230px, 1fr))', gap: '10px' }}>
+                    {g.tiles.filter(Boolean).map(([label, who, big, sub, color]) => (
+                      <div key={label} style={{ background: `linear-gradient(160deg, ${color}26, ${color}0a)`, borderTop: `3px solid ${color}`, padding: '16px 18px', minWidth: 0 }}>
+                        <div style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: muted, marginBottom: '8px' }}>{label}</div>
+                        <div style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: effectiveMobile ? '26px' : '34px', color, lineHeight: 1.05 }}>{big}</div>
+                        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '15px', color: text, margin: '8px 0 3px', lineHeight: 1.3 }}>{who}</div>
+                        {sub && <div style={{ fontSize: '11px', color: muted, lineHeight: 1.5 }}>{sub}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* ── SECTION 6: WEEKLY RECAP GENERATOR ── */}
         {weeks.length > 0 && (
@@ -1135,7 +1181,7 @@ export default function CurrentSeasonPage() {
               <select
                 value={recapWeek || ''}
                 onChange={e => { setRecapWeek(parseInt(e.target.value)); setSummary('') }}
-                style={{ background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', cursor: 'pointer' }}
+                style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', cursor: 'pointer' }}
               >
                 <option value="">Select week…</option>
                 {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}

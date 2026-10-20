@@ -358,7 +358,7 @@ export default function LJIndexPage() {
                 if (ty + th > H) ty = H - th - 4
                 return (
                   <g>
-                    <rect x={tx} y={ty} width={tw} height={th} rx={3} fill={d ? '#111' : '#fff'} stroke={border} strokeWidth={1} />
+                    <rect x={tx} y={ty} width={tw} height={th} rx={3} fill={d ? '#243252' : '#fff'} stroke={border} strokeWidth={1} />
                     <text x={tx + 10} y={ty + 18} fontSize="13" fontFamily="Playfair Display, serif" fill={text}>{r.managerName}</text>
                     {r.teamName && <text x={tx + 10} y={ty + 32} fontSize="10" fontFamily="Inter, sans-serif" fill={muted}>{r.teamName}</text>}
                     <text x={tx + 10} y={ty + 50} fontSize="11" fontFamily="Inter, sans-serif" fill={text}>Record: {r.wins}-{r.losses} ({r.winPct}%)</text>

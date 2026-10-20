@@ -84,7 +84,7 @@ export default function ScoreboardPage() {
 
   if (!mounted) return null
 
-  const inp = { background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }
+  const inp = { background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }
 
   const TeamPlayers = ({ entries, played }) => {
     // ESPN reports 0 (not missing) for a player who simply hasn't kicked off

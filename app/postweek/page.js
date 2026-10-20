@@ -185,7 +185,7 @@ export default function PostweekPage() {
 
   if (!mounted) return null
 
-  const inp = { background: d ? '#111' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', cursor: 'pointer' }
+  const inp = { background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', cursor: 'pointer' }
   const hStyle = (align = 'right') => ({ padding: '10px 12px', fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: muted, textAlign: align, borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' })
   const cStyle = (align = 'right') => ({ padding: '12px', fontSize: '13px', textAlign: align, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
   const SectionLabel = ({ children }) => (
