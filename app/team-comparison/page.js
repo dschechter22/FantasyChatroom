@@ -90,7 +90,7 @@ export default function SimilarTeamsPage() {
 
   const Finish = ({ t, size = 11 }) => {
     const f = finishOf(t)
-    const c = { champ: GOLD, second: '#c0c6d4', third: '#cd7f32', in: GREEN, out: RED, none: muted }[f.kind]
+    const c = { champ: GOLD, second: '#c0c6d4', third: '#cd7f32', in: GREEN, out: RED, live: BLUE, none: muted }[f.kind]
     return <span style={{ fontSize: `${size}px`, fontWeight: 700, color: c }}>{f.kind === 'champ' ? '🏆 ' : ''}{f.label}</span>
   }
 
@@ -233,16 +233,16 @@ export default function SimilarTeamsPage() {
   )
 
   // one stat across the selected teams; the best value in the row is shaded green
-  const StatRow = ({ label, get, fmt = f1, higher = true, i = 0 }) => {
+  const StatRow = ({ label, get, fmt = f1, higher = true, i = 0, alt, plain = false }) => {
     const vals = chosen.map(get)
     const nums = vals.filter(v => v != null)
-    const best = nums.length > 1 ? (higher ? Math.max(...nums) : Math.min(...nums)) : null
+    const best = nums.length > 1 && !plain ? (higher ? Math.max(...nums) : Math.min(...nums)) : null
     return (
       <div style={{ display: 'grid', gridTemplateColumns: cols, background: i % 2 ? rowAlt : 'transparent', borderTop: i ? `1px solid ${border}` : 'none' }}>
         <div style={{ padding: '10px 12px', fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', color: muted, display: 'flex', alignItems: 'center' }}>{label}</div>
         {vals.map((v, k) => {
           const isBest = best != null && v === best
-          return <div key={chosen[k].id} style={{ padding: '10px 12px', textAlign: 'center', fontSize: '15px', fontWeight: isBest ? 700 : 400, background: isBest ? tint(GREEN, '30') : 'transparent', color: isBest ? (d ? '#9fe3b3' : '#136b2d') : text, fontFamily: "'Playfair Display', serif" }}>{v == null ? '—' : fmt(v)}</div>
+          return <div key={chosen[k].id} style={{ padding: '10px 12px', textAlign: 'center', fontSize: '15px', fontWeight: isBest ? 700 : 400, background: isBest ? tint(GREEN, '30') : 'transparent', color: isBest ? (d ? '#9fe3b3' : '#136b2d') : text, fontFamily: "'Playfair Display', serif" }}>{v == null ? (alt ? (alt(chosen[k]) ?? '—') : '—') : fmt(v)}</div>
         })}
       </div>
     )
@@ -291,23 +291,28 @@ export default function SimilarTeamsPage() {
         <Section title="Overall stats">
           <RecordRow />
           <StatRow i={1} label="Win %" get={t => (t.wins + t.losses ? (t.wins / (t.wins + t.losses)) * 100 : null)} fmt={v => `${v.toFixed(1)}%`} />
-          <StatRow i={2} label="Points for" get={t => t.pf} />
-          <StatRow i={3} label="PPG" get={t => t.avg} />
-          <StatRow i={4} label="Points against" get={t => t.pa} higher={false} />
-          <StatRow i={5} label="Point diff" get={t => t.diff} fmt={v => signed(v)} />
+          <StatRow i={2} label="Games played" get={t => t.games} fmt={v => String(v)} plain />
+          <StatRow i={3} label="Points for / game" get={t => t.avg} />
+          <StatRow i={4} label="Points against / game" get={t => t.papg} higher={false} />
+          <StatRow i={5} label="Point diff / game" get={t => t.diffpg} fmt={v => signed(v)} />
           <StatRow i={6} label="Median score" get={t => t.median} />
           <StatRow i={7} label="High score" get={t => t.high} />
           <StatRow i={8} label="Low score" get={t => t.low} />
           <StatRow i={9} label="Consistency (std dev)" get={t => t.std} higher={false} />
           <StatRow i={10} label="Power score" get={t => t.power} />
           <StatRow i={11} label="All-play %" get={t => t.allPlay} fmt={v => `${v.toFixed(1)}%`} />
-          <StatRow i={12} label="Luck" get={t => t.luck} fmt={v => signed(v, 2)} />
+          <StatRow i={12} label="Luck / game" get={t => t.luckpg} fmt={v => signed(v, 2)} />
+          {chosen.some(t => t.inProgress) && (
+            <div style={{ padding: '10px 12px', fontSize: '11px', color: muted, lineHeight: 1.6, borderTop: `1px solid ${border}`, background: cardBg }}>
+              {chosen.filter(t => t.inProgress).map(t => `${t.name} ${t.year}`).join(', ')} {chosen.filter(t => t.inProgress).length > 1 ? 'are' : 'is'} still in progress, so every number is per game (through {Math.max(...chosen.filter(t => t.inProgress).map(t => t.games))} games) and has no final outcome yet.
+            </div>
+          )}
         </Section>
 
         <Section title="Outcome">
-          <StatRow i={0} label="Final standing" get={t => t.finalStanding} fmt={v => `#${v}`} higher={false} />
-          <StatRow i={1} label="Made playoffs" get={t => (t.madePlayoffs ? 1 : 0)} fmt={v => (v ? '✓' : '—')} />
-          <StatRow i={2} label="Champion" get={t => (t.result === 'Champion' ? 1 : 0)} fmt={v => (v ? '🏆' : '—')} />
+          <StatRow i={0} label="Final standing" get={t => (t.inProgress ? null : t.finalStanding)} fmt={v => `#${v}`} higher={false} alt={t => (t.inProgress ? (t.currentRank ? `#${t.currentRank} right now` : 'in progress') : null)} />
+          <StatRow i={1} label="Made playoffs" get={t => (t.inProgress ? null : t.madePlayoffs ? 1 : 0)} fmt={v => (v ? '✓' : '—')} alt={t => (t.inProgress ? 'in progress' : null)} />
+          <StatRow i={2} label="Champion" get={t => (t.inProgress ? null : t.result === 'Champion' ? 1 : 0)} fmt={v => (v ? '🏆' : '—')} alt={t => (t.inProgress ? 'in progress' : null)} />
         </Section>
 
         <Section title="Roster · season scoring by lineup slot">

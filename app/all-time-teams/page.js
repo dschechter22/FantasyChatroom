@@ -154,14 +154,21 @@ export default function AllTimeTeamsPage() {
     return true
   }
 
+  // a season with no final standings on file is still being played
+  const completeYears = useMemo(() => {
+    const done = {}
+    teams.forEach(t => { if (t.final_standing != null && t.season?.year) done[t.season.year] = true })
+    return done
+  }, [teams])
+
   const enrichedTeams = useMemo(() => teams.map(t => {
     const diff = parseFloat((t.points_for - t.points_against).toFixed(2))
     const games = t.wins + t.losses
     const ppgDiff = games > 0 ? parseFloat(((t.points_for - t.points_against) / games).toFixed(2)) : 0
     const winPct = games > 0 ? parseFloat(((t.wins / games) * 100).toFixed(1)) : 0
     const stats = teamStats[t.id] || {}
-    return { ...t, diff, ppgDiff, winPct, powerScore: stats.powerScore ?? null, luck: stats.luck ?? null, allPlay: stats.allPlayPct ?? null }
-  }), [teams, teamStats])
+    return { ...t, diff, ppgDiff, winPct, powerScore: stats.powerScore ?? null, luck: stats.luck ?? null, allPlay: stats.allPlayPct ?? null, inProgress: !completeYears[t.season?.year] }
+  }), [teams, teamStats, completeYears])
 
   const filteredTeams = useMemo(() => enrichedTeams
     .filter(t => {
@@ -257,7 +264,7 @@ export default function AllTimeTeamsPage() {
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <div style={{ fontSize: '12px', color: resultColor(t.playoff_result), fontWeight: '500' }}>
-              {t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}
+              {t.inProgress ? 'In progress' : (t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—'))}
             </div>
             <button onClick={() => setRosterTeam(t)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '3px 7px', cursor: 'pointer', fontSize: '11px' }}>📋</button>
           </div>
@@ -362,7 +369,7 @@ export default function AllTimeTeamsPage() {
                     <td style={{ ...cStyle(), color: t.powerScore !== null ? text : muted }}>{t.powerScore !== null ? t.powerScore.toFixed(1) : '—'}</td>
                     <td style={cStyle()}>{t.allPlay !== null ? `${t.allPlay.toFixed(1)}%` : '—'}</td>
                     <td style={{ ...cStyle(), color: t.luck !== null ? (t.luck >= 0 ? green : red) : muted, fontWeight: '500' }}>{t.luck !== null ? (t.luck >= 0 ? `+${t.luck}` : `${t.luck}`) : '—'}</td>
-                    <td style={{ ...cStyle('center'), color: resultColor(t.playoff_result), fontSize: '12px', fontWeight: '500', minWidth: '110px' }}>{t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}</td>
+                    <td style={{ ...cStyle('center'), color: resultColor(t.playoff_result), fontSize: '12px', fontWeight: '500', minWidth: '110px' }}>{t.inProgress ? 'In progress' : (t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—'))}</td>
                   </tr>
                 ))}
                 {avgRow && (
