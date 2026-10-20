@@ -21,7 +21,7 @@ export default function StatsPage() {
         {tagline && <span style={{ fontSize: '12px', color: muted, marginLeft: '12px' }}>{tagline}</span>}
       </div>
       {formula && (
-        <div style={{ background: d ? '#243252' : '#e4e0d8', padding: '12px 16px', fontFamily: 'monospace', fontSize: effectiveMobile ? '11px' : '13px', color: text, marginBottom: '12px', lineHeight: 1.6, overflowX: 'auto', whiteSpace: 'pre' }}>
+        <div style={{ background: d ? '#2b3242' : '#e4e0d8', padding: '12px 16px', fontFamily: 'monospace', fontSize: effectiveMobile ? '11px' : '13px', color: text, marginBottom: '12px', lineHeight: 1.6, overflowX: 'auto', whiteSpace: 'pre' }}>
           {formula}
         </div>
       )}
@@ -173,7 +173,7 @@ Normalized = (value - min) / (max - min)`}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '12px' }}>
                 <thead>
-                  <tr style={{ background: d ? '#243252' : '#e4e0d8' }}>
+                  <tr style={{ background: d ? '#2b3242' : '#e4e0d8' }}>
                     <th style={{ padding: '8px 12px', textAlign: 'left', color: muted, fontWeight: '600', letterSpacing: '0.08em', fontSize: '10px', textTransform: 'uppercase', borderBottom: `1px solid ${border}` }}>Grade</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center', color: muted, fontWeight: '600', letterSpacing: '0.08em', fontSize: '10px', textTransform: 'uppercase', borderBottom: `1px solid ${border}` }}>Rds 1–4 (delta ≤)</th>
                     <th style={{ padding: '8px 12px', textAlign: 'center', color: muted, fontWeight: '600', letterSpacing: '0.08em', fontSize: '10px', textTransform: 'uppercase', borderBottom: `1px solid ${border}` }}>Rds 5–9 (delta ≤)</th>

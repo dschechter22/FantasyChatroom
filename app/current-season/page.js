@@ -43,7 +43,7 @@ const actualStatsFor = (e) => {
 }
 
 export default function CurrentSeasonPage() {
-  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold, blue } = useLayout()
+  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold, blue, accent } = useLayout()
 
   // ── shared data ──
   // `matchups` is games that have actually been played (every stat below counts
@@ -497,7 +497,7 @@ export default function CurrentSeasonPage() {
   // `id` is the anchor the 2026-27 menu links to; scroll-margin-top in Nav
   // keeps the target clear of the fixed bar.
   const SectionLabel = ({ children, id }) => (
-    <p id={id} style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '20px' }}>{children}</p>
+    <p id={id} style={{ fontSize: '11px', letterSpacing: '0.25em', textTransform: 'uppercase', color: text, marginBottom: '20px', borderLeft: `3px solid ${accent}`, paddingLeft: '10px' }}>{children}</p>
   )
 
   const StatCard = ({ label, value, sub, color }) => (
@@ -543,7 +543,7 @@ export default function CurrentSeasonPage() {
                     const open = openTeamId === r.id
                     return (
                       <Fragment key={r.name}>
-                      <tr onClick={() => setOpenTeamId(open ? null : r.id)} style={{ background: open ? (d ? '#26355c' : '#e3e9f4') : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}>
+                      <tr onClick={() => setOpenTeamId(open ? null : r.id)} style={{ background: open ? (d ? '#2e3546' : '#e3e9f4') : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer', boxShadow: open ? `inset 3px 0 0 ${accent}` : 'none' }}>
                         <td style={{ ...cStyle('center'), color: playoff ? (bubble ? gold : green) : muted, fontWeight: '600' }}>{ordinal(i + 1)}</td>
                         <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -755,10 +755,10 @@ export default function CurrentSeasonPage() {
             <div style={{ marginBottom: '64px' }}>
               <SectionLabel id="rosters">Rosters</SectionLabel>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
-                <select value={activeTeam?.id || ''} onChange={e => setRosterTeamId(e.target.value)} style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }}>
+                <select value={activeTeam?.id || ''} onChange={e => setRosterTeamId(e.target.value)} style={{ background: d ? '#2b3242' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }}>
                   {sortedTeams.map(t => <option key={t.id} value={t.id}>{t.manager?.name || t.team_name}</option>)}
                 </select>
-                <select value={rosterWeek} onChange={e => setRosterWeek(parseInt(e.target.value))} style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }}>
+                <select value={rosterWeek} onChange={e => setRosterWeek(parseInt(e.target.value))} style={{ background: d ? '#2b3242' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }}>
                   {Array.from({ length: 17 }, (_, i) => i + 1).map(w => <option key={w} value={w}>Week {w}</option>)}
                 </select>
               </div>
@@ -804,7 +804,7 @@ export default function CurrentSeasonPage() {
               value={powerTable.filterText}
               onChange={e => powerTable.setFilterText(e.target.value)}
               placeholder="Filter manager or team…"
-              style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
+              style={{ background: d ? '#2b3242' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
             />
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
@@ -885,7 +885,7 @@ export default function CurrentSeasonPage() {
                 value={byeTable.filterText}
                 onChange={e => byeTable.setFilterText(e.target.value)}
                 placeholder="Filter manager or team…"
-                style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
+                style={{ background: d ? '#2b3242' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
               />
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
@@ -903,7 +903,7 @@ export default function CurrentSeasonPage() {
                       <tr
                         key={r.id}
                         onClick={() => setByeTeamId(r.id)}
-                        style={{ background: r.id === detail.id ? (d ? '#26355c' : '#e3e9f4') : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}
+                        style={{ background: r.id === detail.id ? (d ? '#2e3546' : '#e3e9f4') : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}
                       >
                         <td style={{ ...cStyle('center'), fontWeight: '700', color: i === 0 ? gold : muted }}>{i + 1}</td>
                         <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{r.name}</td>
@@ -1181,7 +1181,7 @@ export default function CurrentSeasonPage() {
               <select
                 value={recapWeek || ''}
                 onChange={e => { setRecapWeek(parseInt(e.target.value)); setSummary('') }}
-                style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', cursor: 'pointer' }}
+                style={{ background: d ? '#2b3242' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', cursor: 'pointer' }}
               >
                 <option value="">Select week…</option>
                 {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}

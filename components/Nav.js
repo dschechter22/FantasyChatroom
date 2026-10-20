@@ -59,9 +59,9 @@ export default function Nav() {
   const [openGroup, setOpenGroup] = useState(null)   // mobile accordion
   const rowRef = useRef(null)
 
-  const navBg = d ? 'rgba(17,25,46,0.96)' : 'rgba(244,241,236,0.97)'
-  const dropBg = d ? '#1e2a48' : '#faf8f5'
-  const activeBorder = d ? '#fff' : '#0d2152'
+  const navBg = d ? 'rgba(24,28,38,0.96)' : 'rgba(244,241,236,0.97)'
+  const dropBg = d ? '#252b39' : '#faf8f5'
+  const activeBorder = d ? '#e8dcc0' : '#0d2152'
 
   // Open whichever accordion section holds the current page, so the mobile
   // menu lands on something recognisable rather than fully collapsed.

@@ -32,18 +32,20 @@ export function LayoutProvider({ children }) {
   const d = theme === 'dark'
 
   const tokens = {
-    bg:        d ? '#161f38'                : '#f4f1ec',
-    text:      d ? '#eef2fb'                : '#0d2152',
-    muted:     d ? 'rgba(226,234,250,0.58)' : 'rgba(13,33,82,0.75)',
-    border:    d ? 'rgba(160,185,235,0.18)' : 'rgba(13,33,82,0.14)',
-    cardBg:    d ? '#1e2a48'                : '#ede9e2',
-    rowAlt:    d ? '#1a2540'                : '#e8e4dc',
-    statsBg:   d ? '#121a30'                : '#e4e0d8',
-    highlight: d ? '#26355c'                : '#e8edf5',
+    bg:        d ? '#1b202c'                : '#f4f1ec',
+    text:      d ? '#f2ead8'                : '#0d2152',
+    muted:     d ? 'rgba(242,234,216,0.6)'  : 'rgba(13,33,82,0.75)',
+    border:    d ? 'rgba(242,234,216,0.16)' : 'rgba(13,33,82,0.14)',
+    cardBg:    d ? '#252b39'                : '#ede9e2',
+    rowAlt:    d ? '#212634'                : '#e8e4dc',
+    statsBg:   d ? '#161a24'                : '#e4e0d8',
+    highlight: d ? '#2e3546'                : '#e8edf5',
     green:     d ? '#6ee7b7'                : '#0d6e3f',
     red:       d ? '#f87171'                : '#9b1c1c',
     gold:      d ? '#fcd34d'                : '#92400e',
-    blue:      d ? '#93c5fd'                : '#1e3a8a',
+    blue:      d ? '#9db8dc'                : '#1e3a8a',
+    // cream in dark mode, the site's navy in light -- for chrome accents (tabs, panel edges)
+    accent:    d ? '#e8dcc0'                : '#0d2152',
   }
 
   return (

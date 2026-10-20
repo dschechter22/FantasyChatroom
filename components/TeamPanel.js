@@ -54,7 +54,7 @@ function loadSeason(teamId) {
  * needs itself, so any page that can name a team id can drop it in.
  */
 export default function TeamPanel({ teamId, startTab = 'schedule' }) {
-  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt } = useLayout()
+  const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, accent } = useLayout()
   const router = useRouter()
   const [tab, setTab] = useState(startTab)
   const [data, setData] = useState(null)
@@ -447,8 +447,8 @@ export default function TeamPanel({ teamId, startTab = 'schedule' }) {
     : <StatsTab />
 
   return (
-    <div onClick={e => e.stopPropagation()} style={{ background: bg, borderTop: `2px solid ${GOLD}`, borderBottom: `1px solid ${border}` }}>
-      <div style={{ display: 'flex', gap: '6px', padding: '12px 12px 0', overflowX: 'auto', background: cardBg, borderBottom: `1px solid ${border}` }}>
+    <div onClick={e => e.stopPropagation()} style={{ background: bg, borderTop: `2px solid ${accent}`, borderBottom: `1px solid ${border}` }}>
+      <div style={{ display: 'flex', gap: '6px', padding: '12px 12px 0', overflowX: 'auto', overflowY: 'hidden', background: cardBg, borderBottom: `1px solid ${border}` }}>
         {TABS.map(([key, label]) => (
           <button
             key={key}
@@ -456,7 +456,7 @@ export default function TeamPanel({ teamId, startTab = 'schedule' }) {
             style={{
               background: tab === key ? bg : 'transparent', color: tab === key ? text : muted,
               border: `1px solid ${tab === key ? border : 'transparent'}`, borderBottom: tab === key ? `1px solid ${bg}` : '1px solid transparent',
-              borderTop: tab === key ? `3px solid ${GOLD}` : '3px solid transparent',
+              borderTop: tab === key ? `3px solid ${accent}` : '3px solid transparent',
               marginBottom: '-1px', padding: '9px 18px', fontSize: '12px', letterSpacing: '0.08em', textTransform: 'uppercase',
               cursor: 'pointer', fontFamily: "'Inter', sans-serif", fontWeight: tab === key ? 700 : 400, whiteSpace: 'nowrap',
             }}

@@ -330,7 +330,7 @@ export default function ManagersPage() {
         {isSelected && (
           <div style={{ borderTop: `1px solid ${border}` }}>
             {/* Tab bar */}
-            <div style={{ display: 'flex', borderBottom: `1px solid ${border}`, background: d ? '#1a2540' : '#e8e4dc', paddingLeft: '8px' }}>
+            <div style={{ display: 'flex', borderBottom: `1px solid ${border}`, background: d ? '#212634' : '#e8e4dc', paddingLeft: '8px' }}>
               <TabBtn id={m.id} tab="stats" label="Stats" />
               <TabBtn id={m.id} tab="players" label="Players" />
               <TabBtn id={m.id} tab="seasons" label="Seasons" />
@@ -455,7 +455,7 @@ export default function ManagersPage() {
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
                     <thead>
-                      <tr style={{ background: d ? '#243252' : '#e4e0d8' }}>
+                      <tr style={{ background: d ? '#2b3242' : '#e4e0d8' }}>
                         {cols.map(([key, h], i) => (
                           <th key={key} onClick={() => handleSeasonSort(m.id, key)} style={{ padding: '8px 10px', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: sKey === key ? text : muted, textAlign: i <= 1 ? 'left' : 'right', borderBottom: `1px solid ${border}`, fontWeight: sKey === key ? '700' : '500', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
                             {h}{sKey === key ? (sDir === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -465,7 +465,7 @@ export default function ManagersPage() {
                     </thead>
                     <tbody>
                       {sortedSeasons.map((s, i) => (
-                        <tr key={s.year} style={{ background: i % 2 === 0 ? 'transparent' : (d ? '#1a2540' : '#e8e4dc') }}>
+                        <tr key={s.year} style={{ background: i % 2 === 0 ? 'transparent' : (d ? '#212634' : '#e8e4dc') }}>
                           <td style={{ padding: '10px', fontSize: '12px', color: muted, borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap' }}>{s.year}</td>
                           <td style={{ padding: '10px', fontSize: '12px', color: text, borderBottom: `1px solid ${border}`, fontFamily: "'Playfair Display', serif", whiteSpace: 'nowrap' }}>{s.team_name}</td>
                           <td style={{ padding: '10px', fontSize: '12px', color: text, borderBottom: `1px solid ${border}`, textAlign: 'right', whiteSpace: 'nowrap' }}>{s.wins}</td>

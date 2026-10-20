@@ -136,12 +136,12 @@ export default function H2HPage() {
         {/* Modal */}
         <div style={{
           position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-          zIndex: 201, background: d ? '#1e2a48' : '#f4f1ec',
+          zIndex: 201, background: d ? '#252b39' : '#f4f1ec',
           border: `1px solid ${border}`, width: effectiveMobile ? '95vw' : '680px',
           maxHeight: '85vh', overflowY: 'auto',
         }}>
           {/* Header */}
-          <div style={{ padding: effectiveMobile ? '20px 16px 16px' : '28px 32px 20px', borderBottom: `1px solid ${border}`, position: 'sticky', top: 0, background: d ? '#1e2a48' : '#f4f1ec', zIndex: 1 }}>
+          <div style={{ padding: effectiveMobile ? '20px 16px 16px' : '28px 32px 20px', borderBottom: `1px solid ${border}`, position: 'sticky', top: 0, background: d ? '#252b39' : '#f4f1ec', zIndex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
                 <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '20px' : '28px', fontWeight: '400', color: text, marginBottom: '4px' }}>
@@ -195,7 +195,7 @@ export default function H2HPage() {
             <p style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: muted, marginBottom: '12px' }}>Game Log</p>
             <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
               <thead>
-                <tr style={{ background: d ? '#243252' : '#e8e4dc' }}>
+                <tr style={{ background: d ? '#2b3242' : '#e8e4dc' }}>
                   <th style={hStyle('center')}>Year</th>
                   <th style={hStyle('center')}>Wk</th>
                   <th style={hStyle('right')}>{managerA.name.split(' ')[0]}</th>
@@ -212,7 +212,7 @@ export default function H2HPage() {
                   const win = myScore > theirScore
                   const tie = myScore === theirScore
                   return (
-                    <tr key={m.id} style={{ background: i % 2 === 0 ? 'transparent' : (d ? '#1a2540' : '#e8e4dc') }}>
+                    <tr key={m.id} style={{ background: i % 2 === 0 ? 'transparent' : (d ? '#212634' : '#e8e4dc') }}>
                       <td style={{ ...cStyle('center'), color: muted }}>{m.season?.year}</td>
                       <td style={{ ...cStyle('center'), color: muted }}>{m.week}</td>
                       <td style={{ ...cStyle('right'), fontWeight: win ? '600' : '400', color: win ? text : muted }}>{myScore}</td>
@@ -308,7 +308,7 @@ export default function H2HPage() {
                         </td>
                         {displayManagers.map(colManager => {
                           if (rowManager.id === colManager.id) {
-                            return <td key={colManager.id} style={{ ...cStyle('center'), background: d ? '#243252' : '#e0dbd3', color: muted }}>—</td>
+                            return <td key={colManager.id} style={{ ...cStyle('center'), background: d ? '#2b3242' : '#e0dbd3', color: muted }}>—</td>
                           }
                           const h = getH2H(rowManager.id, colManager.id)
                           const winning = h.wins > h.losses
@@ -385,7 +385,7 @@ export default function H2HPage() {
               value={oppTable.filterText}
               onChange={e => oppTable.setFilterText(e.target.value)}
               placeholder="Filter opponent…"
-              style={{ background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '200px', marginBottom: '10px' }}
+              style={{ background: d ? '#2b3242' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '200px', marginBottom: '10px' }}
             />
             <div style={{ overflowX: 'auto', marginBottom: '48px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>

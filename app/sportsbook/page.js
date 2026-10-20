@@ -973,7 +973,7 @@ export default function SportsbookPage() {
 
   if (!mounted) return null
 
-  const inp = { background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }
+  const inp = { background: d ? '#2b3242' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none' }
   const lbl = { fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, display: 'block', marginBottom: '4px' }
   const tabBtn = active => ({ background: active ? text : 'none', color: active ? bg : muted, border: `1px solid ${border}`, padding: '6px 14px', cursor: 'pointer', fontSize: '11px', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", fontWeight: active ? '600' : '400' })
   // A bolder, tinted, hover-reactive odds button -- green-tinted for the
@@ -1130,7 +1130,7 @@ export default function SportsbookPage() {
 
     if (effectiveMobile) {
       return (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 150, background: d ? '#1e2a48' : '#f4f1ec', boxShadow: '0 -8px 24px rgba(0,0,0,0.35)' }}>
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 150, background: d ? '#252b39' : '#f4f1ec', boxShadow: '0 -8px 24px rgba(0,0,0,0.35)' }}>
           <button
             onClick={() => setSlipOpen(o => !o)}
             style={{ width: '100%', background: text, color: bg, border: 'none', padding: '14px 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: '600', letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: "'Inter', sans-serif", cursor: 'pointer' }}
@@ -1154,7 +1154,7 @@ export default function SportsbookPage() {
           Bet Slip ({slip.length}) <span style={{ fontSize: '10px' }}>{caret}</span>
         </button>
         {slipOpen && (
-          <div style={{ background: d ? '#1e2a48' : '#f4f1ec', border: `1px solid ${border}`, marginTop: '10px', maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
+          <div style={{ background: d ? '#252b39' : '#f4f1ec', border: `1px solid ${border}`, marginTop: '10px', maxHeight: '70vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
             {SlipContent()}
           </div>
         )}
@@ -1276,7 +1276,7 @@ export default function SportsbookPage() {
       {showPinModal && (
         <>
           <div onClick={() => setShowPinModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#1e2a48' : '#f4f1ec', border: `1px solid ${border}`, padding: '28px', width: effectiveMobile ? '90vw' : '320px' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#252b39' : '#f4f1ec', border: `1px solid ${border}`, padding: '28px', width: effectiveMobile ? '90vw' : '320px' }}>
             <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', marginBottom: '16px', color: text }}>Admin Access</h3>
             <input type="password" placeholder="PIN" value={adminPinInput}
               onChange={e => { setAdminPinInput(e.target.value); setAdminPinError('') }}
@@ -1296,7 +1296,7 @@ export default function SportsbookPage() {
       {showHelpModal && (
         <>
           <div onClick={() => setShowHelpModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#1e2a48' : '#f4f1ec', border: `1px solid ${border}`, width: effectiveMobile ? '92vw' : '560px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#252b39' : '#f4f1ec', border: `1px solid ${border}`, width: effectiveMobile ? '92vw' : '560px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', color: text, margin: 0 }}>How the Sportsbook Works</h3>
               <button onClick={() => setShowHelpModal(false)} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: '18px', padding: 0 }}>✕</button>
@@ -1337,7 +1337,7 @@ export default function SportsbookPage() {
       {settleTarget && (
         <>
           <div onClick={() => setSettleTarget(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#1e2a48' : '#f4f1ec', border: `1px solid ${border}`, padding: '28px', width: effectiveMobile ? '90vw' : '380px' }}>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#252b39' : '#f4f1ec', border: `1px solid ${border}`, padding: '28px', width: effectiveMobile ? '90vw' : '380px' }}>
             <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', marginBottom: '4px', color: text }}>Settle Game</h3>
             <p style={{ fontSize: '12px', color: muted, marginBottom: '20px' }}>{settleTarget.team_a} vs {settleTarget.team_b}</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
@@ -1365,7 +1365,7 @@ export default function SportsbookPage() {
         return (
           <>
             <div onClick={() => setProjModalTeamId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#1e2a48' : '#f4f1ec', border: `1px solid ${border}`, width: effectiveMobile ? '92vw' : '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: d ? '#252b39' : '#f4f1ec', border: `1px solid ${border}`, width: effectiveMobile ? '92vw' : '640px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
               <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', color: text, margin: 0 }}>
                   Week {week} Projections {oppId ? `— ${teamLabel(projModalTeamId)} vs ${teamLabel(oppId)}` : `— ${teamLabel(projModalTeamId)}`}

@@ -195,7 +195,7 @@ export default function PreweekPage() {
 
   if (!mounted) return null
 
-  const inp = { background: d ? '#243252' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', cursor: 'pointer' }
+  const inp = { background: d ? '#2b3242' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 14px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', cursor: 'pointer' }
   const micro = { fontSize: '9px', letterSpacing: '0.16em', textTransform: 'uppercase', color: muted }
   const SectionLabel = ({ children }) => (
     <p style={{ fontSize: '10px', letterSpacing: '0.25em', textTransform: 'uppercase', color: muted, marginBottom: '18px' }}>{children}</p>
