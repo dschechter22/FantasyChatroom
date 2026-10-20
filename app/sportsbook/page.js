@@ -5,7 +5,7 @@ import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import { priceTwoWay, actualWeekLineup, projectedWeekLineup } from '../../lib/predictions'
-import { groupEntriesByTeam } from '../../lib/rosters'
+import { groupEntriesByTeam, playedGames } from '../../lib/rosters'
 import { buildFixtures, REG_SEASON_WEEKS } from '../../lib/schedule'
 import { generateWeekBoard, generateFutures, generateProps, getOrCreateFuture, priceCustomMarket, temperProb } from '../../lib/sportsbookGen'
 export const dynamic = 'force-dynamic'
@@ -381,10 +381,8 @@ export default function SportsbookPage() {
   const playerSeasonStats = useMemo(() => {
     const byPlayer = {}
     rosterEntries.forEach(e => {
-      const played = Object.entries(e.stats?.actual || {})
-        .map(([w, v]) => ({ week: parseInt(w), actual: v }))
-        .filter(x => x.week < week && typeof x.actual === 'number')
-        .sort((a, b) => a.week - b.week)
+      // games actually played (weeks out injured don't count as 0-point games)
+      const played = playedGames(e.stats, week).map(g => ({ week: g.week, actual: g.pts }))
       const avgPts = played.length ? played.reduce((s, x) => s + x.actual, 0) / played.length : null
       const last3 = played.slice(-3)
       byPlayer[e.player_id] = {

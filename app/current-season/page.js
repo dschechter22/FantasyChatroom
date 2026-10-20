@@ -4,7 +4,7 @@ import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { projectedWeekLineup, lineupEfficiency, actualWeekLineup, isPlayed } from '../../lib/predictions'
-import { weekEntries, latestRosterWeek } from '../../lib/rosters'
+import { weekEntries, latestRosterWeek, playedAvg } from '../../lib/rosters'
 import { useSortableTable } from '../../hooks/useSortableTable'
 import { resolveSchedule, REG_SEASON_WEEKS } from '../../lib/schedule'
 import { computeByeImpact } from '../../lib/byeWeeks'
@@ -39,7 +39,8 @@ const actualStatsFor = (e) => {
   const actual = e.stats?.actual || {}
   const weeksWithData = Object.keys(actual).map(Number)
   const total = weeksWithData.reduce((s, w) => s + (actual[w] || 0), 0)
-  return { total, avg: weeksWithData.length ? total / weeksWithData.length : null, weeksPlayed: weeksWithData.length }
+  // avg is per game actually played -- weeks out injured or on IR don't count as 0-point games
+  return { total, avg: playedAvg(e.stats), weeksPlayed: weeksWithData.length }
 }
 
 export default function CurrentSeasonPage() {
