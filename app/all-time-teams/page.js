@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
@@ -25,6 +25,10 @@ export default function AllTimeTeamsPage() {
   const [filterResult, setFilterResult] = useState('All')
   const [rosterTeam, setRosterTeam] = useState(null)
   const [mounted, setMounted] = useState(false)
+  // /all-time-teams?team=<id> (linked from a team's Similar Teams tab) opens that
+  // team's roster and highlights its row.
+  const [highlightId, setHighlightId] = useState(null)
+  const deepLinked = useRef(false)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -39,6 +43,17 @@ export default function AllTimeTeamsPage() {
       .eq('is_playoff', false))
       .then(({ data }) => setMatchups(data || []))
   }, [])
+
+  useEffect(() => {
+    if (!teams.length || deepLinked.current) return
+    const id = new URLSearchParams(window.location.search).get('team')
+    const t = id && teams.find(x => x.id === id)
+    if (!t) return
+    deepLinked.current = true
+    setHighlightId(id)
+    setRosterTeam(t)
+    setTimeout(() => document.getElementById(`team-row-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 400)
+  }, [teams])
 
   const handleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
@@ -230,7 +245,7 @@ export default function AllTimeTeamsPage() {
     const ps = t.powerScore
     const lk = t.luck
     return (
-      <div style={{ background: i % 2 === 0 ? 'transparent' : cardBg, padding: '14px', borderBottom: `1px solid ${border}` }}>
+      <div id={`team-row-${t.id}`} onClick={() => setRosterTeam(t)} style={{ background: t.id === highlightId ? (d ? '#3a4157' : '#f3e6b8') : i % 2 === 0 ? 'transparent' : cardBg, padding: '14px', borderBottom: `1px solid ${border}`, boxShadow: t.id === highlightId ? 'inset 3px 0 0 #FBBC04' : 'none' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
           <div>
             <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', color: text }}>{t.manager?.name}</div>
@@ -323,9 +338,9 @@ export default function AllTimeTeamsPage() {
               </thead>
               <tbody>
                 {filteredTeams.map((t, i) => (
-                  <tr key={t.id} onClick={() => setRosterTeam(t)} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}
+                  <tr key={t.id} id={`team-row-${t.id}`} onClick={() => setRosterTeam(t)} style={{ background: t.id === highlightId ? (d ? '#3a4157' : '#f3e6b8') : i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer', boxShadow: t.id === highlightId ? 'inset 3px 0 0 #FBBC04' : 'none' }}
                     onMouseEnter={e => e.currentTarget.style.background = d ? '#2e3546' : '#e8edf5'}
-                    onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : rowAlt}
+                    onMouseLeave={e => e.currentTarget.style.background = t.id === highlightId ? (d ? '#3a4157' : '#f3e6b8') : i % 2 === 0 ? 'transparent' : rowAlt}
                   >
                     <td style={{ ...cStyle('center'), color: muted }}>{t.final_standing}</td>
                     <td style={{ ...cStyle('left'), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{t.manager?.name}</td>

@@ -1,9 +1,11 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase, fetchAll } from '../lib/supabase'
+import { supabase, fetchAll, LEAGUE_ID } from '../lib/supabase'
 import { resolveSchedule } from '../lib/schedule'
-import { buildLeagueProfiles, rankOf } from '../lib/teamProfile'
+import { buildLeagueProfiles, rankOf, seasonAvg } from '../lib/teamProfile'
+import { groupEntriesByTeam } from '../lib/rosters'
+import { seasonFeatures, findSimilar } from '../lib/similarTeams'
 import { useLayout } from '../hooks/useLayout'
 
 const TABS = [
@@ -11,6 +13,7 @@ const TABS = [
   ['roster', 'Roster'],
   ['lj', 'LJ Index'],
   ['stats', 'Key Stats'],
+  ['similar', 'Similar Teams'],
 ]
 
 const GREEN = '#34A853', BLUE = '#4285F4', GOLD = '#FBBC04', RED = '#EA4335', TEAL = '#46BDC6', PURPLE = '#9B72CB', ORANGE = '#F4811F'
@@ -48,6 +51,23 @@ function loadSeason(teamId) {
   return promise
 }
 
+// Every season's teams, matchups and rosters, for the Similar Teams tab. Only
+// fetched when that tab is opened, then kept for the rest of the visit.
+let historyPromise = null
+function loadHistory() {
+  if (historyPromise) return historyPromise
+  historyPromise = (async () => {
+    const [teamsRes, matchupsRes, entriesRes] = await Promise.all([
+      fetchAll(() => supabase.from('teams').select('*, manager:manager_id(name, slug), season:season_id(year)').eq('league_id', LEAGUE_ID)),
+      fetchAll(() => supabase.from('matchups').select('*, home_team:home_team_id(id), away_team:away_team_id(id), season:season_id(year)').eq('league_id', LEAGUE_ID)),
+      fetchAll(() => supabase.from('roster_entries').select('team_id, avg_pts, player:player_id(position)').eq('league_id', LEAGUE_ID)),
+    ])
+    return { teams: teamsRes.data || [], matchups: matchupsRes.data || [], entries: entriesRes.data || [] }
+  })()
+  historyPromise.catch(() => { historyPromise = null })
+  return historyPromise
+}
+
 /**
  * A team's schedule, roster, LJ Index and key stats on tabs, rendered inline
  * (the standings expand to show it under the manager's row). Loads what it
@@ -77,6 +97,45 @@ export default function TeamPanel({ teamId, startTab = 'schedule' }) {
     const all = buildLeagueProfiles({ teams: data.teams, matchups: data.matchups, entries: data.entries, games })
     return { profiles: all, profile: all.find(p => p.id === teamId) }
   }, [data, teamId])
+
+  // ── similar historical teams (loaded the first time the tab is opened) ──
+  const [hist, setHist] = useState(null)
+  const [histError, setHistError] = useState('')
+  useEffect(() => {
+    if (tab !== 'similar' || hist) return
+    loadHistory().then(setHist).catch(e => setHistError(e.message || 'Could not load league history'))
+  }, [tab, hist])
+
+  const similar = useMemo(() => {
+    if (!hist || !profile || !data) return null
+    const week = profile.weekly.length
+    if (!week) return { empty: true }
+    const players = es => es.filter(e => e.player?.position).map(e => ({ pos: e.player.position, ppg: seasonAvg(e) || 0 }))
+    // this team, measured the same way as every historical team: through `week` games
+    const currentRosters = new Map(Object.entries(groupEntriesByTeam(data.entries)).map(([id, es]) => [id, players(es)]))
+    const target = seasonFeatures({ teams: data.teams, matchups: data.matchups, rosters: currentRosters, week }).get(teamId)
+    if (!target) return { empty: true }
+
+    const rostersByTeam = new Map()
+    hist.entries.forEach(e => {
+      if (!e.player?.position) return
+      if (!rostersByTeam.has(e.team_id)) rostersByTeam.set(e.team_id, [])
+      rostersByTeam.get(e.team_id).push({ pos: e.player.position, ppg: e.avg_pts || 0 })
+    })
+    const teamsByYear = {}, matchupsByYear = {}
+    hist.teams.forEach(t => { if (t.season?.year) (teamsByYear[t.season.year] ||= []).push(t) })
+    hist.matchups.forEach(m => { if (m.season?.year) (matchupsByYear[m.season.year] ||= []).push(m) })
+    const byId = new Map(hist.teams.map(t => [t.id, t]))
+    const pool = []
+    Object.keys(teamsByYear).forEach(year => {
+      if (Number(year) === data.year) return
+      const feats = seasonFeatures({ teams: teamsByYear[year], matchups: matchupsByYear[year] || [], rosters: rostersByTeam, week })
+      feats.forEach((f, id) => pool.push({ id, vector: f.vector, meta: f.meta }))
+    })
+    if (!pool.length) return { empty: true, week }
+    const results = findSimilar({ target, pool, limit: 10 }).map(r => ({ ...r, team: byId.get(r.id) }))
+    return { week, pool: pool.length, target: target.meta, results }
+  }, [hist, profile, data, teamId])
 
   const hStyle = (align = 'left') => ({ padding: '8px 12px', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: muted, textAlign: align, borderBottom: `1px solid ${border}`, fontWeight: '500', whiteSpace: 'nowrap' })
   const cStyle = (align = 'left') => ({ padding: '10px 12px', fontSize: '13px', textAlign: align, borderBottom: `1px solid ${border}`, color: text, whiteSpace: 'nowrap' })
@@ -439,11 +498,102 @@ export default function TeamPanel({ teamId, startTab = 'schedule' }) {
     )
   }
 
+  // How a historical team's season ended, as a label + colour.
+  const finishOf = t => {
+    if (!t) return { label: '—', color: muted }
+    if (t.playoff_result === 'Champion') return { label: '🏆 Champion', color: GOLD }
+    if (t.playoff_result === 'Runner Up') return { label: 'Runner-up', color: '#c0c6d4' }
+    if (t.playoff_result === 'Third Place') return { label: '3rd place', color: '#cd7f32' }
+    if (t.made_playoffs) return { label: t.final_standing ? `Playoffs · #${t.final_standing}` : 'Made playoffs', color: GREEN }
+    if (t.playoff_result?.includes('Mol Bowl')) return { label: t.playoff_result, color: RED }
+    return { label: t.final_standing ? `Missed · #${t.final_standing}` : 'Missed playoffs', color: RED }
+  }
+
+  const SimilarTab = () => {
+    if (histError) return <Empty>{histError}</Empty>
+    if (!similar) return <Empty>Comparing against every past season…</Empty>
+    if (similar.empty) return <Empty>{profile.weekly.length ? 'No past seasons have played this many weeks yet.' : 'No games played yet.'}</Empty>
+    const top = similar.results
+    const made = top.filter(r => r.team?.made_playoffs).length
+    const titles = top.filter(r => r.team?.playoff_result === 'Champion').length
+    const standings = top.map(r => r.team?.final_standing).filter(v => v != null)
+    const avgFinish = standings.length ? standings.reduce((s, v) => s + v, 0) / standings.length : null
+    const chip = (text2, c) => <span key={text2} style={{ display: 'inline-block', fontSize: '10px', padding: '2px 8px', borderRadius: '999px', background: tint(c, '22'), color: c, border: `1px solid ${tint(c, '55')}`, marginRight: '5px', whiteSpace: 'nowrap' }}>{text2}</span>
+    return (
+      <div style={{ padding: '14px 12px 18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          <div style={{ fontSize: '12px', color: muted, lineHeight: 1.5, maxWidth: '520px' }}>
+            Past teams that looked most like {profile.name}'s through <span style={{ color: text, fontWeight: 600 }}>Week {similar.week}</span>, measured
+            at the same point in their own seasons ({similar.pool} teams compared): record, scoring, power score, all-play, luck, consistency and how the roster's scoring splits across lineup slots.
+          </div>
+          <a href="/all-time-teams" style={{ fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', color: accent, textDecoration: 'none', border: `1px solid ${border}`, padding: '6px 12px', whiteSpace: 'nowrap' }}>All-time teams →</a>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '14px' }}>
+          {[
+            ['Made the playoffs', `${made} of ${top.length}`, made / top.length >= 0.5 ? GREEN : RED],
+            ['Won the title', `${titles} of ${top.length}`, GOLD],
+            ['Avg final finish', avgFinish != null ? ordinal(Math.round(avgFinish)) : '—', BLUE],
+          ].map(([label, value, c]) => (
+            <div key={label} style={{ background: `linear-gradient(160deg, ${tint(c, '26')}, ${tint(c, '0a')})`, borderTop: `3px solid ${c}`, padding: '12px 14px' }}>
+              <div style={{ fontSize: '10px', letterSpacing: '0.14em', textTransform: 'uppercase', color: muted }}>{label}</div>
+              <div style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: effectiveMobile ? '20px' : '26px', color: c, marginTop: '4px' }}>{value}</div>
+              <div style={{ fontSize: '10px', color: muted, marginTop: '2px' }}>the {top.length} closest teams</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {top.map((r, i) => {
+            const t = r.team
+            const fin = finishOf(t)
+            const simColor = r.similarity >= 70 ? GREEN : r.similarity >= 45 ? GOLD : ORANGE
+            return (
+              <a
+                key={r.id}
+                href={`/all-time-teams?team=${r.id}`}
+                title="Open in All-Time Teams"
+                style={{ display: 'grid', gridTemplateColumns: effectiveMobile ? '58px 1fr' : '70px 1.4fr 1fr 1.1fr', gap: '12px', alignItems: 'center', padding: '12px 14px', background: d ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)', border: `1px solid ${border}`, borderLeft: `4px solid ${simColor}`, textDecoration: 'none', color: text }}
+              >
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: '24px', color: simColor, lineHeight: 1 }}>{Math.round(r.similarity)}<span style={{ fontSize: '12px' }}>%</span></div>
+                  <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: muted, marginTop: '3px' }}>match</div>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '16px', color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {t?.manager?.name || '?'} <span style={{ color: muted, fontSize: '13px' }}>· {t?.season?.year}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t?.team_name}</div>
+                  <div style={{ marginTop: '6px', display: 'inline-block', fontSize: '11px', fontWeight: 700, color: fin.color }}>{fin.label}</div>
+                </div>
+                {!effectiveMobile && (
+                  <div style={{ fontSize: '12px', lineHeight: 1.7 }}>
+                    <div><span style={{ color: muted }}>Through wk {similar.week}: </span><span style={{ fontWeight: 600 }}>{r.meta.wins}-{r.meta.losses}</span> <span style={{ color: muted }}>({r.meta.avg.toFixed(1)} ppg)</span></div>
+                    <div><span style={{ color: muted }}>Finished: </span><span style={{ fontWeight: 600 }}>{t ? `${t.wins}-${t.losses}` : '—'}</span> <span style={{ color: muted }}>· power {r.meta.power.toFixed(0)}</span></div>
+                    <div style={{ color: muted }}>Luck <span style={{ color: r.meta.luck >= 0 ? GREEN : RED, fontWeight: 600 }}>{signed(r.meta.luck * similar.week, 2)}</span> <span style={{ color: muted }}>(you: </span><span style={{ color: similar.target.luck >= 0 ? GREEN : RED, fontWeight: 600 }}>{signed(similar.target.luck * similar.week, 2)}</span><span style={{ color: muted }}>)</span></div>
+                  </div>
+                )}
+                <div style={{ gridColumn: effectiveMobile ? '1 / -1' : 'auto' }}>
+                  {r.matched.map(m => chip(`≈ ${m}`, GREEN))}
+                  {r.differed.map(m => chip(`≠ ${m}`, ORANGE))}
+                </div>
+              </a>
+            )
+          })}
+        </div>
+        <div style={{ fontSize: '11px', color: muted, marginTop: '12px', lineHeight: 1.6 }}>
+          Roster mix compares each team's season-long per-game scoring by lineup slot (QB, RB1, RB2, WR1, WR2, TE, FLEX, K, bench), so older seasons use their season averages while this one uses scoring to date.
+        </div>
+      </div>
+    )
+  }
+
   const body = !profile
     ? <Empty>{error || 'Loading…'}</Empty>
     : tab === 'schedule' ? <ScheduleTab />
     : tab === 'roster' ? <RosterTab />
     : tab === 'lj' ? <LjTab />
+    : tab === 'similar' ? <SimilarTab />
     : <StatsTab />
 
   return (
