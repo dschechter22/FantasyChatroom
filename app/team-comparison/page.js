@@ -38,7 +38,7 @@ export default function SimilarTeamsPage() {
         if (cancelled) return
         const idx = buildIndex(raw)
         setIndex(idx)
-        // /similar-teams?team=<id> (linked from a team's Similar Teams tab) starts with that team
+        // /team-comparison?team=<id> (linked from a team's Similar Teams tab) starts with that team
         const id = new URLSearchParams(window.location.search).get('team')
         if (id && idx.byId.has(id)) setSelected([id])
       })
@@ -414,7 +414,7 @@ export default function SimilarTeamsPage() {
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
-        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '34px' : 'clamp(36px, 5vw, 60px)', fontWeight: 400, letterSpacing: '-0.02em', marginBottom: '6px' }}>Similar Teams</h1>
+        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '34px' : 'clamp(36px, 5vw, 60px)', fontWeight: 400, letterSpacing: '-0.02em', marginBottom: '6px' }}>All-Time Team Comparison</h1>
         <p style={{ color: muted, fontSize: '13px', maxWidth: '640px', lineHeight: 1.6, marginBottom: '28px' }}>
           Put up to four team-seasons side by side — any manager, any year. Pick one and the most similar teams in league history are one click away, or search every team ever by PPG, power score, year or manager.
         </p>

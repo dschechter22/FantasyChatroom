@@ -4,6 +4,7 @@ import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import RosterDrawer from '../../components/RosterDrawer'
+import { isPlayed } from '../../lib/predictions'
 
 const RESULT_OPTIONS = [
   'All', 'Champion', 'Runner Up', 'Third Place', '4th Place',
@@ -41,7 +42,7 @@ export default function AllTimeTeamsPage() {
       .select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)
       .eq('is_playoff', false))
-      .then(({ data }) => setMatchups(data || []))
+      .then(({ data }) => setMatchups((data || []).filter(isPlayed))) // 0-0 rows are weeks the sync created early
   }, [])
 
   useEffect(() => {
@@ -124,7 +125,7 @@ export default function AllTimeTeamsPage() {
         const s = result[t.id]
         if (!s?._needsNorm) return
         const powerScore = ((s.winPct / (maxWin || 1) * 100 * 2) + (s.avgScore / (maxAvg || 1) * 100 * 4) + (s.allPlayWinPct / (maxAp || 1) * 100 * 2) + (s.medianScore / (maxMed || 1) * 100 * 2)) / 10
-        result[t.id] = { luck: s.luck, powerScore: parseFloat(powerScore.toFixed(2)) }
+        result[t.id] = { luck: s.luck, powerScore: parseFloat(powerScore.toFixed(2)), allPlayPct: parseFloat((s.allPlayWinPct * 100).toFixed(1)) }
       })
     })
     return result
@@ -159,7 +160,7 @@ export default function AllTimeTeamsPage() {
     const ppgDiff = games > 0 ? parseFloat(((t.points_for - t.points_against) / games).toFixed(2)) : 0
     const winPct = games > 0 ? parseFloat(((t.wins / games) * 100).toFixed(1)) : 0
     const stats = teamStats[t.id] || {}
-    return { ...t, diff, ppgDiff, winPct, powerScore: stats.powerScore ?? null, luck: stats.luck ?? null }
+    return { ...t, diff, ppgDiff, winPct, powerScore: stats.powerScore ?? null, luck: stats.luck ?? null, allPlay: stats.allPlayPct ?? null }
   }), [teams, teamStats])
 
   const filteredTeams = useMemo(() => enrichedTeams
@@ -184,6 +185,7 @@ export default function AllTimeTeamsPage() {
         if (sortKey === 'winPct') return x.winPct ?? 0
         if (sortKey === 'powerScore') return x.powerScore ?? 0
         if (sortKey === 'luck') return x.luck ?? 0
+        if (sortKey === 'allPlay') return x.allPlay ?? 0
         return x[sortKey] ?? 0
       }
       const av = val(a), bv = val(b)
@@ -197,6 +199,7 @@ export default function AllTimeTeamsPage() {
     const sum = (fn) => filteredTeams.reduce((s, t) => s + (fn(t) || 0), 0)
     const powTeams = filteredTeams.filter(t => t.powerScore !== null)
     const luckTeams = filteredTeams.filter(t => t.luck !== null)
+    const apTeams = filteredTeams.filter(t => t.allPlay !== null)
     return {
       wins: (sum(t => t.wins) / n).toFixed(1),
       losses: (sum(t => t.losses) / n).toFixed(1),
@@ -207,6 +210,7 @@ export default function AllTimeTeamsPage() {
       ppgDiff: (sum(t => t.ppgDiff) / n).toFixed(2),
       power: powTeams.length ? (powTeams.reduce((s, t) => s + t.powerScore, 0) / powTeams.length).toFixed(1) : '—',
       luck: luckTeams.length ? (luckTeams.reduce((s, t) => s + t.luck, 0) / luckTeams.length).toFixed(2) : '—',
+      allPlay: apTeams.length ? (apTeams.reduce((s, t) => s + t.allPlay, 0) / apTeams.length).toFixed(1) : '—',
     }
   }, [filteredTeams])
 
@@ -267,6 +271,7 @@ export default function AllTimeTeamsPage() {
             ['Diff', `${t.diff >= 0 ? '+' : ''}${t.diff.toFixed(0)}`],
             ['PPG Diff', `${t.ppgDiff >= 0 ? '+' : ''}${t.ppgDiff}`],
             ['Power', ps !== null ? ps.toFixed(1) : '—'],
+            ['All-Play %', t.allPlay !== null ? `${t.allPlay.toFixed(1)}%` : '—'],
             ['Luck', lk !== null ? (lk >= 0 ? `+${lk}` : `${lk}`) : '—'],
           ].map(([label, val]) => (
             <div key={label}>
@@ -332,6 +337,7 @@ export default function AllTimeTeamsPage() {
                   <th style={hStyle()} onClick={() => handleSort('diff')}>Diff <SortIcon col="diff" /></th>
                   <th style={hStyle()} onClick={() => handleSort('ppgDiff')}>PPG Diff <SortIcon col="ppgDiff" /></th>
                   <th style={hStyle()} onClick={() => handleSort('powerScore')}>Power <SortIcon col="powerScore" /></th>
+                  <th style={hStyle()} onClick={() => handleSort('allPlay')}>All-Play % <SortIcon col="allPlay" /></th>
                   <th style={hStyle()} onClick={() => handleSort('luck')}>Luck <SortIcon col="luck" /></th>
                   <th style={{ ...hStyle('center'), minWidth: '110px' }} onClick={() => handleSort('playoff_result')}>Result <SortIcon col="playoff_result" /></th>
                 </tr>
@@ -354,6 +360,7 @@ export default function AllTimeTeamsPage() {
                     <td style={{ ...cStyle(), color: t.diff >= 0 ? green : red, fontWeight: '500' }}>{t.diff >= 0 ? '+' : ''}{t.diff}</td>
                     <td style={{ ...cStyle(), color: t.ppgDiff >= 0 ? green : red, fontWeight: '500' }}>{t.ppgDiff >= 0 ? '+' : ''}{t.ppgDiff}</td>
                     <td style={{ ...cStyle(), color: t.powerScore !== null ? text : muted }}>{t.powerScore !== null ? t.powerScore.toFixed(1) : '—'}</td>
+                    <td style={cStyle()}>{t.allPlay !== null ? `${t.allPlay.toFixed(1)}%` : '—'}</td>
                     <td style={{ ...cStyle(), color: t.luck !== null ? (t.luck >= 0 ? green : red) : muted, fontWeight: '500' }}>{t.luck !== null ? (t.luck >= 0 ? `+${t.luck}` : `${t.luck}`) : '—'}</td>
                     <td style={{ ...cStyle('center'), color: resultColor(t.playoff_result), fontSize: '12px', fontWeight: '500', minWidth: '110px' }}>{t.playoff_result || (t.made_playoffs ? 'Playoffs' : '—')}</td>
                   </tr>
@@ -372,13 +379,14 @@ export default function AllTimeTeamsPage() {
                     <td style={{ ...aStyle(), color: parseFloat(avgRow.diff) >= 0 ? green : red }}>{parseFloat(avgRow.diff) >= 0 ? '+' : ''}{avgRow.diff}</td>
                     <td style={{ ...aStyle(), color: parseFloat(avgRow.ppgDiff) >= 0 ? green : red }}>{parseFloat(avgRow.ppgDiff) >= 0 ? '+' : ''}{avgRow.ppgDiff}</td>
                     <td style={aStyle()}>{avgRow.power}</td>
+                    <td style={aStyle()}>{avgRow.allPlay !== '—' ? `${avgRow.allPlay}%` : '—'}</td>
                     <td style={{ ...aStyle(), color: avgRow.luck !== '—' ? (parseFloat(avgRow.luck) >= 0 ? green : red) : muted }}>{avgRow.luck !== '—' && parseFloat(avgRow.luck) >= 0 ? '+' : ''}{avgRow.luck}</td>
                     <td style={aStyle('center')} />
                     <td style={aStyle('center')} />
                   </tr>
                 )}
                 {filteredTeams.length === 0 && (
-                  <tr><td colSpan={14} style={{ padding: '24px', color: muted, textAlign: 'center', fontSize: '13px' }}>No teams match your filters.</td></tr>
+                  <tr><td colSpan={15} style={{ padding: '24px', color: muted, textAlign: 'center', fontSize: '13px' }}>No teams match your filters.</td></tr>
                 )}
               </tbody>
             </table>
