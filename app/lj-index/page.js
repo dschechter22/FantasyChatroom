@@ -4,6 +4,7 @@ import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { useSortableTable } from '../../hooks/useSortableTable'
+import { isPlayed } from '../../lib/predictions'
 const MANAGER_COLORS = {
   'dan': '#4285F4', 'wally': '#EA4335', 'john': '#FBBC04', 'braden': '#34A853',
   'jm': '#FF6D00', 'big-e': '#46BDC6', 'mamby-tenner': '#7BAAF7', 'reid': '#F07B72',
@@ -34,7 +35,7 @@ export default function LJIndexPage() {
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)
       .limit(10000))
-      .then(({ data }) => setAllMatchups(data || []))
+      .then(({ data }) => setAllMatchups((data || []).filter(isPlayed)))
     supabase.from('teams')
       .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)
@@ -45,7 +46,7 @@ export default function LJIndexPage() {
     fetchAll(() => supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
       .eq('league_id', LEAGUE_ID))
-      .then(({ data }) => setMatchups((data || []).filter(m => m.season?.year === selectedYear && !m.is_playoff)))
+      .then(({ data }) => setMatchups((data || []).filter(m => m.season?.year === selectedYear && !m.is_playoff && isPlayed(m))))
     supabase.from('teams')
       .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)

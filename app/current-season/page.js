@@ -3,11 +3,12 @@ import { useState, useEffect } from 'react'
 import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-import { projectedWeekLineup, lineupEfficiency, actualWeekLineup } from '../../lib/predictions'
+import { projectedWeekLineup, lineupEfficiency, actualWeekLineup, isPlayed } from '../../lib/predictions'
 import { weekEntries, latestRosterWeek } from '../../lib/rosters'
 import { useSortableTable } from '../../hooks/useSortableTable'
 import { resolveSchedule, REG_SEASON_WEEKS } from '../../lib/schedule'
 import { computeByeImpact } from '../../lib/byeWeeks'
+import TeamPanel from '../../components/TeamPanel'
 export const dynamic = 'force-dynamic'
 
 const SEASON = '2026-27'
@@ -45,7 +46,11 @@ export default function CurrentSeasonPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, green, red, gold, blue } = useLayout()
 
   // ── shared data ──
+  // `matchups` is games that have actually been played (every stat below counts
+  // it); `allMatchups` also keeps the 0-0 rows the sync creates for the coming
+  // week, which only the "this week" card needs.
   const [matchups, setMatchups] = useState([])
+  const [allMatchups, setAllMatchups] = useState([])
   const [teams, setTeams] = useState([])
   const [mounted, setMounted] = useState(false)
 
@@ -60,6 +65,7 @@ export default function CurrentSeasonPage() {
   // ── rosters state ──
   const [rosterEntries, setRosterEntries] = useState([])
   const [byeTeamId, setByeTeamId] = useState(null)
+  const [panelTeamId, setPanelTeamId] = useState(null)
   const [rosterTeamId, setRosterTeamId] = useState(null)
   const [rosterWeek, setRosterWeek] = useState(1)
 
@@ -89,7 +95,11 @@ export default function CurrentSeasonPage() {
     fetchAll(() => supabase.from('matchups')
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
       .eq('league_id', LEAGUE_ID))
-      .then(({ data }) => setMatchups((data || []).filter(m => m.season?.year === SEASON_YEAR && !m.is_playoff)))
+      .then(({ data }) => {
+        const rows = (data || []).filter(m => m.season?.year === SEASON_YEAR && !m.is_playoff)
+        setAllMatchups(rows)
+        setMatchups(rows.filter(isPlayed))
+      })
     supabase.from('teams')
       .select('*, manager:manager_id(name, slug, id), season:season_id(year)')
       .eq('league_id', LEAGUE_ID)
@@ -137,7 +147,7 @@ export default function CurrentSeasonPage() {
   // ESPN's real NFL week is, so it stays in sync without its own date math.
   const thisWeekMatchups = (() => {
     const wk = nflWeek || (weeks.length ? Math.max(...weeks) : 1)
-    const real = matchups.filter(m => m.week === wk)
+    const real = allMatchups.filter(m => m.week === wk)
     // Keyed by team, not home/away pair -- a reversed pair would otherwise
     // show the same game twice.
     const booked = new Set(real.flatMap(m => [m.home_team?.id, m.away_team?.id]))
@@ -501,6 +511,7 @@ export default function CurrentSeasonPage() {
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
+      {panelTeamId && <TeamPanel teamId={panelTeamId} onClose={() => setPanelTeamId(null)} />}
 
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px,6vw,72px)', fontWeight: '400', letterSpacing: '-0.02em', marginBottom: '4px' }}>2026-27 Season</h1>
@@ -534,7 +545,7 @@ export default function CurrentSeasonPage() {
                         <td style={{ ...cStyle('center'), color: playoff ? (bubble ? gold : green) : muted, fontWeight: '600' }}>{ordinal(i + 1)}</td>
                         <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                            {r.name}
+                            <button onClick={e => { e.stopPropagation(); setPanelTeamId(r.id) }} title="Open team" style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: border, textUnderlineOffset: '4px' }}>{r.name}</button>
                             {playoff && !bubble && <span style={{ fontSize: '9px', color: green, border: `1px solid ${green}`, padding: '1px 4px', letterSpacing: '0.1em' }}>IN</span>}
                             {bubble && <span style={{ fontSize: '9px', color: gold, border: `1px solid ${gold}`, padding: '1px 4px', letterSpacing: '0.1em' }}>BUBBLE</span>}
                           </span>

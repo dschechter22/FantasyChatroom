@@ -126,6 +126,10 @@ export async function GET(request) {
           away_score: flipped ? m.homeScore : m.awayScore,
         }).eq('id', existing.id)
       } else {
+        // A 0-0 game hasn't started: don't create the row yet, or every page that
+        // counts matchup rows treats an unplayed week as a played one. (The
+        // fixed schedule already covers upcoming weeks.)
+        if (!m.homeScore && !m.awayScore) continue
         await supabase.from('matchups').insert({
           season_id: season.id, week, home_team_id: home.id, away_team_id: away.id,
           home_score: m.homeScore, away_score: m.awayScore, league_id: home.league_id,

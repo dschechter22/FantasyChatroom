@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
-import { lineupEfficiency } from '../../lib/predictions'
+import { lineupEfficiency, isPlayed } from '../../lib/predictions'
 import { weekEntries, latestRosterWeek } from '../../lib/rosters'
 import { useSortableTable } from '../../hooks/useSortableTable'
 
@@ -34,7 +34,9 @@ export default function PowerRankingsPage() {
       .select('*, home_team:home_team_id(id, manager_id, team_name), away_team:away_team_id(id, manager_id, team_name), season:season_id(year)')
       .eq('league_id', LEAGUE_ID))
       .then(({ data }) => {
-        const filtered = (data || []).filter(m => m.season?.year === selectedYear && !m.is_playoff)
+        // Unplayed weeks exist as 0-0 rows (the sync creates them early); they
+        // would count as games and drag every average down.
+        const filtered = (data || []).filter(m => m.season?.year === selectedYear && !m.is_playoff && isPlayed(m))
         setMatchups(filtered)
         const weeks = [...new Set(filtered.map(m => m.week))].sort((a, b) => a - b)
         if (weeks.length > 0) setSelectedWeek(weeks[weeks.length - 1])

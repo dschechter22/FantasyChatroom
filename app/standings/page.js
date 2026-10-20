@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase, LEAGUE_ID } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
+import TeamPanel from '../../components/TeamPanel'
 
 export default function StandingsPage() {
   const { d, effectiveMobile, bg, text, muted, border, cardBg, rowAlt, statsBg, green, red, gold } = useLayout()
@@ -16,6 +17,7 @@ export default function StandingsPage() {
   const [sortDir, setSortDir] = useState('desc')
   const [era, setEra] = useState('all')
   const [includePlayoffs, setIncludePlayoffs] = useState(false)
+  const [panelTeamId, setPanelTeamId] = useState(null)
 
   // Filters
   const [searchText, setSearchText] = useState('')
@@ -28,6 +30,10 @@ export default function StandingsPage() {
     supabase.from('seasons').select('*, champion:champion_id(id), mol_bowl_winner:mol_bowl_winner_id(id), mol_bowl_loser:mol_bowl_loser_id(id)').eq('league_id', LEAGUE_ID).then(({ data }) => setSeasons(data || []))
     supabase.from('matchups').select('*, home_team:home_team_id(id, manager_id), away_team:away_team_id(id, manager_id), season:season_id(year)').eq('league_id', LEAGUE_ID).eq('is_playoff', true).then(({ data }) => setMatchups(data || []))
   }, [])
+
+  // A manager's team in the newest season on file -- what the team panel opens.
+  const currentYear = teams.reduce((y, t) => Math.max(y, t.season?.year || 0), 0)
+  const currentTeamId = m => teams.find(t => t.manager_id === m.id && t.season?.year === currentYear)?.id || null
 
   const toggleExpand = (slug) => setExpanded(prev => ({ ...prev, [slug]: !prev[slug] }))
   const handleSort = (key) => {
@@ -201,7 +207,7 @@ export default function StandingsPage() {
     <div style={{ background: cardBg, marginBottom: '1px', padding: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
         <div>
-          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', color: text }}>{m.name}</div>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '18px', color: text }}>{currentTeamId(m) ? <button onClick={e => { e.stopPropagation(); setPanelTeamId(currentTeamId(m)) }} title="Open team" style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: border, textUnderlineOffset: '4px' }}>{m.name}</button> : m.name}</div>
           {!m.active && <span style={{ fontSize: '10px', color: muted, letterSpacing: '0.1em' }}>RETIRED</span>}
         </div>
         <button onClick={() => toggleExpand(m.slug)} style={{ background: 'none', border: `1px solid ${border}`, color: muted, padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontFamily: "'Inter', sans-serif" }}>
@@ -249,6 +255,7 @@ export default function StandingsPage() {
   return (
     <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: "'Inter', sans-serif" }}>
       <Nav />
+      {panelTeamId && <TeamPanel teamId={panelTeamId} onClose={() => setPanelTeamId(null)} />}
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: effectiveMobile ? '90px 16px 60px' : '120px 24px 80px' }}>
 
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: effectiveMobile ? '36px' : 'clamp(40px, 6vw, 72px)', fontWeight: '400', marginBottom: '8px', letterSpacing: '-0.02em' }}>
@@ -317,7 +324,7 @@ export default function StandingsPage() {
                   <>
                     <tr key={m.slug} onClick={() => toggleExpand(m.slug)} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt, cursor: 'pointer' }}>
                       <td style={{ ...cStyle('left', true), fontFamily: "'Playfair Display', serif", fontSize: '16px' }}>
-                        {m.name}
+                        {currentTeamId(m) && m.active ? <button onClick={e => { e.stopPropagation(); setPanelTeamId(currentTeamId(m)) }} title="Open team" style={{ background: 'none', border: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: border, textUnderlineOffset: '4px' }}>{m.name}</button> : m.name}
                         {!m.active && <span style={{ fontSize: '10px', color: muted, marginLeft: '8px', letterSpacing: '0.1em' }}>retired</span>}
                       </td>
                       <td style={cStyle()}>{m.wins}</td>
