@@ -526,7 +526,10 @@ export default function TeamPanel({ teamId, startTab = 'schedule' }) {
             Past teams that looked most like {profile.name}'s through <span style={{ color: text, fontWeight: 600 }}>Week {similar.week}</span>, measured
             at the same point in their own seasons ({similar.pool} teams compared): record, scoring, power score, all-play, luck, consistency and how the roster's scoring splits across lineup slots.
           </div>
-          <a href="/all-time-teams" style={{ fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', color: accent, textDecoration: 'none', border: `1px solid ${border}`, padding: '6px 12px', whiteSpace: 'nowrap' }}>All-time teams →</a>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <a href={`/similar-teams?team=${teamId}`} style={{ fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', color: d ? '#1b202c' : '#fff', background: accent, textDecoration: 'none', padding: '7px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>Compare side by side →</a>
+            <a href="/all-time-teams" style={{ fontSize: '11px', letterSpacing: '0.12em', textTransform: 'uppercase', color: accent, textDecoration: 'none', border: `1px solid ${border}`, padding: '6px 12px', whiteSpace: 'nowrap' }}>All-time teams →</a>
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '14px' }}>
