@@ -1191,7 +1191,8 @@ with mem as (
 update roster_entries re
 set team_id = coalesce(mem.last_team_id, re.team_id),
     stats = coalesce(re.stats, '{}'::jsonb) || jsonb_build_object(
-      'teamId', coalesce(mem.team_map, '{}'::jsonb),
+      -- keep any snapshot for weeks after this script's last week (6+), replace weeks 1-5
+      'teamId', (coalesce(re.stats->'teamId', '{}'::jsonb) - array['1','2','3','4','5']) || coalesce(mem.team_map, '{}'::jsonb),
       'actual', coalesce(re.stats->'actual', '{}'::jsonb) - array(select g::text from generate_series(1, 5) g where not (g = any(coalesce(mem.weeks, '{}'::integer[])))),
       'started', coalesce(re.stats->'started', '{}'::jsonb) - array(select g::text from generate_series(1, 5) g where not (g = any(coalesce(mem.weeks, '{}'::integer[])))),
       'proj', coalesce(re.stats->'proj', '{}'::jsonb) - array(select g::text from generate_series(1, 5) g where not (g = any(coalesce(mem.weeks, '{}'::integer[]))))
