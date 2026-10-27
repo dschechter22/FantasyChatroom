@@ -9,6 +9,7 @@ import { useSortableTable } from '../../hooks/useSortableTable'
 import { resolveSchedule, REG_SEASON_WEEKS } from '../../lib/schedule'
 import { computeByeImpact } from '../../lib/byeWeeks'
 import TeamPanel from '../../components/TeamPanel'
+import { sortStandings } from '../../lib/tiebreak'
 import { loadEspnAvgs, normName } from '../../lib/espnAvgs'
 export const dynamic = 'force-dynamic'
 
@@ -294,7 +295,8 @@ export default function CurrentSeasonPage() {
     : []
   const byeTable = useSortableTable(byeImpact, { defaultKey: 'oppLost', defaultDir: 'desc', filterKeys: ['name', 'teamName'] })
 
-  const standings = [...rows].sort((a, b) => b.wins - a.wins || b.pf - a.pf)
+  // wins, then head-to-head among teams that are level (the league's tiebreak), then points for
+  const standings = sortStandings(rows, matchups)
   const ljRanked = [...rows].sort((a, b) => b.allPlayWinPct - a.allPlayWinPct)
 
   // Same All-Play Win% vs Luck bubble plot as the dedicated /lj-index page,
@@ -431,7 +433,7 @@ export default function CurrentSeasonPage() {
 
     // standings + metrics through this week
     const td = {}
-    teams.forEach(t => { td[t.id] = { name: t.manager?.name || '?', scores: [], wins: 0, losses: 0, pf: 0, pa: 0, allPlaySum: 0 } })
+    teams.forEach(t => { td[t.id] = { id: t.id, name: t.manager?.name || '?', scores: [], wins: 0, losses: 0, pf: 0, pa: 0, allPlaySum: 0 } })
     priorGames.forEach(m => {
       const hId = m.home_team?.id, aId = m.away_team?.id
       if (td[hId]) { td[hId].scores.push(m.home_score); td[hId].pf += m.home_score; td[hId].pa += m.away_score; if (m.home_score > m.away_score) td[hId].wins++; else if (m.home_score < m.away_score) td[hId].losses++ }
@@ -444,16 +446,16 @@ export default function CurrentSeasonPage() {
       const n = allScores.length; if (n < 2) return
       allScores.forEach(({ teamId, score }) => { if (td[teamId]) td[teamId].allPlaySum += allScores.filter(o => o.teamId !== teamId && score > o.score).length / (n - 1) })
     })
-    const wkRows = Object.values(td).map(({ name, scores, wins, losses, pf, pa, allPlaySum }) => {
+    const wkRows = Object.values(td).map(({ id, name, scores, wins, losses, pf, pa, allPlaySum }) => {
       const games = wins + losses, winPct = games > 0 ? wins / games : 0
       const avgScore = scores.length > 0 ? pf / scores.length : 0, med = median(scores)
       const allPlayWinPct = priorWeeks.length > 0 ? allPlaySum / priorWeeks.length : 0
-      return { name, wins, losses, pf, pa, winPct, avgScore, medScore: med, allPlayWinPct, allPlaySum }
+      return { id, name, wins, losses, pf, pa, winPct, avgScore, medScore: med, allPlayWinPct, allPlaySum }
     })
     const mxW = Math.max(...wkRows.map(r => r.winPct)) || 1, mxA = Math.max(...wkRows.map(r => r.avgScore)) || 1
     const mxM = Math.max(...wkRows.map(r => r.medScore)) || 1, mxAp = Math.max(...wkRows.map(r => r.allPlayWinPct)) || 1
     const wkRanked = wkRows.map(r => ({ ...r, powerScore: parseFloat(((r.winPct / mxW * 100 * 2) + (r.avgScore / mxA * 100 * 4) + (r.allPlayWinPct / mxAp * 100 * 2) + (r.medScore / mxM * 100 * 2)) / 10) })).sort((a, b) => b.powerScore - a.powerScore)
-    const wkStandings = [...wkRows].sort((a, b) => b.wins - a.wins || b.pf - a.pf)
+    const wkStandings = sortStandings(wkRows, priorGames)
     const wkLj = [...wkRows].sort((a, b) => b.allPlayWinPct - a.allPlayWinPct)
 
     const allWeekScores = []
