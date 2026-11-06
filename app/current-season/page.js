@@ -266,6 +266,58 @@ export default function CurrentSeasonPage() {
     return { id, name, slug, teamName, wins, losses, pf, pa, winPct, avgScore, medScore: med, allPlayWinPct, allPlaySum, luckRaw, std, streak: curStreak, streakWin: streakType, scores, gameLog: sortedLog, startPct: startPctFor(id), ...maxStatsFor(id) }
   })
 
+
+  // Strength of schedule: the average points per game of a team's opponents,
+  // with each opponent's game against that team left out (a team shouldn't be
+  // rated tougher or softer by how it fared against you). Played = opponents
+  // already faced, Left = opponents still on the fixed schedule, Overall =
+  // both weighted by number of games. Higher = tougher.
+  const sosById = (() => {
+    const scoreOf = {}, faced = {}
+    teams.forEach(t => { scoreOf[t.id] = {}; faced[t.id] = [] })
+    matchups.forEach(m => {
+      const h = m.home_team?.id, a = m.away_team?.id
+      if (!scoreOf[h] || !scoreOf[a]) return
+      scoreOf[h][m.week] = m.home_score; scoreOf[a][m.week] = m.away_score
+      faced[h].push({ week: m.week, oppId: a }); faced[a].push({ week: m.week, oppId: h })
+    })
+    const lastWeek = weeks.length ? Math.max(...weeks) : 0
+    const upcoming = teams.length ? resolveSchedule(teams).games.filter(g => g.week > lastWeek) : []
+    const oppAvg = (teamId, oppId) => {
+      const skip = new Set(faced[teamId].filter(f => f.oppId === oppId).map(f => f.week))
+      const vals = Object.entries(scoreOf[oppId] || {}).filter(([w]) => !skip.has(Number(w))).map(([, s]) => s)
+      return vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : null
+    }
+    const mean = arr => (arr.length ? arr.reduce((x, y) => x + y, 0) / arr.length : null)
+    const out = {}
+    teams.forEach(t => {
+      const played = faced[t.id].map(f => oppAvg(t.id, f.oppId)).filter(v => v != null)
+      const left = upcoming
+        .filter(g => g.homeId === t.id || g.awayId === t.id)
+        .map(g => oppAvg(t.id, g.homeId === t.id ? g.awayId : g.homeId)).filter(v => v != null)
+      out[t.id] = {
+        sosPlayed: mean(played), sosLeft: mean(left), sosAll: mean([...played, ...left]),
+        sosGamesLeft: left.length,
+      }
+    })
+    // 1 = toughest
+    ;['sosPlayed', 'sosLeft', 'sosAll'].forEach(k => {
+      const ids = Object.keys(out).filter(id => out[id][k] != null).sort((a, b) => out[b][k] - out[a][k])
+      ids.forEach((id, i) => { out[id][k + 'Rank'] = i + 1 })
+      const avg = mean(ids.map(id => out[id][k]))
+      ids.forEach(id => { out[id][k + 'Rel'] = out[id][k] - avg })
+    })
+    Object.values(out).forEach(o => { o.sosOutlook = o.sosPlayed != null && o.sosLeft != null ? o.sosLeft - o.sosPlayed : null })
+    return out
+  })()
+  rows.forEach(r => Object.assign(r, sosById[r.id] || {}))
+  // Red = tougher than the league average, green = easier
+  const sosColor = rel => (rel == null ? muted : rel > 0.05 ? red : rel < -0.05 ? green : muted)
+  const sosCell = (r, k) => (r[k] == null ? '—' : (
+    <>{r[k].toFixed(1)} <span style={{ color: sosColor(r[k + 'Rel']), fontSize: '10px' }}>#{r[k + 'Rank']}</span></>
+  ))
+  const sosTable = useSortableTable(rows, { defaultKey: 'sosAll', defaultDir: 'desc', filterKeys: ['name', 'teamName'] })
+
   const maxWin = Math.max(...rows.map(r => r.winPct)) || 1
   const maxAvg = Math.max(...rows.map(r => r.avgScore)) || 1
   const maxMed = Math.max(...rows.map(r => r.medScore)) || 1
@@ -545,6 +597,7 @@ export default function CurrentSeasonPage() {
                     <th style={hStyle('right')}>PA</th>
                     <th style={hStyle('right')}>Diff</th>
                     <th style={hStyle('right')}>Avg</th>
+                    <th style={hStyle('right')}>SOS</th>
                     <th style={hStyle('center')}></th>
                   </tr>
                 </thead>
@@ -571,11 +624,12 @@ export default function CurrentSeasonPage() {
                         <td style={cStyle('right')}>{r.pa.toFixed(1)}</td>
                         <td style={{ ...cStyle('right'), color: diff >= 0 ? green : red }}>{diff >= 0 ? '+' : ''}{diff.toFixed(1)}</td>
                         <td style={cStyle('right')}>{r.avgScore.toFixed(1)}</td>
+                        <td style={cStyle('right')}>{sosCell(r, 'sosAll')}</td>
                         <td style={{ ...cStyle('center'), color: muted, fontSize: '11px', width: '34px' }}>{open ? '▲' : '▼'}</td>
                       </tr>
                       {open && (
                         <tr>
-                          <td colSpan={9} style={{ padding: 0, borderBottom: `1px solid ${border}` }}>
+                          <td colSpan={10} style={{ padding: 0, borderBottom: `1px solid ${border}` }}>
                             <TeamPanel teamId={r.id} />
                           </td>
                         </tr>
@@ -836,6 +890,7 @@ export default function CurrentSeasonPage() {
                     <th style={sortHStyle('right')} {...powerTable.thSort('allPlayWinPct', 'All-Play %')} />
                     {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('luckRaw', 'Luck')} />}
                     {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('startPct', 'Correct Start %')} />}
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...powerTable.thSort('sosAll', 'SOS')} />}
                     <th style={sortHStyle('right')} {...powerTable.thSort('powerScore', 'Power')} />
                     {!effectiveMobile && <th style={hStyle('right')}>Trend</th>}
                   </tr>
@@ -868,6 +923,7 @@ export default function CurrentSeasonPage() {
                           </td>
                         )}
                         {!effectiveMobile && <td style={cStyle('right')}>{r.startPct != null ? `${r.startPct}%` : '—'}</td>}
+                        {!effectiveMobile && <td style={cStyle('right')}>{sosCell(r, 'sosAll')}</td>}
                         <td style={{ ...cStyle('right'), fontWeight: '600' }}>{r.powerScore.toFixed(1)}</td>
                         {!effectiveMobile && (
                           <td style={{ ...cStyle('right'), color: move > 0 ? green : move < 0 ? red : muted, fontWeight: '500' }}>
@@ -877,6 +933,58 @@ export default function CurrentSeasonPage() {
                       </tr>
                     )
                   })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── SECTION: STRENGTH OF SCHEDULE ── */}
+        {rows.some(r => r.sosAll != null) && (
+          <div style={{ marginBottom: '64px' }}>
+            <SectionLabel id="sos">Strength of Schedule</SectionLabel>
+            <p style={{ color: muted, fontSize: '12px', lineHeight: 1.6, marginBottom: '14px', maxWidth: '720px' }}>
+              Average points per game of each team's opponents (leaving out their game against that team). Played = games so far, Left = rest of the regular season, Overall = both together. Higher is tougher; red is tougher than the league average, green is easier. Outlook is Left minus Played: negative means an easier road ahead.
+            </p>
+            <input
+              value={sosTable.filterText}
+              onChange={e => sosTable.setFilterText(e.target.value)}
+              placeholder="Filter manager or team…"
+              style={{ background: d ? '#2b3242' : '#e8e4dc', border: `1px solid ${border}`, color: text, padding: '8px 12px', fontSize: '13px', fontFamily: "'Inter', sans-serif", outline: 'none', width: '220px', marginBottom: '10px' }}
+            />
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+                <thead>
+                  <tr style={{ background: cardBg }}>
+                    <th style={hStyle('center')}>Rk</th>
+                    <th style={sortHStyle()} {...sosTable.thSort('name', 'Manager')} />
+                    {!effectiveMobile && <th style={sortHStyle()} {...sosTable.thSort('teamName', 'Team')} />}
+                    <th style={sortHStyle('center')} {...sosTable.thSort('wins', 'W-L')} />
+                    <th style={sortHStyle('right')} {...sosTable.thSort('sosPlayed', 'SOS Played')} />
+                    <th style={sortHStyle('right')} {...sosTable.thSort('sosLeft', 'SOS Left')} />
+                    <th style={sortHStyle('right')} {...sosTable.thSort('sosAll', 'Overall')} />
+                    <th style={sortHStyle('right')} {...sosTable.thSort('sosOutlook', 'Outlook')} />
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...sosTable.thSort('luckRaw', 'Luck')} />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sosTable.rows.map((r, i) => (
+                    <tr key={r.name} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                      <td style={{ ...cStyle('center'), color: muted, fontWeight: '600' }}>{r.sosAllRank ?? '—'}</td>
+                      <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{r.name}</td>
+                      {!effectiveMobile && <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{r.teamName}</td>}
+                      <td style={cStyle('center')}>{r.wins}-{r.losses}</td>
+                      <td style={cStyle('right')}>{sosCell(r, 'sosPlayed')}</td>
+                      <td style={cStyle('right')}>{sosCell(r, 'sosLeft')}</td>
+                      <td style={{ ...cStyle('right'), fontWeight: '600' }}>{sosCell(r, 'sosAll')}</td>
+                      <td style={{ ...cStyle('right'), color: r.sosOutlook == null ? muted : r.sosOutlook < 0 ? green : r.sosOutlook > 0 ? red : muted, fontWeight: '500' }}>
+                        {r.sosOutlook == null ? '—' : `${r.sosOutlook > 0 ? '+' : ''}${r.sosOutlook.toFixed(1)}`}
+                      </td>
+                      {!effectiveMobile && (
+                        <td style={{ ...cStyle('right'), color: r.luckRaw >= 0 ? green : red, fontWeight: '500' }}>{r.luckRaw >= 0 ? '+' : ''}{r.luckRaw}</td>
+                      )}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1097,6 +1205,8 @@ export default function CurrentSeasonPage() {
                     <th style={hStyle('right')}>All-Play W</th>
                     <th style={hStyle('right')}>Luck</th>
                     <th style={hStyle('right')}>Avg PPG</th>
+                    <th style={hStyle('right')}>SOS Played</th>
+                    <th style={hStyle('right')}>SOS Left</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1111,10 +1221,13 @@ export default function CurrentSeasonPage() {
                         {r.luckRaw > 0 ? '+' : ''}{r.luckRaw}
                       </td>
                       <td style={cStyle('right')}>{r.avgScore.toFixed(1)}</td>
+                      <td style={cStyle('right')}>{sosCell(r, 'sosPlayed')}</td>
+                      <td style={cStyle('right')}>{sosCell(r, 'sosLeft')}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <p style={{ color: muted, fontSize: '11px', marginTop: '8px', lineHeight: 1.6 }}>SOS = average PPG of opponents faced (Played) or still to face (Left); red is tougher than the league average. A lucky team with a soft Played SOS and a tougher Left SOS should expect that luck to come back down.</p>
             </div>
           </div>
         )}
