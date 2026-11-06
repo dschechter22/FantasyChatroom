@@ -267,11 +267,30 @@ export default function CurrentSeasonPage() {
   })
 
 
+  // Bye-week schedule luck: the starting ppg each team's remaining opponents
+  // lose to NFL byes. Opponents only -- a team's own losses scale with roster
+  // strength, not schedule.
+  const byeFromWeek = (weeks.length ? Math.max(...weeks) : 0) + 1
+  const byeImpact = teams.length > 0 && rosterEntries.length > 0 && byeFromWeek <= REG_SEASON_WEEKS
+    ? computeByeImpact({
+        teams,
+        games: resolveSchedule(teams).games,
+        fromWeek: byeFromWeek,
+        toWeek: REG_SEASON_WEEKS,
+        getPpg: e => statsFor(e).avg,
+        rosterFor: id => weekEntries(rosterEntries, id, undefined, latestRoster),
+      })
+    : []
+  const byeTable = useSortableTable(byeImpact, { defaultKey: 'oppLost', defaultDir: 'desc', filterKeys: ['name', 'teamName'] })
+
   // Strength of schedule: the average points per game of a team's opponents,
   // with each opponent's game against that team left out (a team shouldn't be
   // rated tougher or softer by how it fared against you). Played = opponents
   // already faced, Left = opponents still on the fixed schedule, Overall =
-  // both weighted by number of games. Higher = tougher.
+  // both weighted by number of games. Higher = tougher. Left is also reduced by
+  // the starting points each remaining opponent is expected to lose to NFL byes
+  // that week (same numbers as the Bye Week Schedule Luck table); Played is not,
+  // since past opponents' scores already include their byes.
   const sosById = (() => {
     const scoreOf = {}, faced = {}
     teams.forEach(t => { scoreOf[t.id] = {}; faced[t.id] = [] })
@@ -288,16 +307,24 @@ export default function CurrentSeasonPage() {
       const vals = Object.entries(scoreOf[oppId] || {}).filter(([w]) => !skip.has(Number(w))).map(([, s]) => s)
       return vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : null
     }
+    // opponent starting ppg lost to byes (after bench), by team and week
+    const byeLoss = {}
+    byeImpact.forEach(r => { byeLoss[r.id] = {}; r.weeks.forEach(w => { byeLoss[r.id][w.week] = w.oppEffective }) })
     const mean = arr => (arr.length ? arr.reduce((x, y) => x + y, 0) / arr.length : null)
     const out = {}
     teams.forEach(t => {
       const played = faced[t.id].map(f => oppAvg(t.id, f.oppId)).filter(v => v != null)
       const left = upcoming
         .filter(g => g.homeId === t.id || g.awayId === t.id)
-        .map(g => oppAvg(t.id, g.homeId === t.id ? g.awayId : g.homeId)).filter(v => v != null)
+        .map(g => {
+          const a = oppAvg(t.id, g.homeId === t.id ? g.awayId : g.homeId)
+          // that week's NFL byes cost the opponent some starting-lineup points
+          return a == null ? null : a - (byeLoss[t.id]?.[g.week] || 0)
+        }).filter(v => v != null)
       out[t.id] = {
         sosPlayed: mean(played), sosLeft: mean(left), sosAll: mean([...played, ...left]),
         sosGamesLeft: left.length,
+        sosByeDrag: byeLoss[t.id] ? Object.values(byeLoss[t.id]).reduce((x, y) => x + y, 0) : null,
       }
     })
     // 1 = toughest
@@ -331,21 +358,6 @@ export default function CurrentSeasonPage() {
 
   const powerTable = useSortableTable(ranked, { defaultKey: 'powerScore', defaultDir: 'desc', filterKeys: ['name', 'teamName'] })
 
-  // Bye-week schedule luck: the starting ppg each team's remaining opponents
-  // lose to NFL byes. Opponents only -- a team's own losses scale with roster
-  // strength, not schedule.
-  const byeFromWeek = (weeks.length ? Math.max(...weeks) : 0) + 1
-  const byeImpact = teams.length > 0 && rosterEntries.length > 0 && byeFromWeek <= REG_SEASON_WEEKS
-    ? computeByeImpact({
-        teams,
-        games: resolveSchedule(teams).games,
-        fromWeek: byeFromWeek,
-        toWeek: REG_SEASON_WEEKS,
-        getPpg: e => statsFor(e).avg,
-        rosterFor: id => weekEntries(rosterEntries, id, undefined, latestRoster),
-      })
-    : []
-  const byeTable = useSortableTable(byeImpact, { defaultKey: 'oppLost', defaultDir: 'desc', filterKeys: ['name', 'teamName'] })
 
   // wins, then head-to-head among teams that are level (the league's tiebreak), then points for
   const standings = sortStandings(rows, matchups)
@@ -944,7 +956,7 @@ export default function CurrentSeasonPage() {
           <div style={{ marginBottom: '64px' }}>
             <SectionLabel id="sos">Strength of Schedule</SectionLabel>
             <p style={{ color: muted, fontSize: '12px', lineHeight: 1.6, marginBottom: '14px', maxWidth: '720px' }}>
-              Average points per game of each team's opponents (leaving out their game against that team). Played = games so far, Left = rest of the regular season, Overall = both together. Higher is tougher; red is tougher than the league average, green is easier. Outlook is Left minus Played: negative means an easier road ahead.
+              Average points per game of each team's opponents (leaving out their game against that team). Played = games so far, Left = rest of the regular season (adjusted for each opponent's NFL bye-week losses), Overall = both together. Higher is tougher; red is tougher than the league average, green is easier. Outlook is Left minus Played: negative means an easier road ahead. Opp Bye Drag is the total starting PPG the remaining opponents lose to byes.
             </p>
             <input
               value={sosTable.filterText}
@@ -964,6 +976,7 @@ export default function CurrentSeasonPage() {
                     <th style={sortHStyle('right')} {...sosTable.thSort('sosLeft', 'SOS Left')} />
                     <th style={sortHStyle('right')} {...sosTable.thSort('sosAll', 'Overall')} />
                     <th style={sortHStyle('right')} {...sosTable.thSort('sosOutlook', 'Outlook')} />
+                    {!effectiveMobile && <th style={sortHStyle('right')} {...sosTable.thSort('sosByeDrag', 'Opp Bye Drag')} />}
                     {!effectiveMobile && <th style={sortHStyle('right')} {...sosTable.thSort('luckRaw', 'Luck')} />}
                   </tr>
                 </thead>
@@ -980,6 +993,7 @@ export default function CurrentSeasonPage() {
                       <td style={{ ...cStyle('right'), color: r.sosOutlook == null ? muted : r.sosOutlook < 0 ? green : r.sosOutlook > 0 ? red : muted, fontWeight: '500' }}>
                         {r.sosOutlook == null ? '—' : `${r.sosOutlook > 0 ? '+' : ''}${r.sosOutlook.toFixed(1)}`}
                       </td>
+                      {!effectiveMobile && <td style={{ ...cStyle('right'), color: muted }}>{r.sosByeDrag ? `−${r.sosByeDrag.toFixed(1)}` : '—'}</td>}
                       {!effectiveMobile && (
                         <td style={{ ...cStyle('right'), color: r.luckRaw >= 0 ? green : red, fontWeight: '500' }}>{r.luckRaw >= 0 ? '+' : ''}{r.luckRaw}</td>
                       )}
