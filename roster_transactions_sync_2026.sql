@@ -1,14 +1,14 @@
 -- Fantasy Chatroom 2026-27 roster transactions + week-by-week rosters.
 --
--- Source of truth: ESPN's Recent Activity (Sep 7 - Oct 31) replayed on top of
+-- Source of truth: ESPN's Recent Activity (Sep 7 - Nov 8) replayed on top of
 -- the draft-day roster in roster_seed_2026.sql. The replay was checked against
--- every box-score roster on file: Weeks 2 through 8 match for all 10 teams, and
+-- every box-score roster on file: Weeks 2 through 9 match for all 10 teams, and
 -- Week 1 matches the Week 1 box scores (the draft seed is the pre-Sep-7 roster).
 -- A week's roster is the roster at the END of that scoring week. A scoring week
 -- runs Tue-Mon (waivers run Wed 2am; Tuesday's moves belong to the next week):
 -- week 1 = through Sep 14, week 2 = Sep 15-21, week 3 = Sep 22-28,
 -- week 4 = Sep 29-Oct 5, week 5 = Oct 6-12, week 6 = Oct 13-19,
--- week 7 = Oct 20-26, week 8 = Oct 27 - Nov 2, week 9 = Nov 3 onward.
+-- week 7 = Oct 20-26, week 8 = Oct 27 - Nov 2, week 9 = Nov 3 - Nov 9, week 10 = Nov 10 onward.
 --
 -- What this does
 --   1. roster_moves gets real transactions: adds AND drops, with date, source
@@ -19,10 +19,10 @@
 --   3. Merges duplicate 2026 roster_entries rows for the same player.
 --   4. Rebuilds roster_entries.stats.teamId per week (which team owned the
 --      player that week), points team_id at the player's most recent team, and
---      clears proj/actual/started for any week 1-8 the player was NOT on a roster
+--      clears proj/actual/started for any week 1-9 the player was NOT on a roster
 --      so a week's roster is exactly that week's box score, 1 to 1.
 --
--- Run BEFORE week8_results_seed_2026.sql / week8_player_stats_seed_2026.sql.
+-- Run BEFORE week9_results_seed_2026.sql / week9_player_stats_seed_2026.sql.
 -- Safe to re-run.
 
 -- 1. roster_moves: support drops and keep ESPN's own details
@@ -267,6 +267,12 @@ select v.name, v.position from (values
   ('Zay Flowers', 'WR'),
   ('Tyler Bass', 'K'),
   ('Corey Kiner', 'RB'),
+  ('Dylan Sampson', 'RB'),
+  ('Audric Estime', 'RB'),
+  ('Brandon Aiyuk', 'WR'),
+  ('Chase McLaughlin', 'K'),
+  ('Devin Singletary', 'RB'),
+  ('Wil Lutz', 'K'),
   ('Jaydon Blue', 'RB'),
   ('Hunter Henry', 'TE'),
   ('Tyler Goodson', 'RB'),
@@ -1620,7 +1626,174 @@ insert into roster_membership_2026 (week, manager_name, player_name) values
   (8, 'Braden', 'Xavier Worthy'),
   (8, 'Braden', 'Tyler Shough'),
   (8, 'Braden', 'Alvin Kamara'),
-  (8, 'Braden', 'Jordan Love');
+  (8, 'Braden', 'Jordan Love'),
+  (9, 'Dan', 'Dak Prescott'),
+  (9, 'Dan', 'Kenneth Walker III'),
+  (9, 'Dan', 'Javonte Williams'),
+  (9, 'Dan', 'Amon-Ra St. Brown'),
+  (9, 'Dan', 'Matthew Golden'),
+  (9, 'Dan', 'Colston Loveland'),
+  (9, 'Dan', 'Luther Burden III'),
+  (9, 'Dan', 'Jonah Coleman'),
+  (9, 'Dan', 'Brandon Aubrey'),
+  (9, 'Dan', 'Emmett Johnson'),
+  (9, 'Dan', 'Jalen Coker'),
+  (9, 'Dan', 'Germie Bernard'),
+  (9, 'Dan', 'Antonio Williams'),
+  (9, 'Dan', 'Dalton Kincaid'),
+  (9, 'Dan', 'Harold Fannin Jr.'),
+  (9, 'Dan', 'Kirk Cousins'),
+  (9, 'Dan', 'TreVeyon Henderson'),
+  (9, 'Wally', 'Caleb Williams'),
+  (9, 'Wally', 'Omarion Hampton'),
+  (9, 'Wally', 'Chase Brown'),
+  (9, 'Wally', 'Malik Nabers'),
+  (9, 'Wally', 'Jameson Williams'),
+  (9, 'Wally', 'Tucker Kraft'),
+  (9, 'Wally', 'Jadarian Price'),
+  (9, 'Wally', 'Kaelon Black'),
+  (9, 'Wally', 'Chad Ryland'),
+  (9, 'Wally', 'DeVonta Smith'),
+  (9, 'Wally', 'Bryce Young'),
+  (9, 'Wally', 'Denzel Boston'),
+  (9, 'Wally', 'Tyrone Tracy Jr.'),
+  (9, 'Wally', 'Kimani Vidal'),
+  (9, 'Wally', 'Jordan Addison'),
+  (9, 'Wally', 'Darius Cooper'),
+  (9, 'Wally', 'Jordyn Tyson'),
+  (9, 'Reid', 'Jayden Daniels'),
+  (9, 'Reid', 'Dylan Sampson'),
+  (9, 'Reid', 'Keaton Mitchell'),
+  (9, 'Reid', 'Jaxon Smith-Njigba'),
+  (9, 'Reid', 'Tee Higgins'),
+  (9, 'Reid', 'Sam LaPorta'),
+  (9, 'Reid', 'Ladd McConkey'),
+  (9, 'Reid', 'Tre Tucker'),
+  (9, 'Reid', 'Harrison Butker'),
+  (9, 'Reid', 'Travis Etienne Jr.'),
+  (9, 'Reid', 'J.K. Dobbins'),
+  (9, 'Reid', 'Dallas Goedert'),
+  (9, 'Reid', 'Jaylen Warren'),
+  (9, 'Reid', 'Mike Evans'),
+  (9, 'Reid', 'Bo Nix'),
+  (9, 'Reid', 'Chris Rodriguez Jr.'),
+  (9, 'Reid', 'Jonathon Brooks'),
+  (9, 'Caden', 'Josh Allen'),
+  (9, 'Caden', 'Ashton Jeanty'),
+  (9, 'Caden', 'Bucky Irving'),
+  (9, 'Caden', 'Ja''Marr Chase'),
+  (9, 'Caden', 'Chris Olave'),
+  (9, 'Caden', 'Hunter Henry'),
+  (9, 'Caden', 'Rhamondre Stevenson'),
+  (9, 'Caden', 'Michael Wilson'),
+  (9, 'Caden', 'Will Reichard'),
+  (9, 'Caden', 'Jordan Mason'),
+  (9, 'Caden', 'Mike Washington Jr.'),
+  (9, 'Caden', 'Malik Washington'),
+  (9, 'Caden', 'Jared Goff'),
+  (9, 'Caden', 'Omar Cooper Jr.'),
+  (9, 'Caden', 'Caleb Douglas'),
+  (9, 'Caden', 'Kenny Gainwell'),
+  (9, 'John', 'C.J. Stroud'),
+  (9, 'John', 'Breece Hall'),
+  (9, 'John', 'Woody Marks'),
+  (9, 'John', 'CeeDee Lamb'),
+  (9, 'John', 'DJ Moore'),
+  (9, 'John', 'Trey McBride'),
+  (9, 'John', 'James Cook III'),
+  (9, 'John', 'Tyler Allgeier'),
+  (9, 'John', 'Matt Gay'),
+  (9, 'John', 'DK Metcalf'),
+  (9, 'John', 'Kyle Monangai'),
+  (9, 'John', 'Deebo Samuel Sr.'),
+  (9, 'John', 'Braelon Allen'),
+  (9, 'John', 'Kyle Pitts Sr.'),
+  (9, 'John', 'DeMario Douglas'),
+  (9, 'John', 'Audric Estime'),
+  (9, 'John', 'David Montgomery'),
+  (9, 'JM/Cameron', 'Brock Purdy'),
+  (9, 'JM/Cameron', 'Jahmyr Gibbs'),
+  (9, 'JM/Cameron', 'Quinshon Judkins'),
+  (9, 'JM/Cameron', 'Drake London'),
+  (9, 'JM/Cameron', 'Adonai Mitchell'),
+  (9, 'JM/Cameron', 'Brenton Strange'),
+  (9, 'JM/Cameron', 'Josh Jacobs'),
+  (9, 'JM/Cameron', 'Ollie Gordon II'),
+  (9, 'JM/Cameron', 'Spencer Shrader'),
+  (9, 'JM/Cameron', 'Jeremiyah Love'),
+  (9, 'JM/Cameron', 'Cam Skattebo'),
+  (9, 'JM/Cameron', 'Carnell Tate'),
+  (9, 'JM/Cameron', 'Marvin Harrison Jr.'),
+  (9, 'JM/Cameron', 'Makai Lemon'),
+  (9, 'JM/Cameron', 'Malik Willis'),
+  (9, 'JM/Cameron', 'Lamar Jackson'),
+  (9, 'JM/Cameron', 'Brandon Aiyuk'),
+  (9, 'Braden', 'Joe Burrow'),
+  (9, 'Braden', 'Christian McCaffrey'),
+  (9, 'Braden', 'Kyren Williams'),
+  (9, 'Braden', 'Zay Flowers'),
+  (9, 'Braden', 'Tetairoa McMillan'),
+  (9, 'Braden', 'George Kittle'),
+  (9, 'Braden', 'Justin Jefferson'),
+  (9, 'Braden', 'Tyler Warren'),
+  (9, 'Braden', 'Chase McLaughlin'),
+  (9, 'Braden', 'Josh Downs'),
+  (9, 'Braden', 'Xavier Worthy'),
+  (9, 'Braden', 'Tyler Shough'),
+  (9, 'Braden', 'Alvin Kamara'),
+  (9, 'Braden', 'Jordan Love'),
+  (9, 'Braden', 'Seth McGowan'),
+  (9, 'Big E', 'Trevor Lawrence'),
+  (9, 'Big E', 'Jonathan Taylor'),
+  (9, 'Big E', 'Chuba Hubbard'),
+  (9, 'Big E', 'Emeka Egbuka'),
+  (9, 'Big E', 'Parker Washington'),
+  (9, 'Big E', 'Isaiah Likely'),
+  (9, 'Big E', 'Rome Odunze'),
+  (9, 'Big E', 'Zach Charbonnet'),
+  (9, 'Big E', 'Dominic Zvada'),
+  (9, 'Big E', 'George Pickens'),
+  (9, 'Big E', 'Rico Dowdle'),
+  (9, 'Big E', 'Travis Kelce'),
+  (9, 'Big E', 'Chris Boswell'),
+  (9, 'Big E', 'Roschon Johnson'),
+  (9, 'Big E', 'Devaughn Vele'),
+  (9, 'Big E', 'Keenan Allen'),
+  (9, 'Big E', 'Davante Adams'),
+  (9, 'Mamby/Tenner', 'Drake Maye'),
+  (9, 'Mamby/Tenner', 'Bijan Robinson'),
+  (9, 'Mamby/Tenner', 'D''Andre Swift'),
+  (9, 'Mamby/Tenner', 'Nico Collins'),
+  (9, 'Mamby/Tenner', 'Stefon Diggs'),
+  (9, 'Mamby/Tenner', 'T.J. Hockenson'),
+  (9, 'Mamby/Tenner', 'Devin Singletary'),
+  (9, 'Mamby/Tenner', 'Jakobi Meyers'),
+  (9, 'Mamby/Tenner', 'Ka''imi Fairbairn'),
+  (9, 'Mamby/Tenner', 'A.J. Brown'),
+  (9, 'Mamby/Tenner', 'Garrett Wilson'),
+  (9, 'Mamby/Tenner', 'Tony Pollard'),
+  (9, 'Mamby/Tenner', 'Aaron Jones Sr.'),
+  (9, 'Mamby/Tenner', 'Brian Robinson Jr.'),
+  (9, 'Mamby/Tenner', 'Khalil Shakir'),
+  (9, 'Mamby/Tenner', 'Matthew Stafford'),
+  (9, 'Mamby/Tenner', 'RJ Harvey'),
+  (9, 'Freed', 'Patrick Mahomes'),
+  (9, 'Freed', 'Derrick Henry'),
+  (9, 'Freed', 'Bhayshul Tuten'),
+  (9, 'Freed', 'Puka Nacua'),
+  (9, 'Freed', 'Rashee Rice'),
+  (9, 'Freed', 'Brock Bowers'),
+  (9, 'Freed', 'Christian Watson'),
+  (9, 'Freed', 'Saquon Barkley'),
+  (9, 'Freed', 'Wil Lutz'),
+  (9, 'Freed', 'Jaylen Waddle'),
+  (9, 'Freed', 'Blake Corum'),
+  (9, 'Freed', 'KC Concepcion'),
+  (9, 'Freed', 'Kyler Murray'),
+  (9, 'Freed', 'Rachaad White'),
+  (9, 'Freed', 'Tyler Goodson'),
+  (9, 'Freed', 'Elijah Mitchell'),
+  (9, 'Freed', 'Terrance Ferguson');
 
 -- 4. Merge duplicate 2026 roster_entries rows for the same player (keeps the
 -- oldest row, folds the others' proj/actual/started/teamId into it).
@@ -1674,7 +1847,7 @@ with ents as (
 )
 delete from roster_entries where id in (select id from ents where rn > 1);
 
--- 5. Roster rows for anyone on a roster in weeks 1-8 who doesn't have one yet
+-- 5. Roster rows for anyone on a roster in weeks 1-9 who doesn't have one yet
 with mem as (
   select regexp_replace(lower(rm.player_name), '[^a-z0-9]', '', 'g') as nk,
          jsonb_object_agg(rm.week::text, t.id::text) as team_map,
@@ -1722,11 +1895,11 @@ with mem as (
 update roster_entries re
 set team_id = coalesce(mem.last_team_id, re.team_id),
     stats = coalesce(re.stats, '{}'::jsonb) || jsonb_build_object(
-      -- keep any snapshot for weeks after this script's last week (9+), replace weeks 1-8
-      'teamId', (coalesce(re.stats->'teamId', '{}'::jsonb) - array['1','2','3','4','5','6','7','8']) || coalesce(mem.team_map, '{}'::jsonb),
-      'actual', coalesce(re.stats->'actual', '{}'::jsonb) - array(select g::text from generate_series(1, 8) g where not (g = any(coalesce(mem.weeks, '{}'::integer[])))),
-      'started', coalesce(re.stats->'started', '{}'::jsonb) - array(select g::text from generate_series(1, 8) g where not (g = any(coalesce(mem.weeks, '{}'::integer[])))),
-      'proj', coalesce(re.stats->'proj', '{}'::jsonb) - array(select g::text from generate_series(1, 8) g where not (g = any(coalesce(mem.weeks, '{}'::integer[]))))
+      -- keep any snapshot for weeks after this script's last week (10+), replace weeks 1-9
+      'teamId', (coalesce(re.stats->'teamId', '{}'::jsonb) - array['1','2','3','4','5','6','7','8','9']) || coalesce(mem.team_map, '{}'::jsonb),
+      'actual', coalesce(re.stats->'actual', '{}'::jsonb) - array(select g::text from generate_series(1, 9) g where not (g = any(coalesce(mem.weeks, '{}'::integer[])))),
+      'started', coalesce(re.stats->'started', '{}'::jsonb) - array(select g::text from generate_series(1, 9) g where not (g = any(coalesce(mem.weeks, '{}'::integer[])))),
+      'proj', coalesce(re.stats->'proj', '{}'::jsonb) - array(select g::text from generate_series(1, 9) g where not (g = any(coalesce(mem.weeks, '{}'::integer[]))))
     )
 from players p
 left join mem on mem.nk = regexp_replace(lower(p.name), '[^a-z0-9]', '', 'g')
@@ -2002,7 +2175,35 @@ from (values
   ('2026-10-31T17:04|Reid|0', 8, '2026-10-31 17:04:00-04', 'Reid', 'Keaton Mitchell', 'dropped', null::text, null::integer, null::text),
   ('2026-10-31T17:19|Dan|0', 8, '2026-10-31 17:19:00-04', 'Dan', 'Dalton Kincaid', 'added', 'Free Agency', 0, null::text),
   ('2026-10-31T17:22|Dan|1', 8, '2026-10-31 17:22:00-04', 'Dan', 'Harold Fannin Jr.', 'added', 'Free Agency', 0, null::text),
-  ('2026-10-31T17:22|Dan|1', 8, '2026-10-31 17:22:00-04', 'Dan', 'Juwan Johnson', 'dropped', null::text, null::integer, null::text)
+  ('2026-10-31T17:22|Dan|1', 8, '2026-10-31 17:22:00-04', 'Dan', 'Juwan Johnson', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-03T06:49|Reid|0', 9, '2026-11-03 06:49:00-05', 'Reid', 'Corey Kiner', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-03T07:15|Braden|0', 9, '2026-11-03 07:15:00-05', 'Braden', 'Kendrick Bourne', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-03T10:25|John|0', 9, '2026-11-03 10:25:00-05', 'John', 'Jacoby Brissett', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-03T11:11|Dan|0', 9, '2026-11-03 11:11:00-05', 'Dan', 'Lamar Jackson', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-04T02:22|Reid|0', 9, '2026-11-04 02:22:00-05', 'Reid', 'Chris Rodriguez Jr.', 'added', 'Waivers', 10, null::text),
+  ('2026-11-04T02:22|Reid|1', 9, '2026-11-04 02:22:00-05', 'Reid', 'Dylan Sampson', 'added', 'Waivers', 5, null::text),
+  ('2026-11-04T02:22|Reid|1', 9, '2026-11-04 02:22:00-05', 'Reid', 'Tyjae Spears', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-04T02:22|Braden|0', 9, '2026-11-04 02:22:00-05', 'Braden', 'Chase McLaughlin', 'added', 'Waivers', 1, null::text),
+  ('2026-11-04T02:37|Mamby/Tenner|0', 9, '2026-11-04 02:37:00-05', 'Mamby/Tenner', 'Devin Singletary', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-04T02:39|Mamby/Tenner|1', 9, '2026-11-04 02:39:00-05', 'Mamby/Tenner', 'Jakobi Meyers', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-04T02:39|Mamby/Tenner|1', 9, '2026-11-04 02:39:00-05', 'Mamby/Tenner', 'Tyler Bass', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-04T07:16|Big E|0', 9, '2026-11-04 07:16:00-05', 'Big E', 'Dominic Zvada', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-04T07:16|Big E|0', 9, '2026-11-04 07:16:00-05', 'Big E', 'Aaron Rodgers', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-04T07:38|Caden|0', 9, '2026-11-04 07:38:00-05', 'Caden', 'Kenny Gainwell', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-04T07:38|Caden|0', 9, '2026-11-04 07:38:00-05', 'Caden', 'Emanuel Wilson', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-04T07:38|JM/Cameron|0', 9, '2026-11-04 07:38:00-05', 'JM/Cameron', 'Tyreek Hill', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-04T07:38|JM/Cameron|1', 9, '2026-11-04 07:38:00-05', 'JM/Cameron', 'Jaydon Blue', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-04T07:39|JM/Cameron|2', 9, '2026-11-04 07:39:00-05', 'JM/Cameron', 'Adonai Mitchell', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-04T08:09|Freed|0', 9, '2026-11-04 08:09:00-05', 'Freed', 'Wil Lutz', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-04T08:09|Freed|0', 9, '2026-11-04 08:09:00-05', 'Freed', 'Jake Bates', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-04T08:18|JM/Cameron|3', 9, '2026-11-04 08:18:00-05', 'JM/Cameron', 'Keon Coleman', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-04T08:18|JM/Cameron|4', 9, '2026-11-04 08:18:00-05', 'JM/Cameron', 'Brandon Aiyuk', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-04T09:40|Dan|0', 9, '2026-11-04 09:40:00-05', 'Dan', 'Kirk Cousins', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-04T23:01|Braden|1', 9, '2026-11-04 23:01:00-05', 'Braden', 'Tyler Loop', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-05T17:57|JM/Cameron|0', 9, '2026-11-05 17:57:00-05', 'JM/Cameron', 'Lamar Jackson', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-08T02:09|John|0', 9, '2026-11-08 02:09:00-05', 'John', 'Audric Estime', 'added', 'Free Agency', 0, null::text),
+  ('2026-11-08T13:02|Reid|0', 9, '2026-11-08 13:02:00-05', 'Reid', 'Kendre Miller', 'dropped', null::text, null::integer, null::text),
+  ('2026-11-08T13:05|Reid|1', 9, '2026-11-08 13:05:00-05', 'Reid', 'Keaton Mitchell', 'added', 'Free Agency', 0, null::text)
 ) as v(txn_key, week, occurred_at, manager_name, player_name, move_type, source, bid, from_manager)
 cross join (select id from seasons where year = 2026) s
 join managers m on m.name = v.manager_name
@@ -2025,7 +2226,8 @@ select m.name as manager,
   count(*) filter (where re.stats->'teamId'->>'5' = t.id::text) as wk5,
   count(*) filter (where re.stats->'teamId'->>'6' = t.id::text) as wk6,
   count(*) filter (where re.stats->'teamId'->>'7' = t.id::text) as wk7,
-  count(*) filter (where re.stats->'teamId'->>'8' = t.id::text) as wk8
+  count(*) filter (where re.stats->'teamId'->>'8' = t.id::text) as wk8,
+  count(*) filter (where re.stats->'teamId'->>'9' = t.id::text) as wk9
 from teams t
 join seasons s on s.id = t.season_id and s.year = 2026
 join managers m on m.id = t.manager_id
