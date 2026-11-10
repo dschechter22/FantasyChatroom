@@ -1096,23 +1096,29 @@ export default function CurrentSeasonPage() {
               const PAD = { top: 26, right: 20, bottom: 44, left: effectiveMobile ? 45 : 60 }
               const chartW = W - PAD.left - PAD.right
               const chartH = H - PAD.top - PAD.bottom
-              // Both axes are percentage-point values, fixed to -100%..100%
-              // rather than scaled to this season's data -- see the same fix
-              // on the standalone /lj-index page for why a data-driven scale
-              // pushed gridlines/labels outside the plotted area.
-              const AXIS_MAX = 100
-              const xMax = AXIS_MAX
-              const yMax = AXIS_MAX
-              const clamp = v => Math.max(-AXIS_MAX, Math.min(AXIS_MAX, v))
-              const toSvgX = x => PAD.left + ((clamp(x) + xMax) / (2 * xMax)) * chartW
-              const toSvgY = y => PAD.top + ((yMax - clamp(y)) / (2 * yMax)) * chartH
+              // Both axes are percentage-point values. Each is fitted to the
+              // data: its limit is the largest absolute value rounded up to the next 10, so
+              // the bubbles use the whole plot instead of bunching up in the
+              // middle of a fixed -100%..100% grid. Gridlines/labels are only
+              // drawn at round steps inside that range.
+              const fitMax = key => Math.max(10, Math.ceil(Math.max(...ljPlotData.map(r => Math.abs(r[key]))) / 10) * 10)
+              const xMax = fitMax('x')
+              const yMax = fitMax('y')
+              const clampTo = (v, m) => Math.max(-m, Math.min(m, v))
+              const toSvgX = x => PAD.left + ((clampTo(x, xMax) + xMax) / (2 * xMax)) * chartW
+              const toSvgY = y => PAD.top + ((yMax - clampTo(y, yMax)) / (2 * yMax)) * chartH
               const minBubble = effectiveMobile ? 11 : 16
               const maxBubble = effectiveMobile ? 20 : 29
               const axisColor = d ? 'rgba(255,255,255,0.2)' : 'rgba(13,33,82,0.25)'
               const gridColor = d ? 'rgba(255,255,255,0.06)' : 'rgba(13,33,82,0.08)'
-              const gridStep = 25
-              const gridLines = []
-              for (let v = -AXIS_MAX; v <= AXIS_MAX; v += gridStep) gridLines.push(v)
+              const ticksFor = m => {
+                const step = [1, 2, 5, 10, 20, 25, 50].find(st => (2 * m) / st <= 8) || 50
+                const ticks = []
+                for (let v = -Math.floor(m / step) * step; v <= m; v += step) ticks.push(v)
+                return ticks
+              }
+              const xTicks = ticksFor(xMax)
+              const yTicks = ticksFor(yMax)
               return (
                 <div style={{ marginBottom: '24px', overflowX: 'auto' }}>
                   <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: `${W}px`, height: 'auto', display: 'block', overflow: 'visible' }}>
@@ -1120,11 +1126,15 @@ export default function CurrentSeasonPage() {
                     <rect x={PAD.left} y={PAD.top} width={toSvgX(0) - PAD.left} height={chartH / 2} fill={d ? 'rgba(147,197,253,0.04)' : 'rgba(30,58,138,0.03)'} />
                     <rect x={toSvgX(0)} y={toSvgY(0)} width={chartW - (toSvgX(0) - PAD.left)} height={chartH / 2} fill={d ? 'rgba(252,211,77,0.04)' : 'rgba(146,64,14,0.03)'} />
                     <rect x={PAD.left} y={toSvgY(0)} width={toSvgX(0) - PAD.left} height={chartH / 2} fill={d ? 'rgba(248,113,113,0.04)' : 'rgba(155,28,28,0.03)'} />
-                    {gridLines.map(v => (
-                      <g key={v}>
+                    {xTicks.map(v => (
+                      <g key={`x${v}`}>
                         <line x1={toSvgX(v)} y1={PAD.top} x2={toSvgX(v)} y2={PAD.top + chartH} stroke={v === 0 ? axisColor : gridColor} strokeWidth={v === 0 ? 1.5 : 1} />
-                        <line x1={PAD.left} y1={toSvgY(v)} x2={PAD.left + chartW} y2={toSvgY(v)} stroke={v === 0 ? axisColor : gridColor} strokeWidth={v === 0 ? 1.5 : 1} />
                         <text x={toSvgX(v)} y={PAD.top + chartH + 16} textAnchor="middle" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif">{v}%</text>
+                      </g>
+                    ))}
+                    {yTicks.map(v => (
+                      <g key={`y${v}`}>
+                        <line x1={PAD.left} y1={toSvgY(v)} x2={PAD.left + chartW} y2={toSvgY(v)} stroke={v === 0 ? axisColor : gridColor} strokeWidth={v === 0 ? 1.5 : 1} />
                         <text x={PAD.left - 6} y={toSvgY(v) + 4} textAnchor="end" fontSize={effectiveMobile ? '9' : '11'} fill={muted} fontFamily="Inter, sans-serif">{v}%</text>
                       </g>
                     ))}
@@ -1204,7 +1214,7 @@ export default function CurrentSeasonPage() {
                       })
                     })()}
                   </svg>
-                  <p style={{ color: muted, fontSize: '11px', marginTop: '8px' }}>All-Play Win% vs Luck · bubble size = power score · axes centered at league average</p>
+                  <p style={{ color: muted, fontSize: '11px', marginTop: '8px' }}>All-Play Win% vs Luck · bubble size = power score · axes fitted to the data (largest value rounded up to the next 10%) and centered at league average</p>
                 </div>
               )
             })()}
