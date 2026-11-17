@@ -4,7 +4,7 @@ import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { isPlayed } from '../../lib/predictions'
-import { buildSeasonGrid, playSchedule, scheduleMatrix, playoffPicture, scoreSd, h2hFromGrid, buildPlayoffData, runBracket } from '../../lib/whatIf'
+import { buildSeasonGrid, playSchedule, scheduleMatrix, playoffPicture, scoreSd, seasonOutcome, h2hFromGrid, buildPlayoffData, runBracket } from '../../lib/whatIf'
 import { orderBySeed } from '../../lib/tiebreak'
 
 const rec = r => `${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}`
@@ -187,6 +187,7 @@ export default function WhatIfPage() {
     const yr = x && y ? playSchedule(model.grid, y.id, x.id) : null
     const xp = xr ? pic(model, x.id, xr) : null
     const yp = yr ? pic(model, y.id, yr) : null
+    const alt = x && y && xr && yr ? seasonOutcome(model, { [x.id]: xr, [y.id]: yr }) : null
     const xa = x ? pic(model, x.id, model.actual[x.id]) : null
     const ya = y ? pic(model, y.id, model.actual[y.id]) : null
     const rings = model.teams.filter(t => model.season.champion_id === t.manager_id)[0]
@@ -194,6 +195,84 @@ export default function WhatIfPage() {
     const pill = (label, color) => (
       <span style={{ fontSize: '9px', color, border: `1px solid ${color}`, padding: '1px 5px', letterSpacing: '0.1em', marginLeft: '6px' }}>{label}</span>
     )
+
+    const nameOf = id => name(model.teams.find(t => t.id === id))
+    const roundName = (r, rounds) => ['Championship', 'Semifinals', 'Quarterfinals', 'Round 1'][rounds - 1 - r] || `Round ${r + 1}`
+    const altSections = (alt, x, y) => {
+      if (!alt) return null
+      const hi = id => id === x.id || id === y.id
+      const seedOf = {}
+      alt.standings.forEach(r => { seedOf[r.id] = r.seed })
+      const realOrder = [...model.teams].sort((a, b) => winsOf(model.actual[b.id]) - winsOf(model.actual[a.id]) || model.actual[b.id].pf - model.actual[a.id].pf).map(t => t.id)
+      const b = alt.bracket
+      return (
+        <div style={{ marginBottom: '28px' }}>
+          <div style={{ fontSize: '11px', color: muted, marginBottom: '6px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Alternate standings</div>
+          <div style={{ overflowX: 'auto', marginBottom: '28px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+              <thead>
+                <tr style={{ background: cardBg }}>
+                  <th style={hStyle('center')}>Seed</th>
+                  <th style={hStyle()}>Team</th>
+                  <th style={hStyle('center')}>Record</th>
+                  <th style={hStyle('center')}>Real</th>
+                  <th style={hStyle('right')}>PF</th>
+                  <th style={hStyle('center')}>Move</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alt.standings.map((r, i) => {
+                  const realSeed = realOrder.indexOf(r.id) + 1
+                  const mv = realSeed - r.seed
+                  return (
+                    <tr key={r.id} style={{ background: hi(r.id) ? (d ? '#2b3242' : '#efe9dc') : (i % 2 === 0 ? 'transparent' : rowAlt) }}>
+                      <td style={{ ...cStyle('center'), color: i < alt.spots ? green : muted, fontWeight: 600, borderBottom: i === alt.spots - 1 ? `2px solid ${gold}` : cStyle().borderBottom }}>{r.seed}</td>
+                      <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px', fontWeight: hi(r.id) ? 700 : 400, borderBottom: i === alt.spots - 1 ? `2px solid ${gold}` : cStyle().borderBottom }}>{nameOf(r.id)}</td>
+                      <td style={{ ...cStyle('center'), fontWeight: 600, borderBottom: i === alt.spots - 1 ? `2px solid ${gold}` : cStyle().borderBottom }}>{rec(r.rec)}</td>
+                      <td style={{ ...cStyle('center'), color: muted, borderBottom: i === alt.spots - 1 ? `2px solid ${gold}` : cStyle().borderBottom }}>{r.changed ? rec(r.real) : ''}</td>
+                      <td style={{ ...cStyle('right'), color: muted, borderBottom: i === alt.spots - 1 ? `2px solid ${gold}` : cStyle().borderBottom }}>{r.rec.pf.toFixed(1)}</td>
+                      <td style={{ ...cStyle('center'), color: delta(mv), fontSize: '12px', borderBottom: i === alt.spots - 1 ? `2px solid ${gold}` : cStyle().borderBottom }}>{mv === 0 ? '\u2014' : mv > 0 ? `\u25B2${mv}` : `\u25BC${-mv}`}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            <p style={{ color: muted, fontSize: '11px', marginTop: '6px' }}>Gold line = playoff cutoff. Highlighted teams swapped schedules; everyone else keeps their real record.{!model.done ? ' Season in progress, so this is the standings so far.' : ''}</p>
+          </div>
+
+          <div style={{ fontSize: '11px', color: muted, marginBottom: '8px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Alternate playoff bracket</div>
+          {!model.done ? (
+            <p style={{ color: muted, fontSize: '13px' }}>This season&apos;s playoffs haven&apos;t happened yet, so there&apos;s no bracket to replay.</p>
+          ) : !b ? (
+            <p style={{ color: muted, fontSize: '13px', lineHeight: 1.6 }}>This season can&apos;t be replayed exactly{model.replayNote ? ` (${model.replayNote})` : ''}, so there&apos;s no bracket to show.</p>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: '28px', overflowX: 'auto', paddingBottom: '8px', alignItems: 'stretch' }}>
+                {Array.from({ length: b.rounds }, (_, r) => (
+                  <div key={r} style={{ minWidth: '210px', display: 'flex', flexDirection: 'column', gap: '12px', justifyContent: 'space-around' }}>
+                    <div style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: muted, textAlign: 'center' }}>{roundName(r, b.rounds)}</div>
+                    {b.games.filter(g => g.round === r).map((g, k) => (
+                      <div key={k} style={{ background: cardBg, border: `1px solid ${border}` }}>
+                        {[[g.a, g.sa], [g.b, g.sb]].map(([id, sc], q) => (
+                          <div key={id} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '7px 10px', borderTop: q ? `1px solid ${border}` : undefined, fontWeight: g.winner === id ? 700 : 400, color: g.winner === id ? text : muted }}>
+                            <span style={{ fontSize: '13px' }}><span style={{ color: muted, fontSize: '10px', marginRight: '6px' }}>{seedOf[id]}</span>{nameOf(id)}{hi(id) && <span style={{ color: gold }}> {'\u25CF'}</span>}</span>
+                            <span style={{ fontSize: '13px' }}>{sc.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: '13px', marginTop: '10px' }}>
+                {'\uD83C\uDFC6'} Champion: <b>{nameOf(b.champion)}</b>{b.approx ? <span style={{ color: muted }}> (~ a missing score was filled with a season average)</span> : ''}
+                {model.season.champion_id !== model.teams.find(t => t.id === b.champion)?.manager_id && <span style={{ color: muted }}> {'\u00B7'} real champion: {name(model.teams.find(t => t.manager_id === model.season.champion_id))}</span>}
+              </p>
+            </>
+          )}
+        </div>
+      )
+    }
 
     const card = (who, sched, r, p, a, ap) => (
       <div style={{ background: cardBg, border: `1px solid ${border}`, padding: '18px 20px', flex: 1, minWidth: effectiveMobile ? '100%' : '300px' }}>
@@ -365,6 +444,7 @@ export default function WhatIfPage() {
                 {card(x, y, xr, xp, model.actual[x.id], xa)}
                 {card(y, x, yr, yp, model.actual[y.id], ya)}
               </div>
+              {altSections(alt, x, y)}
               <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                 {logTable(x, y, xr)}
                 {logTable(y, x, yr)}
