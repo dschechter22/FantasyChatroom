@@ -29,7 +29,7 @@ export default function WhatIfPage() {
         .select('id, year, season_number, champion_id')
         .eq('league_id', LEAGUE_ID).order('year', { ascending: false }),
       supabase.from('teams')
-        .select('id, manager_id, team_name, made_playoffs, season_id, manager:manager_id(id, name, slug)')
+        .select('id, manager_id, team_name, made_playoffs, playoff_result, season_id, manager:manager_id(id, name, slug)')
         .eq('league_id', LEAGUE_ID).limit(5000),
       fetchAll(() => supabase.from('matchups')
         .select('season_id, week, home_team_id, away_team_id, home_score, away_score, is_playoff, is_mol_bowl, is_consolation')
@@ -78,6 +78,11 @@ export default function WhatIfPage() {
         const run = runBracket(order, spots, poWeeks, poScores, avg)
         const champTeam = run && teams.find(t => t.id === run.champion)
         model.replay = !!champTeam && champTeam.manager_id === s.champion_id
+        if (!model.replay) {
+          model.replayNote = !run
+            ? `only ${poWeeks.length} playoff week${poWeeks.length === 1 ? '' : 's'} of scores found`
+            : `replaying the real seeding crowned ${champTeam?.manager?.name || '?'}, not the real champion`
+        }
       }
       out[s.year] = model
     })
@@ -247,15 +252,16 @@ export default function WhatIfPage() {
     }).sort((a, b) => b.avgWins - a.avgWins)
     // For each team: on how many of the league's schedules would it have won the title?
     const champRows = teams.map(t => {
-      const wins = [], sum = []
+      const wins = [], odds = []
       let n = 0
       others.forEach(sc => {
         const p = pic(model, t.id, model.matrix[t.id][sc.id])
         if (p.champion) { n++; wins.push(sc) }
-        sum.push(p.titleProb)
+        odds.push({ sc, p: p.titleProb })
       })
-      const exp = sum.reduce((a, b) => a + b, 0)
-      return { t, n, wins, exp }
+      const exp = odds.reduce((a, b) => a + b.p, 0)
+      odds.sort((a, b) => b.p - a.p)
+      return { t, n, wins, exp, odds }
     }).sort((a, b) => (model.replay ? b.n - a.n : b.exp - a.exp))
 
     return (
@@ -295,7 +301,7 @@ export default function WhatIfPage() {
 
         {/* Championship schedules */}
         <div style={{ marginBottom: '56px' }}>
-          {sectionTitle('Schedules That Win a Title', `For each team, on how many of the ${others.length} schedules in the league would it have won the championship?${model.replay ? '' : ' (This season can’t be replayed exactly, so counts are summed title odds.)'}`)}
+          {sectionTitle('Schedules That Win a Title', `For each team, on how many of the ${others.length} schedules in the league would it have won the championship?${model.replay ? '' : ` (This season can’t be replayed exactly${model.replayNote ? ` — ${model.replayNote}` : ''}, so counts are summed title odds and the list shows each schedule’s chance, 5% or more.)`}`)}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
               <thead>
@@ -303,21 +309,26 @@ export default function WhatIfPage() {
                   <th style={hStyle()}>Team</th>
                   <th style={hStyle('center')}>Real Result</th>
                   <th style={hStyle('center')}>Title Schedules</th>
-                  <th style={hStyle()}>Which</th>
+                  <th style={hStyle()}>Schedules That Win It</th>
                 </tr>
               </thead>
               <tbody>
                 {champRows.map((r, i) => {
                   const real = model.season.champion_id === r.t.manager_id
+                  const result = real ? 'Champion' : (r.t.playoff_result || (r.t.made_playoffs ? 'Made playoffs' : 'Missed playoffs'))
+                  const count = model.replay ? r.n : r.exp
+                  const list = model.replay
+                    ? r.wins.map(sc => (sc.id === r.t.id ? `${name(sc)} (own)` : name(sc))).join(', ')
+                    : r.odds.filter(o => o.p >= 0.05).map(o => `${o.sc.id === r.t.id ? `${name(o.sc)} (own)` : name(o.sc)} ${pct(o.p)}`).join(', ')
                   return (
                     <tr key={r.t.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
                       <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{name(r.t)}</td>
-                      <td style={{ ...cStyle('center'), color: real ? gold : muted }}>{real ? '🏆 Champion' : '—'}</td>
-                      <td style={{ ...cStyle('center'), fontWeight: 700, color: (model.replay ? r.n : r.exp) > 0 ? gold : muted }}>
+                      <td style={{ ...cStyle('center'), color: real ? gold : muted, fontWeight: real ? 600 : 400, fontSize: '12px' }}>{real ? '🏆 ' : ''}{result}</td>
+                      <td style={{ ...cStyle('center'), fontWeight: 700, color: count > 0.05 ? gold : muted }}>
                         {model.replay ? `${r.n} of ${others.length}` : `~${r.exp.toFixed(1)} of ${others.length}`}
                       </td>
-                      <td style={{ ...cStyle(), color: muted, fontSize: '12px', whiteSpace: 'normal', minWidth: '240px' }}>
-                        {model.replay ? (r.wins.length ? r.wins.map(sc => (sc.id === r.t.id ? 'own' : name(sc))).join(', ') : 'none') : ''}
+                      <td style={{ ...cStyle(), color: list ? text : muted, fontSize: '12px', whiteSpace: 'normal', minWidth: '260px' }}>
+                        {list || (model.replay ? 'None — no schedule wins it' : 'None — under 5% on every schedule')}
                       </td>
                     </tr>
                   )
