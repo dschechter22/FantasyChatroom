@@ -64,8 +64,8 @@ export default function WhatIfPage() {
         avg[t.id] = n ? actual[t.id].pf / n : 0
       })
       const sd = scoreSd(grid)
-      const flagged = teams.filter(t => t.made_playoffs).length
-      const spots = flagged >= 2 ? flagged : Math.min(6, teams.length)
+      // 2020 and earlier: 8 teams, no byes. Since then: 6 teams, top 2 bye.
+      const spots = Math.min(s.year <= 2020 ? 8 : 6, teams.length)
       const done = !!s.champion_id
       const { poWeeks, poScores } = buildPlayoffData(all)
       const h2h = h2hFromGrid(teams, grid)
@@ -75,13 +75,22 @@ export default function WhatIfPage() {
       if (done) {
         const wins = teams.map(t => winsOf(actual[t.id])), pf = teams.map(t => actual[t.id].pf)
         const order = orderBySeed(teams.length, wins, pf, h2h).map(i => teams[i].id)
-        const run = runBracket(order, spots, poWeeks, poScores, avg)
-        const champTeam = run && teams.find(t => t.id === run.champion)
-        model.replay = !!champTeam && champTeam.manager_id === s.champion_id
+        const ruTeam = teams.find(t => t.playoff_result === 'Runner Up')
+        const tried = []
+        for (const mode of ['fixed', 'reseed']) {
+          const run = runBracket(order, spots, poWeeks, poScores, avg, mode)
+          if (!run) { tried.push(null); continue }
+          const champTeam = teams.find(t => t.id === run.champion)
+          tried.push(champTeam)
+          const champOk = champTeam?.manager_id === s.champion_id
+          const ruOk = !ruTeam || run.finish[ruTeam.id] === 'Runner Up'
+          if (champOk && ruOk) { model.replay = true; model.bracketMode = mode; break }
+        }
         if (!model.replay) {
-          model.replayNote = !run
+          const seeded = order.slice(0, spots).map(id => teams.find(t => t.id === id)?.manager?.name).join(', ')
+          model.replayNote = tried[0] === null
             ? `only ${poWeeks.length} playoff week${poWeeks.length === 1 ? '' : 's'} of scores found`
-            : `replaying the real seeding crowned ${champTeam?.manager?.name || '?'}, not the real champion`
+            : `replaying the real seeding (${seeded}) crowned ${tried[0]?.manager?.name || '?'} or ${tried[1]?.manager?.name || '?'}, not the real champion and runner-up`
         }
       }
       out[s.year] = model
