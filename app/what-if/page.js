@@ -4,7 +4,8 @@ import { supabase, LEAGUE_ID, fetchAll } from '../../lib/supabase'
 import Nav from '../../components/Nav'
 import { useLayout } from '../../hooks/useLayout'
 import { isPlayed } from '../../lib/predictions'
-import { buildSeasonGrid, playSchedule, scheduleMatrix, playoffPicture, scoreSd } from '../../lib/whatIf'
+import { buildSeasonGrid, playSchedule, scheduleMatrix, playoffPicture, scoreSd, h2hFromGrid, buildPlayoffData, runBracket } from '../../lib/whatIf'
+import { orderBySeed } from '../../lib/tiebreak'
 
 const rec = r => `${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}`
 const winsOf = r => r.wins + (r.ties || 0) / 2
@@ -37,7 +38,7 @@ export default function WhatIfPage() {
       const seasonRows = s.data || []
       setSeasons(seasonRows)
       setAllTeams(t.data || [])
-      setMatchups((m.data || []).filter(x => !x.is_playoff && !x.is_mol_bowl && !x.is_consolation && isPlayed(x)))
+      setMatchups((m.data || []).filter(x => x.home_score != null && x.away_score != null && (x.is_playoff || x.is_mol_bowl || x.is_consolation || isPlayed(x))))
       if (seasonRows.length) setYear(seasonRows[0].year)
       setLoaded(true)
     })
@@ -48,9 +49,11 @@ export default function WhatIfPage() {
     const out = {}
     seasons.forEach(s => {
       const teams = allTeams.filter(t => t.season_id === s.id)
-      const games = matchups.filter(m => m.season_id === s.id).map(m => ({
+      const all = matchups.filter(m => m.season_id === s.id).map(m => ({
         week: m.week, homeId: m.home_team_id, awayId: m.away_team_id, homeScore: Number(m.home_score), awayScore: Number(m.away_score),
+        isPlayoff: m.is_playoff, regular: !m.is_playoff && !m.is_mol_bowl && !m.is_consolation,
       }))
+      const games = all.filter(g => g.regular)
       if (teams.length < 2 || !games.length) return
       const grid = buildSeasonGrid(teams, games)
       const matrix = scheduleMatrix(teams, grid)
@@ -64,12 +67,24 @@ export default function WhatIfPage() {
       const flagged = teams.filter(t => t.made_playoffs).length
       const spots = flagged >= 2 ? flagged : Math.min(6, teams.length)
       const done = !!s.champion_id
-      out[s.year] = { season: s, teams, grid, matrix, actual, avg, sd, spots, done }
+      const { poWeeks, poScores } = buildPlayoffData(all)
+      const h2h = h2hFromGrid(teams, grid)
+      const model = { season: s, teams, grid, matrix, actual, avg, sd, spots, done, h2h, poWeeks, poScores, replay: false }
+      // Trust the replay only if running the real regular season through the
+      // bracket crowns the real champion.
+      if (done) {
+        const wins = teams.map(t => winsOf(actual[t.id])), pf = teams.map(t => actual[t.id].pf)
+        const order = orderBySeed(teams.length, wins, pf, h2h).map(i => teams[i].id)
+        const run = runBracket(order, spots, poWeeks, poScores, avg)
+        const champTeam = run && teams.find(t => t.id === run.champion)
+        model.replay = !!champTeam && champTeam.manager_id === s.champion_id
+      }
+      out[s.year] = model
     })
     return out
   }, [seasons, allTeams, matchups])
 
-  const pic = (model, teamId, r) => playoffPicture(model.teams, model.actual, model.avg, model.sd, model.spots, teamId, r)
+  const pic = (model, teamId, r) => playoffPicture(model, teamId, r)
 
   // Easiest / hardest schedule for a team: most / fewest wins on any schedule,
   // fewer / more points against breaking ties.
@@ -103,13 +118,13 @@ export default function WhatIfPage() {
         const mid = t.manager_id
         const o = (by[mid] ||= {
           name: t.manager?.name || '?', seasons: 0, rings: 0,
-          act: { w: 0, l: 0, t: 0, po: 0, titles: 0 }, easy: { w: 0, l: 0, t: 0, po: 0, titles: 0 }, hard: { w: 0, l: 0, t: 0, po: 0, titles: 0 },
+          act: { w: 0, l: 0, t: 0, po: 0, titles: 0, est: false }, easy: { w: 0, l: 0, t: 0, po: 0, titles: 0, est: false }, hard: { w: 0, l: 0, t: 0, po: 0, titles: 0, est: false },
           byYear: [],
         })
         const { easy, hard } = extremes(m, t.id)
         const a = m.actual[t.id]
         const pa = pic(m, t.id, a), pe = pic(m, t.id, easy.r), ph = pic(m, t.id, hard.r)
-        const add = (k, r, p) => { k.w += r.wins; k.l += r.losses; k.t += r.ties; k.po += p.made ? 1 : 0; k.titles += p.titleProb }
+        const add = (k, r, p) => { k.w += r.wins; k.l += r.losses; k.t += r.ties; k.po += p.made ? 1 : 0; k.titles += p.titleProb; if (p.estimated || p.approx) k.est = true }
         add(o.act, a, pa); add(o.easy, easy.r, pe); add(o.hard, hard.r, ph)
         o.seasons++
         if (m.season.champion_id === mid) o.rings++
@@ -120,6 +135,7 @@ export default function WhatIfPage() {
   }, [models]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [careerOpen, setCareerOpen] = useState(null)
+  const fmtTitles = k => (k.est ? `~${k.titles.toFixed(1)}` : String(Math.round(k.titles)))
 
   const hStyle = (align = 'left') => ({
     padding: effectiveMobile ? '8px 8px' : '10px 12px', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase',
@@ -143,6 +159,10 @@ export default function WhatIfPage() {
       {sub && <p style={{ color: muted, fontSize: '12px', lineHeight: 1.6, maxWidth: '760px', marginTop: '6px' }}>{sub}</p>}
     </div>
   )
+  // What a playoff picture came to: the replayed finish, or odds when the season
+// can't be replayed exactly.
+  const outcome = p => (p.estimated ? `${pct(p.titleProb)} odds` : `${p.finish}${p.approx ? ' ~' : ''}`)
+  const outcomeColor = p => (p.champion ? gold : p.made ? text : muted)
   const delta = (v) => (v === 0 ? muted : v > 0 ? green : red)
 
   const seasonView = () => {
@@ -174,7 +194,7 @@ export default function WhatIfPage() {
         <div style={{ marginTop: '10px', fontSize: '13px', lineHeight: 1.8 }}>
           <div>Seed: <b>{ordinal(p.seed)}</b> <span style={{ color: muted }}>(was {ordinal(ap.seed)})</span>
             {p.made ? pill(p.bye ? 'BYE' : 'IN', green) : pill('OUT', red)}</div>
-          <div>Title odds: <b>{pct(p.titleProb)}</b> <span style={{ color: muted }}>(was {pct(ap.titleProb)})</span></div>
+          <div>Playoffs: <b style={{ color: outcomeColor(p) }}>{p.champion ? '🏆 ' : ''}{outcome(p)}</b> <span style={{ color: muted }}>(was {outcome(ap)})</span></div>
         </div>
       </div>
     )
@@ -214,8 +234,99 @@ export default function WhatIfPage() {
       </div>
     )
 
+    // Schedule difficulty: how many wins everyone else would have won on it.
+    const others = model.teams
+    const sched = others.map(sc => {
+      const rest = others.filter(t => t.id !== sc.id)
+      const avgWins = rest.reduce((a, t) => a + winsOf(model.matrix[t.id][sc.id]), 0) / Math.max(rest.length, 1)
+      const oppPpg = (() => {
+        const L = model.matrix[sc.id][sc.id].log
+        return L.length ? L.reduce((a, g) => a + g.theirs, 0) / L.length : 0
+      })()
+      return { sc, avgWins, oppPpg }
+    }).sort((a, b) => b.avgWins - a.avgWins)
+    // For each team: on how many of the league's schedules would it have won the title?
+    const champRows = teams.map(t => {
+      const wins = [], sum = []
+      let n = 0
+      others.forEach(sc => {
+        const p = pic(model, t.id, model.matrix[t.id][sc.id])
+        if (p.champion) { n++; wins.push(sc) }
+        sum.push(p.titleProb)
+      })
+      const exp = sum.reduce((a, b) => a + b, 0)
+      return { t, n, wins, exp }
+    }).sort((a, b) => (model.replay ? b.n - a.n : b.exp - a.exp))
+
     return (
       <>
+        {/* Schedule ranking */}
+        <div style={{ marginBottom: '56px' }}>
+          {sectionTitle('Easiest to Hardest Schedule', 'Each schedule ranked by how many wins everyone else would have won on it (their own games excluded, and the week it faced you, you face it). Opp PPG is what the owner’s real opponents averaged.')}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+              <thead>
+                <tr style={{ background: cardBg }}>
+                  <th style={hStyle('center')}>Rk</th>
+                  <th style={hStyle()}>Schedule</th>
+                  <th style={hStyle('center')}>Owner Record</th>
+                  <th style={hStyle('right')}>Avg Wins For Others</th>
+                  <th style={hStyle('right')}>Opp PPG</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sched.map((r, i) => (
+                  <tr key={r.sc.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                    <td style={{ ...cStyle('center'), color: muted, fontWeight: 600 }}>{i + 1}</td>
+                    <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>
+                      {name(r.sc)}
+                      {i === 0 && <span style={{ fontSize: '9px', color: green, border: `1px solid ${green}`, padding: '1px 5px', letterSpacing: '0.1em', marginLeft: '8px' }}>EASIEST</span>}
+                      {i === sched.length - 1 && <span style={{ fontSize: '9px', color: red, border: `1px solid ${red}`, padding: '1px 5px', letterSpacing: '0.1em', marginLeft: '8px' }}>HARDEST</span>}
+                    </td>
+                    <td style={cStyle('center')}>{rec(model.actual[r.sc.id])}</td>
+                    <td style={{ ...cStyle('right'), color: i < sched.length / 2 ? green : red, fontWeight: 600 }}>{r.avgWins.toFixed(2)}</td>
+                    <td style={cStyle('right')}>{r.oppPpg.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Championship schedules */}
+        <div style={{ marginBottom: '56px' }}>
+          {sectionTitle('Schedules That Win a Title', `For each team, on how many of the ${others.length} schedules in the league would it have won the championship?${model.replay ? '' : ' (This season can’t be replayed exactly, so counts are summed title odds.)'}`)}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: `1px solid ${border}` }}>
+              <thead>
+                <tr style={{ background: cardBg }}>
+                  <th style={hStyle()}>Team</th>
+                  <th style={hStyle('center')}>Real Result</th>
+                  <th style={hStyle('center')}>Title Schedules</th>
+                  <th style={hStyle()}>Which</th>
+                </tr>
+              </thead>
+              <tbody>
+                {champRows.map((r, i) => {
+                  const real = model.season.champion_id === r.t.manager_id
+                  return (
+                    <tr key={r.t.id} style={{ background: i % 2 === 0 ? 'transparent' : rowAlt }}>
+                      <td style={{ ...cStyle(), fontFamily: "'Playfair Display', serif", fontSize: '15px' }}>{name(r.t)}</td>
+                      <td style={{ ...cStyle('center'), color: real ? gold : muted }}>{real ? '🏆 Champion' : '—'}</td>
+                      <td style={{ ...cStyle('center'), fontWeight: 700, color: (model.replay ? r.n : r.exp) > 0 ? gold : muted }}>
+                        {model.replay ? `${r.n} of ${others.length}` : `~${r.exp.toFixed(1)} of ${others.length}`}
+                      </td>
+                      <td style={{ ...cStyle(), color: muted, fontSize: '12px', whiteSpace: 'normal', minWidth: '240px' }}>
+                        {model.replay ? (r.wins.length ? r.wins.map(sc => (sc.id === r.t.id ? 'own' : name(sc))).join(', ') : 'none') : ''}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         {/* Swap */}
         <div style={{ marginBottom: '56px' }}>
           {sectionTitle('Take Their Schedule', 'Pick a team and whose schedule it plays. The week their schedule had them facing you, you face them instead. Both teams swap, everyone else keeps their real record.')}
@@ -288,11 +399,11 @@ export default function WhatIfPage() {
                   <th style={hStyle('center')}>Easiest</th>
                   <th style={hStyle()}>Whose</th>
                   <th style={hStyle('center')}>Seed</th>
-                  <th style={hStyle('right')}>Title %</th>
+                  <th style={hStyle('left')}>Result</th>
                   <th style={hStyle('center')}>Hardest</th>
                   <th style={hStyle()}>Whose</th>
                   <th style={hStyle('center')}>Seed</th>
-                  <th style={hStyle('right')}>Title %</th>
+                  <th style={hStyle('left')}>Result</th>
                 </tr>
               </thead>
               <tbody>
@@ -310,11 +421,11 @@ export default function WhatIfPage() {
                       <td style={{ ...cStyle('center'), color: green, fontWeight: 600 }}>{rec(easy.r)}</td>
                       <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{easy.s.id === t.id ? 'own' : name(easy.s)}</td>
                       <td style={cStyle('center')}>{seedCell(pe)}</td>
-                      <td style={cStyle('right')}>{pct(pe.titleProb)}</td>
+                      <td style={{ ...cStyle(), color: outcomeColor(pe), fontSize: '12px' }}>{outcome(pe)}</td>
                       <td style={{ ...cStyle('center'), color: red, fontWeight: 600 }}>{rec(hard.r)}</td>
                       <td style={{ ...cStyle(), color: muted, fontSize: '12px' }}>{hard.s.id === t.id ? 'own' : name(hard.s)}</td>
                       <td style={cStyle('center')}>{seedCell(ph)}</td>
-                      <td style={cStyle('right')}>{pct(ph.titleProb)}</td>
+                      <td style={{ ...cStyle(), color: outcomeColor(ph), fontSize: '12px' }}>{outcome(ph)}</td>
                     </tr>
                   )
                 })}
@@ -323,7 +434,9 @@ export default function WhatIfPage() {
           </div>
           <p style={{ color: muted, fontSize: '11px', marginTop: '10px', lineHeight: 1.6, maxWidth: '760px' }}>
             Seeds come from wins, then points for, with {model.spots} playoff spots{model.season.champion_id ? '' : ' (season in progress)'}.
-            Title % is an estimate: a single-elimination bracket where each game is decided by the two teams&apos; average scores and this season&apos;s week-to-week spread. It cannot replay the real playoffs, so it is odds, not a verdict.
+            {model.replay
+              ? 'Playoffs are replayed through the real bracket (best remaining seed plays the worst each round) using what each team actually scored in the playoff weeks; replaying the real seeding crowns the real champion, so the replay checks out. ~ means a score was missing and a season average stood in.'
+              : (model.done ? 'This season could not be replayed exactly (the real bracket did not reproduce the real champion from the stored scores), so results show title odds from a bracket estimate based on average scores.' : 'Season in progress, so results show title odds from a bracket estimate.')}
             {rings ? ` Real champion: ${name(rings)}.` : ''}
           </p>
         </div>
@@ -337,7 +450,7 @@ export default function WhatIfPage() {
     const best = [...rows].sort((a, b) => (b.easy.titles - b.act.titles) - (a.easy.titles - a.act.titles))[0]
     return (
       <>
-        {sectionTitle('Career What-If', 'Every completed season, each manager replayed on the easiest and the hardest schedule in the league that year. Titles are expected titles from the bracket estimate, next to the rings actually won.')}
+        {sectionTitle('Career What-If', 'Every completed season, each manager replayed on the easiest and the hardest schedule in the league that year. Each season is run back through the real bracket using the playoff-week scores, so titles are whole rings; a ~ means at least one season couldn’t be replayed exactly and is counted as bracket odds instead. Rings are the ones actually won.')}
         {best && (
           <p style={{ color: muted, fontSize: '13px', marginBottom: '20px', lineHeight: 1.7 }}>
             Biggest beneficiary of a soft schedule: <b style={{ color: text }}>{best.name}</b>, who would be about {(best.easy.titles - best.act.titles).toFixed(1)} titles and {best.easy.w - best.act.w} wins richer.
@@ -354,10 +467,10 @@ export default function WhatIfPage() {
                 <th style={hStyle('center')}>Rings</th>
                 <th style={hStyle('center')}>Easiest</th>
                 <th style={hStyle('center')}>Playoffs</th>
-                <th style={hStyle('center')}>Est. Titles</th>
+                <th style={hStyle('center')}>Titles</th>
                 <th style={hStyle('center')}>Hardest</th>
                 <th style={hStyle('center')}>Playoffs</th>
-                <th style={hStyle('center')}>Est. Titles</th>
+                <th style={hStyle('center')}>Titles</th>
               </tr>
             </thead>
             <tbody>
@@ -373,10 +486,10 @@ export default function WhatIfPage() {
                     <td style={{ ...cStyle('center'), color: gold, fontWeight: 700 }}>{r.rings}</td>
                     <td style={{ ...cStyle('center'), color: green, fontWeight: 600 }}>{sumRow(r.easy)}</td>
                     <td style={cStyle('center')}>{r.easy.po}</td>
-                    <td style={{ ...cStyle('center'), color: green }}>{r.easy.titles.toFixed(1)}</td>
+                    <td style={{ ...cStyle('center'), color: green }}>{fmtTitles(r.easy)}</td>
                     <td style={{ ...cStyle('center'), color: red, fontWeight: 600 }}>{sumRow(r.hard)}</td>
                     <td style={cStyle('center')}>{r.hard.po}</td>
-                    <td style={{ ...cStyle('center'), color: red }}>{r.hard.titles.toFixed(1)}</td>
+                    <td style={{ ...cStyle('center'), color: red }}>{fmtTitles(r.hard)}</td>
                   </tr>
                   {careerOpen === r.name && (
                     <tr>
@@ -416,7 +529,7 @@ export default function WhatIfPage() {
           </table>
         </div>
         <p style={{ color: muted, fontSize: '11px', marginTop: '10px', lineHeight: 1.6, maxWidth: '760px' }}>
-          Click a manager for the year-by-year. Easiest and hardest are chosen per season, so these are bounds, not a schedule anyone could really have had. Est. Titles for the real schedule are the same bracket estimate, so compare them with each other, and with Rings as a sanity check.
+          Click a manager for the year-by-year. Easiest and hardest are chosen per season, so these are bounds, not a schedule anyone could really have had. Playoff games are decided by what each team actually scored in the playoff weeks.
         </p>
       </>
     )
